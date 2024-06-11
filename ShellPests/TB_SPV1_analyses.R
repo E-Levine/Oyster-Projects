@@ -85,7 +85,7 @@ Seasons <- data.frame("Month" = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
 ###Water quality
 #Check column data types, change as needed
 glimpse(TB_WQ_raw)
-#Add Year, Month, Season columns, add reef and station information, change Secchi to penetration
+#Add Year, Month, Season columns, add reef and station information
 TB_WQ <- TB_WQ_raw %>% mutate(Year = as.factor(format(Date, "%Y")),
                           Month = as.numeric(format(Date, "%m"))) %>% 
   left_join(Seasons) %>% 
@@ -334,9 +334,15 @@ basetheme <- theme_bw()+
 #
 #
 #
-####Beginning questions####
+####Bay Summary Questions####
 #
-##Does Polydora and Cliona differ in parasite prevalence in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
+#
+#
+#
+#
+####Pest Summary Questions####
+#
+###Q5:Does Polydora and Cliona differ in parasite prevalence in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
 (t1 <- TB_SP_df %>% subset(Measurement == "All") %>% 
    group_by(Year, Month, Station) %>% #Grouping factors
    summarise(nT = n(), #Total number of oysters
@@ -376,7 +382,7 @@ Pest_means %>%
 #
 #
 #
-##Does Polydora or Cliona differ in parasite prevalence impact among shell surfaces in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
+###Q6Does Polydora or Cliona differ in parasite prevalence impact among shell surfaces in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
 #
 (t2 <- TB_SP_df %>% subset(Measurement == "External" | Measurement == "Internal") %>% 
   group_by(Year, Month, Station, Measurement) %>% #Grouping factors
@@ -416,7 +422,7 @@ Side_means %>%
 #
 #
 #
-##Does Polydora or Cliona differ in parasite prevalence impact among shell position in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
+###Q7Does Polydora or Cliona differ in parasite prevalence impact among shell position in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
 #
 (t3 <- TB_SP_df %>% subset(Measurement == "Top" | Measurement == "Bot") %>% 
     group_by(Year, Month, Station, Measurement) %>% #Grouping factors
@@ -455,7 +461,7 @@ Position_means %>%
 #
 #
 #
-##Does Polydora and Cliona differ in parasite prevalence in TB Oysters among stations? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
+###Q8Does Polydora and Cliona differ in parasite prevalence in TB Oysters among stations? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
 #Interested in comparing within pest species differences (rather than Pest*Station)
 Pest_model_2 <- glm(cbind(nI, nT) ~ Type * Station, family = binomial, data = t1)
 summary(Pest_model_2) #Check model
@@ -487,6 +493,7 @@ Pest_station_means %>%
 #
 #Since Cliona and Polydora differ among stations, Station will be included in all models.
 #
+####Next Questions####
 ##What is the relationship between Polydora and Cliona percent affected? (Correlation)
 ##What is the relationship between Polydora or Cliona with CI? (Correlation)
 ##Has the amount of Polydora or Cliona at each station changed over time? (glm)
