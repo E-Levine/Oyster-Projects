@@ -9,7 +9,7 @@
 if (!require("pacman")) {install.packages("pacman")}
 pacman::p_load(plyr, tidyverse, #Df manipulation, 
                ggpubr,
-               rstatix, #Summary stats
+               rstatix, corrplot, vegan, #Summary stats, correlations
                zoo, lubridate, #Dates and times
                readxl, #Reading excel files
                car, emmeans, multcomp, #Basic analyses
@@ -72,7 +72,7 @@ Reef_Type <- data.frame("Station" = c(1, 2, 3, 4, 5),
                         "Station_Name" = c("Pinellas Point", "Skyway", "Fort Desoto", "Gulfport", "Weedon Island"),
                         "Type" = c("Inter", "Inter", "Sub", "Inter", "Sub"))
 #
-Seasons <- data.frame("Month" = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
+Seasons <- data.frame("Month" = as.factor(c("01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12")),
                       "Month_Abb" = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"),
                       "Season" = c("Winter", "Winter", "Winter", "Spring", "Spring", "Spring", "Summer", "Summer", "Summer", "Fall", "Fall", "Fall"))
 #
@@ -87,7 +87,7 @@ Seasons <- data.frame("Month" = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
 glimpse(TB_WQ_raw)
 #Add Year, Month, Season columns, add reef and station information
 TB_WQ <- TB_WQ_raw %>% mutate(Year = as.factor(format(Date, "%Y")),
-                          Month = as.numeric(format(Date, "%m"))) %>% 
+                          Month = as.factor(format(Date, "%m"))) %>% 
   left_join(Seasons) %>% 
   left_join(Reef_Type) %>%
   mutate_at(c("Site", "Station", "Month", "Month_Abb", "Season", "Station_Name", "Type"), as.factor) %>% #Change columns to factor type 
@@ -96,7 +96,8 @@ head(TB_WQ)
 #
 glimpse(Portal_WQ_raw)
 ##Get mean daily values to work with.
-Portal_WQ <- Portal_WQ_raw %>% dplyr::select(-Result_Unit, -Buffer, -LocationName, -StationName, -Latitude, -Longitude) %>% #Remove unnecessary columns
+Portal_WQ <- Portal_WQ_raw %>% mutate(Month = as.factor(Month)) %>%
+  dplyr::select(-Result_Unit, -Buffer, -LocationName, -StationName, -Latitude, -Longitude) %>% #Remove unnecessary columns
   group_by(Year, Month, Season, Estuary, Station, SampleDate, Parameter) %>% #Group by all columns needed in output
   summarise(Mean_Result = mean(Result_Value, na.rm = T)) %>% #Calculate mean daily value 
   mutate_at(c("Year", "Month", "Season", "Estuary", "Station"), as.factor)
@@ -336,8 +337,60 @@ basetheme <- theme_bw()+
 #
 ####Bay Summary Questions####
 #
+###Q1: WQ trends - overall min/max/mean; annual min/max/mean figures :: Summary data found in "TB_WQ_summ" df/sheet
+#Overall
+TB_WQ_df %>% ungroup() %>% mutate(MonYr = as.yearmon(Date)) %>% 
+  dplyr::select(MonYr, Temperature, Salinity, pH, DO_mgl, DO_Pct) %>%
+  pivot_longer(cols = -MonYr, names_to = "Parameter", values_to = "Value") %>% 
+  group_by(MonYr, Parameter) %>%
+  summarise(n = n(),
+            mean = mean(Value, na.rm = T),
+            se = sd(Value, na.rm = T)/sqrt(n)) %>%
+  ggplot(aes(MonYr, mean, group = 1))+
+  geom_point(size = 2.5)+
+  geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.02)+
+  geom_line(linewidth = 0.75)+
+  lemon::facet_rep_grid(Parameter~., scales = "free_y")+
+  basetheme +
+  scale_x_yearmon("", expand = c(0,0), n = 12)+
+  scale_y_continuous("Mean parameter value")
+#
+#Annual
+TB_WQ_df %>% ungroup() %>% 
+  dplyr::select(Year, Temperature, Salinity, pH, DO_mgl, DO_Pct) %>%
+  pivot_longer(cols = -Year, names_to = "Parameter", values_to = "Value") %>% 
+  group_by(Year, Parameter) %>%
+  summarise(n = n(),
+            mean = mean(Value, na.rm = T),
+            se = sd(Value, na.rm = T)/sqrt(n),
+            min = min(Value, na.rm = T),
+            max = max(Value, na.rm = T)) %>%
+  ggplot(aes(Year, mean, group = 1))+
+  geom_point(size = 2.5)+
+  geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.02)+
+  geom_line(linewidth = 0.75)+
+  lemon::facet_rep_grid(Parameter~., scales = "free_y")+
+  basetheme +
+  scale_x_discrete(expand = c(0.05,0))+
+  scale_y_continuous("Mean parameter value")
 #
 #
+#
+#
+###Q2: WQ - which months most similar? -comparing all month values
+(TB_WQ_Months <- TB_WQ_df %>% ungroup() %>% 
+    dplyr::select(Month, Temperature, Salinity, pH, DO_mgl) %>% #drop_na())
+    group_by(Month) %>% 
+    mutate(Temperature = mean(Temperature, na.rm = T),
+           Salinity = mean(Salinity, na.rm = T),
+           pH = mean(pH, na.rm = T),
+           DO_mgl = mean(DO_mgl, na.rm = T)) %>% distinct())
+#
+pairs(TB_WQ_Months, lower.panel = NULL, col = as.numeric(TB_WQ_Months$Month))
+(Mon_rda <- vegan::rda(TB_WQ_Months[,-1])) #redundancy analysis
+biplot(Mon_rda, display = c("sites", "species"), type = c("text", "points")) %>%
+  ordihull(group = TB_WQ_Months$Month)
+anova(Mon_rda)
 #
 #
 ####Pest Summary Questions####
