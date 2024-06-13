@@ -9,7 +9,7 @@
 if (!require("pacman")) {install.packages("pacman")}
 pacman::p_load(plyr, tidyverse, #Df manipulation, 
                ggpubr,
-               rstatix, corrplot, vegan, #Summary stats, correlations
+               rstatix, corrplot, vegan, lmPerm, #Summary stats, correlations
                zoo, lubridate, #Dates and times
                readxl, #Reading excel files
                car, emmeans, multcomp, #Basic analyses
@@ -386,11 +386,90 @@ TB_WQ_df %>% ungroup() %>%
            pH = mean(pH, na.rm = T),
            DO_mgl = mean(DO_mgl, na.rm = T)) %>% distinct())
 #
-pairs(TB_WQ_Months, lower.panel = NULL, col = as.numeric(TB_WQ_Months$Month))
-(Mon_rda <- vegan::rda(TB_WQ_Months[,-1])) #redundancy analysis
-biplot(Mon_rda, display = c("sites", "species"), type = c("text", "points")) %>%
-  ordihull(group = TB_WQ_Months$Month)
-anova(Mon_rda)
+ggboxplot(TB_WQ_df, x = "Month", y = "Temperature")
+gghistogram(TB_WQ_df, x = "Temperature")
+#
+#Permutation ANOVA - temperature
+set.seed(4321)
+Month_temp <- aovp(Temperature ~ Month, data = ungroup(TB_WQ_df), perm = "", nperm = 10000)
+summary(Month_temp)
+(Month_temp_p <- rstatix::pairwise_t_test(Temperature ~ Month, data = ungroup(TB_WQ_df), p.adjust.method = "holm") %>%
+  dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+  dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
+(Month_temp_means <- merge(TB_WQ_df %>% group_by(Month) %>% rstatix::get_summary_stats(Temperature, type = "mean_sd") %>% 
+        dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+      biostat::make_cld(Month_temp_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Month = group, Letters = cld)))
+ggplot(Month_temp_means, aes(Month, mean, color = Letters))+
+  geom_point(aes(shape = Letters), size = 3)+
+  geom_errorbar(aes(ymin = lower, ymax = upper))+
+  basetheme
+Month_temp_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
+#Temperatures are similar in 02/03/11; 06/08; 05/10
+
+#Permutation ANOVA - salinity 
+set.seed(4321)
+Month_sal <- aovp(Salinity ~ Month, data = ungroup(TB_WQ_df), perm = "", nperm = 10000)
+summary(Month_sal)
+(Month_sal_p <- rstatix::pairwise_t_test(Salinity ~ Month, data = ungroup(TB_WQ_df), p.adjust.method = "holm") %>%
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
+(Month_sal_means <- merge(TB_WQ_df %>% group_by(Month) %>% rstatix::get_summary_stats(Salinity, type = "mean_sd") %>% 
+                             dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                           biostat::make_cld(Month_sal_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Month = group, Letters = cld)))
+ggplot(Month_sal_means, aes(Month, mean, color = Letters))+
+  geom_point(size = 3)+
+  geom_errorbar(aes(ymin = lower, ymax = upper))+
+  basetheme
+Month_sal_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
+#
+#
+#
+#
+###Q3: WQ - which stations most similar? -comparing all station values
+(TB_WQ_Stations <- TB_WQ_df %>% ungroup() %>% 
+    dplyr::select(Station, Temperature, Salinity, pH, DO_mgl) %>% #drop_na())
+    group_by(Station) %>% 
+    mutate(Temperature = mean(Temperature, na.rm = T),
+           Salinity = mean(Salinity, na.rm = T),
+           pH = mean(pH, na.rm = T),
+           DO_mgl = mean(DO_mgl, na.rm = T)) %>% distinct())
+#
+ggboxplot(TB_WQ_df, x = "Station", y = "Temperature")
+ggboxplot(TB_WQ_df, x = "Station", y = "Salinity")
+#
+#Permutation ANOVA - temperature
+set.seed(4321)
+Station_temp <- aovp(Temperature ~ Station, data = ungroup(TB_WQ_df), perm = "", nperm = 10000)
+summary(Station_temp)
+(Station_temp_p <- rstatix::pairwise_t_test(Temperature ~ Station, data = ungroup(TB_WQ_df), p.adjust.method = "holm") %>%
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
+(Station_temp_means <- merge(TB_WQ_df %>% group_by(Station) %>% rstatix::get_summary_stats(Temperature, type = "mean_sd") %>% 
+                             dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                           biostat::make_cld(Station_temp_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Station = group, Letters = cld)))
+ggplot(Station_temp_means, aes(Station, mean, color = Letters))+
+  geom_point(aes(shape = Letters), size = 3)+
+  geom_errorbar(aes(ymin = lower, ymax = upper))+
+  basetheme
+#Temperatures are similar in 02/03/11; 06/08; 05/10
+
+#Permutation ANOVA - salinity 
+set.seed(4321)
+Station_sal <- aovp(Salinity ~ Station, data = ungroup(TB_WQ_df), perm = "", nperm = 10000)
+summary(Station_sal)
+(Station_sal_p <- rstatix::pairwise_t_test(Salinity ~ Station, data = ungroup(TB_WQ_df), p.adjust.method = "holm") %>%
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
+(Station_sal_means <- merge(TB_WQ_df %>% group_by(Station) %>% rstatix::get_summary_stats(Salinity, type = "mean_sd") %>% 
+                            dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                          biostat::make_cld(Station_sal_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Station = group, Letters = cld)))
+ggplot(Station_sal_means, aes(Station, mean, color = Letters))+
+  geom_point(size = 3)+
+  geom_errorbar(aes(ymin = lower, ymax = upper))+
+  basetheme
+Station_sal_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
+#
+#
 #
 #
 ####Pest Summary Questions####
