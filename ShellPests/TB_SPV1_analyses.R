@@ -472,6 +472,75 @@ Station_sal_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
 #
 #
 #
+###Q4: Oysters among stations - SH, TW, CI
+(Oyster_Stations <- TB_CI %>% ungroup() %>% 
+    dplyr::select(Station, SH, TW, CI) %>% 
+    group_by(Station) %>% 
+    summarise(SHeight = mean(SH, na.rm = T),
+              TWeight = mean(TW, na.rm = T),
+              CIndex = mean(CI, na.rm = T))) 
+#
+ggarrange(ggboxplot(TB_CI, x = "Station", y = "SH"),
+          ggboxplot(TB_CI, x = "Station", y = "TW"),
+          ggboxplot(TB_CI, x = "Station", y = "CI"))
+#
+#Permutation ANOVA - SH
+set.seed(4321)
+Station_SH <- aovp(SH ~ Station, data = ungroup(TB_CI), perm = "", nperm = 10000)
+summary(Station_SH)
+(Station_SH_p <- rstatix::pairwise_t_test(SH ~ Station, data = ungroup(TB_CI), p.adjust.method = "holm") %>%
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
+(Station_SH_means <- merge(TB_CI %>% group_by(Station) %>% rstatix::get_summary_stats(SH, type = "mean_sd") %>% 
+                               dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                             biostat::make_cld(Station_SH_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Station = group, Letters = cld)))
+ggplot(Station_SH_means, aes(Station, mean, color = Letters))+
+  geom_jitter(data = (TB_CI %>% rename(mean = SH)), aes(Station, mean), color = "black", alpha = 0.2, width = 0.15)+
+  geom_point(size = 5)+
+  geom_errorbar(aes(ymin = lower, ymax = upper), linewidth = 1.5)+
+  scale_y_continuous("Shell height (mm)")+
+  basetheme
+#
+#
+#Permutation ANOVA - TW
+set.seed(4321)
+Station_TW <- aovp(TW ~ Station, data = ungroup(TB_CI), perm = "", nperm = 10000)
+summary(Station_TW)
+(Station_TW_p <- rstatix::pairwise_t_test(TW ~ Station, data = ungroup(TB_CI), p.adjust.method = "holm") %>%
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
+(Station_TW_means <- merge(TB_CI %>% group_by(Station) %>% rstatix::get_summary_stats(TW, type = "mean_sd") %>% 
+                             dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                           biostat::make_cld(Station_TW_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Station = group, Letters = cld)))
+ggplot(Station_TW_means, aes(Station, mean, color = Letters))+
+  geom_jitter(data = (TB_CI %>% rename(mean = TW)), aes(Station, mean), color = "black", alpha = 0.2, width = 0.15)+
+  geom_point(size = 5)+
+  geom_errorbar(aes(ymin = lower, ymax = upper), linewidth = 1.5)+
+  scale_y_continuous("Total weight (g)")+
+  basetheme
+#
+#
+#Permutation ANOVA - CI
+set.seed(4321)
+Station_CI <- aovp(CI ~ Station, data = ungroup(TB_CI), perm = "", nperm = 10000)
+summary(Station_CI)
+(Station_CI_p <- rstatix::pairwise_t_test(CI ~ Station, data = ungroup(TB_CI), p.adjust.method = "holm") %>%
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
+(Station_CI_means <- merge(TB_CI %>% group_by(Station) %>% rstatix::get_summary_stats(CI, type = "mean_sd") %>% 
+                             dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                           biostat::make_cld(Station_CI_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Station = group, Letters = cld)))
+ggplot(Station_CI_means, aes(Station, mean, color = Letters))+
+  geom_jitter(data = (TB_CI %>% rename(mean = CI)), aes(Station, mean), color = "black", alpha = 0.2, width = 0.15)+
+  geom_point(size = 5)+
+  geom_errorbar(aes(ymin = lower, ymax = upper), linewidth = 1.5)+
+  scale_y_continuous("Condition index")+
+  basetheme
+#
+#
+#
+#
+#
 ####Pest Summary Questions####
 #
 ###Q5:Does Polydora and Cliona differ in parasite prevalence in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
@@ -514,7 +583,7 @@ Pest_means %>%
 #
 #
 #
-###Q6Does Polydora or Cliona differ in parasite prevalence impact among shell surfaces in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
+###Q6: Does Polydora or Cliona differ in parasite prevalence impact among shell surfaces in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
 #
 (t2 <- TB_SP_df %>% subset(Measurement == "External" | Measurement == "Internal") %>% 
   group_by(Year, Month, Station, Measurement) %>% #Grouping factors
