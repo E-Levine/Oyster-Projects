@@ -64,6 +64,9 @@ TB_SP_raw <- read_excel("Data/TB_ShellPests_2018_2021.xlsx", sheet = "Sheet1", #
 #Check data and column names
 head(TB_SP_raw)
 #
+#Convert Month to factor
+TB_SP_raw <- TB_SP_raw %>% mutate(Month = recode(as.factor(Month), c("1"="01", "2"="02", "3"="03", "4"="04", "5"="05", "6"="06", "7"="07", "8"="08", "9"="09")))
+#
 #
 #
 #
@@ -118,7 +121,7 @@ TB_WQ_df <- rbind(TB_WQ %>% dplyr::select(-Time, -Depth, -Station_Name, -Type, -
 glimpse(TB_CI_raw)
 #Add columns for Year, Month, and SizeClass then Season and Reef Type info
 TB_CI <- TB_CI_raw %>% mutate(Year = as.factor(format(Date, "%Y")),
-                          Month = as.numeric(format(Date, "%m")),
+                          Month = as.factor(format(Date, "%m")),
                           SizeClass = case_when(SH < 25 ~ "S",
                                                 SH > 75 ~ "L",
                                                 TRUE ~ "A")) %>%
@@ -374,6 +377,27 @@ TB_WQ_df %>% ungroup() %>%
   scale_x_discrete(expand = c(0.05,0))+
   scale_y_continuous("Mean parameter value")
 #
+###Any sig differences?
+#Permutation ANOVA - temperature
+set.seed(4321)
+Overall_temp <- aovp(Temperature ~ Year, data = ungroup(TB_WQ_df), perm = "", nperm = 10000)
+summary(Overall_temp) #NO sig diff among years
+#
+#Permutation ANOVA - salinity
+set.seed(4321)
+Overall_salinity <- aovp(Salinity ~ Year, data = ungroup(TB_WQ_df), perm = "", nperm = 10000)
+summary(Overall_salinity) #NO sig diff among years
+#
+#Permutation ANOVA - pH
+set.seed(4321)
+Overall_pH <- aovp(pH ~ Year, data = ungroup(TB_WQ_df), perm = "", nperm = 10000)
+summary(Overall_pH) #NO sig diff among years (alpha set to 0.05 so p would need to be less than 0.05 to be sig)
+#
+#Permutation ANOVA - DO_mgl
+set.seed(4321)
+Overall_DOmgl <- aovp(DO_mgl ~ Year, data = ungroup(TB_WQ_df), perm = "", nperm = 10000)
+summary(Overall_DOmgl) #NO sig diff among years
+#
 #
 #
 #
@@ -396,7 +420,7 @@ summary(Month_temp)
 (Month_temp_p <- rstatix::pairwise_t_test(Temperature ~ Month, data = ungroup(TB_WQ_df), p.adjust.method = "holm") %>%
   dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
   dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
-(Month_temp_means <- merge(TB_WQ_df %>% group_by(Month) %>% rstatix::get_summary_stats(Temperature, type = "mean_sd") %>% 
+(Month_temp_means <- merge(TB_WQ_df %>% group_by(Month) %>% rstatix::get_summary_stats(Temperature, show = c("n", "mean", "sd", "min", "max")) %>% 
         dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
       biostat::make_cld(Month_temp_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Month = group, Letters = cld)))
 ggplot(Month_temp_means, aes(Month, mean, color = Letters))+
@@ -413,7 +437,7 @@ summary(Month_sal)
 (Month_sal_p <- rstatix::pairwise_t_test(Salinity ~ Month, data = ungroup(TB_WQ_df), p.adjust.method = "holm") %>%
     dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
     dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
-(Month_sal_means <- merge(TB_WQ_df %>% group_by(Month) %>% rstatix::get_summary_stats(Salinity, type = "mean_sd") %>% 
+(Month_sal_means <- merge(TB_WQ_df %>% group_by(Month) %>% rstatix::get_summary_stats(Salinity, show = c("n", "mean", "sd", "min", "max")) %>% 
                              dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
                            biostat::make_cld(Month_sal_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Month = group, Letters = cld)))
 ggplot(Month_sal_means, aes(Month, mean, color = Letters))+
@@ -421,6 +445,39 @@ ggplot(Month_sal_means, aes(Month, mean, color = Letters))+
   geom_errorbar(aes(ymin = lower, ymax = upper))+
   basetheme
 Month_sal_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
+
+#Permutation ANOVA - pH 
+set.seed(4321)
+Month_pH <- aovp(pH ~ Month, data = ungroup(TB_WQ_df), perm = "", nperm = 10000)
+summary(Month_pH)
+(Month_pH_p <- rstatix::pairwise_t_test(pH ~ Month, data = ungroup(TB_WQ_df), p.adjust.method = "holm") %>%
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
+(Month_pH_means <- merge(TB_WQ_df %>% group_by(Month) %>% rstatix::get_summary_stats(pH, show = c("n", "mean", "sd", "min", "max")) %>% 
+                            dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                          biostat::make_cld(Month_pH_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Month = group, Letters = cld)))
+ggplot(Month_pH_means, aes(Month, mean, color = Letters))+
+  geom_point(size = 3)+
+  geom_errorbar(aes(ymin = lower, ymax = upper))+
+  basetheme
+Month_pH_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
+
+#Permutation ANOVA - DOmgL 
+set.seed(4321)
+Month_DO <- aovp(DO_mgl ~ Month, data = ungroup(TB_WQ_df), perm = "", nperm = 10000)
+summary(Month_DO)
+(Month_DO_p <- rstatix::pairwise_t_test(DO_mgl ~ Month, data = ungroup(TB_WQ_df), p.adjust.method = "holm") %>%
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
+(Month_DO_means <- merge(TB_WQ_df %>% group_by(Month) %>% rstatix::get_summary_stats(DO_mgl, show = c("n", "mean", "sd", "min", "max")) %>% 
+                            dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                          biostat::make_cld(Month_DO_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Month = group, Letters = cld)))
+ggplot(Month_DO_means, aes(Month, mean, color = Letters))+
+  geom_point(size = 3)+
+  geom_errorbar(aes(ymin = lower, ymax = upper))+
+  basetheme
+Month_DO_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
+#
 #
 #
 #
@@ -444,14 +501,14 @@ summary(Station_temp)
 (Station_temp_p <- rstatix::pairwise_t_test(Temperature ~ Station, data = ungroup(TB_WQ_df), p.adjust.method = "holm") %>%
     dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
     dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
-(Station_temp_means <- merge(TB_WQ_df %>% group_by(Station) %>% rstatix::get_summary_stats(Temperature, type = "mean_sd") %>% 
+(Station_temp_means <- merge(TB_WQ_df %>% group_by(Station) %>% rstatix::get_summary_stats(Temperature, show = c("n", "mean", "sd", "min", "max")) %>% 
                              dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
                            biostat::make_cld(Station_temp_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Station = group, Letters = cld)))
 ggplot(Station_temp_means, aes(Station, mean, color = Letters))+
   geom_point(aes(shape = Letters), size = 3)+
   geom_errorbar(aes(ymin = lower, ymax = upper))+
   basetheme
-#Temperatures are similar in 02/03/11; 06/08; 05/10
+#Temperatures are similar
 
 #Permutation ANOVA - salinity 
 set.seed(4321)
@@ -460,7 +517,7 @@ summary(Station_sal)
 (Station_sal_p <- rstatix::pairwise_t_test(Salinity ~ Station, data = ungroup(TB_WQ_df), p.adjust.method = "holm") %>%
     dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
     dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
-(Station_sal_means <- merge(TB_WQ_df %>% group_by(Station) %>% rstatix::get_summary_stats(Salinity, type = "mean_sd") %>% 
+(Station_sal_means <- merge(TB_WQ_df %>% group_by(Station) %>% rstatix::get_summary_stats(Salinity, show = c("n", "mean", "sd", "min", "max")) %>% 
                             dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
                           biostat::make_cld(Station_sal_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Station = group, Letters = cld)))
 ggplot(Station_sal_means, aes(Station, mean, color = Letters))+
@@ -468,6 +525,39 @@ ggplot(Station_sal_means, aes(Station, mean, color = Letters))+
   geom_errorbar(aes(ymin = lower, ymax = upper))+
   basetheme
 Station_sal_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
+#Salinity 5 < 1 <= 2/3/4
+
+#Permutation ANOVA - pH 
+set.seed(4321)
+Station_pH <- aovp(pH ~ Station, data = ungroup(TB_WQ_df), perm = "", nperm = 10000)
+summary(Station_pH)
+(Station_pH_p <- rstatix::pairwise_t_test(pH ~ Station, data = ungroup(TB_WQ_df), p.adjust.method = "holm") %>%
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
+(Station_pH_means <- merge(TB_WQ_df %>% group_by(Station) %>% rstatix::get_summary_stats(pH, show = c("n", "mean", "sd", "min", "max")) %>% 
+                              dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                            biostat::make_cld(Station_pH_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Station = group, Letters = cld)))
+ggplot(Station_pH_means, aes(Station, mean, color = Letters))+
+  geom_point(size = 3)+
+  geom_errorbar(aes(ymin = lower, ymax = upper))+
+  basetheme
+Station_pH_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
+
+#Permutation ANOVA - DO 
+set.seed(4321)
+Station_DO <- aovp(DO_mgl ~ Station, data = ungroup(TB_WQ_df), perm = "", nperm = 10000)
+summary(Station_DO)
+(Station_DO_p <- rstatix::pairwise_t_test(DO_mgl ~ Station, data = ungroup(TB_WQ_df), p.adjust.method = "holm") %>%
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
+(Station_DO_means <- merge(TB_WQ_df %>% group_by(Station) %>% rstatix::get_summary_stats(DO_mgl, show = c("n", "mean", "sd", "min", "max")) %>% 
+                             dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                           biostat::make_cld(Station_DO_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Station = group, Letters = cld)))
+ggplot(Station_DO_means, aes(Station, mean, color = Letters))+
+  geom_point(size = 3)+
+  geom_errorbar(aes(ymin = lower, ymax = upper))+
+  basetheme
+Station_DO_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
 #
 #
 #
@@ -491,7 +581,7 @@ summary(Station_SH)
 (Station_SH_p <- rstatix::pairwise_t_test(SH ~ Station, data = ungroup(TB_CI), p.adjust.method = "holm") %>%
     dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
     dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
-(Station_SH_means <- merge(TB_CI %>% group_by(Station) %>% rstatix::get_summary_stats(SH, type = "mean_sd") %>% 
+(Station_SH_means <- merge(TB_CI %>% group_by(Station) %>% rstatix::get_summary_stats(SH, show = c("n", "mean", "sd", "min", "max")) %>% 
                                dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
                              biostat::make_cld(Station_SH_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Station = group, Letters = cld)))
 ggplot(Station_SH_means, aes(Station, mean, color = Letters))+
@@ -500,6 +590,7 @@ ggplot(Station_SH_means, aes(Station, mean, color = Letters))+
   geom_errorbar(aes(ymin = lower, ymax = upper), linewidth = 1.5)+
   scale_y_continuous("Shell height (mm)")+
   basetheme
+Station_SH_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
 #
 #
 #Permutation ANOVA - TW
@@ -509,7 +600,7 @@ summary(Station_TW)
 (Station_TW_p <- rstatix::pairwise_t_test(TW ~ Station, data = ungroup(TB_CI), p.adjust.method = "holm") %>%
     dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
     dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
-(Station_TW_means <- merge(TB_CI %>% group_by(Station) %>% rstatix::get_summary_stats(TW, type = "mean_sd") %>% 
+(Station_TW_means <- merge(TB_CI %>% group_by(Station) %>% rstatix::get_summary_stats(TW, show = c("n", "mean", "sd", "min", "max")) %>% 
                              dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
                            biostat::make_cld(Station_TW_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Station = group, Letters = cld)))
 ggplot(Station_TW_means, aes(Station, mean, color = Letters))+
@@ -518,6 +609,7 @@ ggplot(Station_TW_means, aes(Station, mean, color = Letters))+
   geom_errorbar(aes(ymin = lower, ymax = upper), linewidth = 1.5)+
   scale_y_continuous("Total weight (g)")+
   basetheme
+Station_TW_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
 #
 #
 #Permutation ANOVA - CI
@@ -527,7 +619,7 @@ summary(Station_CI)
 (Station_CI_p <- rstatix::pairwise_t_test(CI ~ Station, data = ungroup(TB_CI), p.adjust.method = "holm") %>%
     dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
     dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
-(Station_CI_means <- merge(TB_CI %>% group_by(Station) %>% rstatix::get_summary_stats(CI, type = "mean_sd") %>% 
+(Station_CI_means <- merge(TB_CI %>% group_by(Station) %>% rstatix::get_summary_stats(CI, show = c("n", "mean", "sd", "min", "max")) %>% 
                              dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
                            biostat::make_cld(Station_CI_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Station = group, Letters = cld)))
 ggplot(Station_CI_means, aes(Station, mean, color = Letters))+
@@ -536,6 +628,7 @@ ggplot(Station_CI_means, aes(Station, mean, color = Letters))+
   geom_errorbar(aes(ymin = lower, ymax = upper), linewidth = 1.5)+
   scale_y_continuous("Condition index")+
   basetheme
+Station_CI_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
 #
 #
 #
