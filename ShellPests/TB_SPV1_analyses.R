@@ -65,7 +65,7 @@ TB_SP_raw <- read_excel("Data/TB_ShellPests_2018_2021.xlsx", sheet = "Sheet1", #
 head(TB_SP_raw)
 #
 #Convert Month to factor
-TB_SP_raw <- TB_SP_raw %>% mutate(Month = recode(as.factor(Month), c("1"="01", "2"="02", "3"="03", "4"="04", "5"="05", "6"="06", "7"="07", "8"="08", "9"="09")))
+TB_SP_raw <- TB_SP_raw %>% mutate(Month = as.factor(substr(Date, start = 6, stop = 7)))
 #
 #
 #
@@ -338,7 +338,7 @@ basetheme <- theme_bw()+
 #
 #
 #
-####Bay Summary Questions####
+####Bay Summary Questions (Q1-Q4)####
 #
 ###Q1: WQ trends - overall min/max/mean; annual min/max/mean figures :: Summary data found in "TB_WQ_summ" df/sheet
 #Overall
@@ -634,24 +634,28 @@ Station_CI_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
 #
 #
 #
-####Pest Summary Questions####
+####Pest Summary Questions (Q5-)####
 #
-###Q5:Does Polydora and Cliona differ in parasite prevalence in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
-(t1 <- TB_SP_df %>% subset(Measurement == "All") %>% 
-   group_by(Year, Month, Station) %>% #Grouping factors
-   summarise(nT = n(), #Total number of oysters
-             Polydora = sum(Poly_Prev), #Number of oysters with Polydora
-             Cliona = sum(Cliona_Prev)) %>%  #Number of oysters with Cliona
-   pivot_longer(cols = c(Polydora, Cliona), names_to = "Type", values_to = "nI") %>% #Restructure data for analyses
-   mutate(Prop = nI/nT)) #Calculate proporiton infected
+###Q5:Does Polydora and Cliona differ in parasite prevalence in TB Oysters? 
+#want # infected out of total oysters per sample (1 sample = 1 year/month/station) - need to consider oysters with both separately from each pest
+(t1 <- left_join(TB_SP_df %>% subset(Measurement == "All") %>% 
+                   mutate(Type = as.factor(case_when(Poly_Prev == 1 & Cliona_Prev == 0 ~ "Polydora",
+                                                     Poly_Prev == 0 & Cliona_Prev == 1 ~ "Cliona",
+                                                     Poly_Prev == 1 & Cliona_Prev == 1 ~ "Both",
+                                                     TRUE ~ "None"))) %>% 
+                   group_by(Year, Month, Station, Type) %>% 
+                   summarise(Count = n()),
+                 TB_SP_df %>% subset(Measurement == "All") %>% 
+                   group_by(Year, Month, Station) %>% 
+                   summarise(Total = n())) %>%
+   mutate(Prop = Count/Total, Type = factor(Type, levels = c("Polydora", "Cliona", "Both", "None"))))#
 #
-#
-Pest_model <- glm(cbind(nI, nT) ~ Type, family = binomial, data = t1)
+set.seed(54321)
+Pest_model <- glm(Prop ~ Type, family = quasibinomial, data = t1) #quasi - [0,1]
 summary(Pest_model) #Check model
-confint(Pest_model)
-Anova(Pest_model) #Significant difference between Polydora and Cliona p = 0.03 (< 0.05)
-#X2 1 = 4.63 p = 0.03
-(Pest_model_emm <- emmeans(Pest_model, ~Type, type = "response")) #Polydora averages higher than Cliona
+Anova(Pest_model) #Significant difference among pest "Types"
+#X2 3 = 121.64 p < 0.001
+(Pest_model_emm <- emmeans(Pest_model, ~Type, type = "response")) #Polydora = Cliona < Both = None
 pairs(Pest_model_emm, adjust = "tukey")  
 #
 #Get means and Letters distinguishing significantly different groups:
@@ -659,7 +663,7 @@ pairs(Pest_model_emm, adjust = "tukey")
                            summarise(n = n(),
                                      meanProp = mean(Prop),
                                      se = sd(Prop, na.rm = T)/sqrt(n)),
-                         data.frame(cld(object = Pest_model_emm, adjust = "sidak", Letters = letters, alpha = 0.05))) %>%
+                         data.frame(cld(object = Pest_model_emm, adjust = "Tukey", Letters = letters, alpha = 0.05, decreasing = TRUE))) %>%
     rename(Letters = .group)) %>% mutate(Letters =  gsub("[[:space:]]", "", Letters)) %>%  dplyr::select(-df)
 #Figure of means with letters
 Pest_means %>%
@@ -668,9 +672,9 @@ Pest_means %>%
   geom_bar(stat = "identity")+
   geom_text(aes(Type, y = meanProp+se+0.03, label = Letters))+
   scale_fill_grey(start = 0.3, end = 0.7)+
-  scale_y_continuous(expand = c(0,0), limits = c(0,1)) + basetheme + 
+  scale_x_discrete("")+
+  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1)) + basetheme + 
   theme(legend.position = "none")
-#
 #
 #
 #
