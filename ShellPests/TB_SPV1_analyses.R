@@ -643,28 +643,28 @@ Station_CI_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
                                                      Poly_Prev == 0 & Cliona_Prev == 1 ~ "Cliona",
                                                      Poly_Prev == 1 & Cliona_Prev == 1 ~ "Both",
                                                      TRUE ~ "None"))) %>% 
+                   filter(Type != "None") %>%
                    group_by(Year, Month, Station, Type) %>% 
                    summarise(Count = n()),
                  TB_SP_df %>% subset(Measurement == "All") %>% 
                    group_by(Year, Month, Station) %>% 
                    summarise(Total = n())) %>%
-   mutate(Prop = Count/Total, Type = factor(Type, levels = c("Polydora", "Cliona", "Both", "None"))))#
+   mutate(Prop = Count/Total, Type = factor(Type, levels = c("Polydora", "Cliona", "Both"))))#
 #
 set.seed(54321)
 Pest_model <- glm(Prop ~ Type, family = quasibinomial, data = t1) #quasi - [0,1]
 summary(Pest_model) #Check model
-Anova(Pest_model) #Significant difference among pest "Types"
-#X2 3 = 121.64 p < 0.001
-(Pest_model_emm <- emmeans(Pest_model, ~Type, type = "response")) #Polydora = Cliona < Both = None
-pairs(Pest_model_emm, adjust = "tukey")  
+Anova(Pest_model, test = "F") #Significant difference among pest "Types"
 #
 #Get means and Letters distinguishing significantly different groups:
-(Pest_means <- left_join(t1 %>% group_by(Type) %>% 
-                           summarise(n = n(),
-                                     meanProp = mean(Prop),
-                                     se = sd(Prop, na.rm = T)/sqrt(n)),
-                         data.frame(cld(object = Pest_model_emm, adjust = "Tukey", Letters = letters, alpha = 0.05, decreasing = TRUE))) %>%
-    rename(Letters = .group)) %>% mutate(Letters =  gsub("[[:space:]]", "", Letters)) %>%  dplyr::select(-df)
+(Pest_model_emm <- emmeans(Pest_model, ~Type, type = "response")) #Polydora = Cliona < Both = None
+(Pest_p_means <- merge(t1 %>% group_by(Type) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% 
+                         dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                       multcomp::cld(Pest_model_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>%
+                         rename(Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Type, Lower:Letters)))
+#
+(Pest_p <- pairs(Pest_model_emm, type = "response", adjust = "holm") %>% as.data.frame() %>% dplyr::select(-c(df, null)))
+#
 #Figure of means with letters
 Pest_means %>%
   ggplot(aes(Type, meanProp, fill = Letters))+
@@ -676,43 +676,52 @@ Pest_means %>%
   scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1)) + basetheme + 
   theme(legend.position = "none")
 #
+Pest_p %>% filter(p.adjust < 0.05)
 #
 #
 #
 #
 ###Q6: Does Polydora or Cliona differ in parasite prevalence impact among shell surfaces in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
 #
-(t2 <- TB_SP_df %>% subset(Measurement == "External" | Measurement == "Internal") %>% 
-  group_by(Year, Month, Station, Measurement) %>% #Grouping factors
-  summarise(nT = n(), #Total number of oysters
-            Polydora = sum(Poly_Prev), #Number of oysters with Polydora
-            Cliona = sum(Cliona_Prev)) %>%  #Number of oysters with Cliona
-  pivot_longer(cols = c(Polydora, Cliona), names_to = "Type", values_to = "nI") %>% #Restructure data for analyses
-  mutate(Prop = nI/nT)) #Calculate proporiton infected
+(t2 <- left_join(TB_SP_df %>% subset(Measurement == "External" | Measurement == "Internal") %>%
+    mutate(Type = as.factor(case_when(Poly_Prev == 1 & Cliona_Prev == 0 ~ "Polydora",
+                                      Poly_Prev == 0 & Cliona_Prev == 1 ~ "Cliona",
+                                      Poly_Prev == 1 & Cliona_Prev == 1 ~ "Both",
+                                      TRUE ~ "None"))) %>%
+      filter(Type != "None") %>%
+      group_by(Year, Month, Station, Measurement, Type) %>% #Grouping factors
+      summarise(Count = n()), #Total number of oysters per Type
+    TB_SP_df %>% subset(Measurement == "External" | Measurement == "Internal") %>% 
+      group_by(Year, Month, Station, Measurement) %>%
+      summarise(Total = n())) %>%
+    mutate(Prop = Count/Total, Type = factor(Type, levels = c("Polydora", "Cliona", "Both"))))
 #
-Side_model <- glm(cbind(nI, nT) ~ Type * Measurement, family = binomial, data = t2)
+set.seed(54321)
+Side_model <- glm(Prop ~ Type * Measurement, family = quasibinomial, data = t2)
 summary(Side_model) #Check model
-confint(Side_model)
-Anova(Side_model) #Significant difference between Polydora and Cliona and between shell sides p = 0.03 (< 0.05)
-#X2 1 = 10.13 p = 0.001
-(Side_model_emm <- emmeans(Side_model, ~Measurement*Type, type = "response")) #Polydora averages higher than Cliona
-pairs(Side_model_emm, adjust = "tukey") #Both more often on external (both p <= 0.005)  
+Anova(Side_model, test = "F") #Significant difference between Polydora and Cliona, between shell sides p < 0.01
 #
 #Get means and Letters distinguishing significantly different groups:
-(Side_means <- left_join(t2 %>% group_by(Type, Measurement) %>% 
-                           summarise(n = n(),
-                                     meanProp = mean(Prop),
-                                     se = sd(Prop, na.rm = T)/sqrt(n)),
-                         data.frame(cld(object = Side_model_emm, adjust = "sidak", Letters = letters, alpha = 0.05))) %>%
-    rename(Letters = .group)) %>% mutate(Letters =  gsub("[[:space:]]", "", Letters)) %>%  dplyr::select(-df)
+(Side_model_emm <- emmeans(Side_model, ~Measurement*Type, type = "response")) 
+(Side_p_means <- merge(t2 %>% group_by(Type, Measurement) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% 
+                         dplyr::select(-c("variable")),
+                       multcomp::cld(Side_model_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>%
+                         rename(Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Measurement, Type, SE, Lower:Letters) %>%
+                         mutate(Measurement = as.factor(Measurement), Type = as.factor(Type))))
+
+(Side_p <- pairs(Side_model_emm, type = "response", adjust = "holm") %>% as.data.frame() %>% dplyr::select(-c(df, null))) #Both more often on external (both p <= 0.005)
+Side_p %>% filter(p.value < 0.05)
+#
+#
 #Figure of means with letters
-Side_means %>%
-  ggplot(aes(Type, meanProp, fill = Measurement))+
-  geom_errorbar(aes(ymin = meanProp, ymax = meanProp+se), width = 0.5, stat = "identity", position = position_dodge(0.75))+
+Side_p_means %>%
+  ggplot(aes(Type, mean, fill = Measurement))+
+  geom_errorbar(aes(ymin = mean, ymax = Upper), width = 0.5, stat = "identity", position = position_dodge(0.75))+
   geom_col(position = "dodge", width = 0.75)+
-  geom_text(aes(Type, y = meanProp+se+0.03, label = Letters), position = position_dodge(0.75))+
+  geom_text(aes(Type, y = Upper+0.03, label = Letters), position = position_dodge(0.75))+
   scale_fill_grey(start = 0.3, end = 0.7)+
-  scale_y_continuous(expand = c(0,0), limits = c(0,1)) + basetheme  
+  scale_x_discrete("")+
+  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1)) + basetheme  
   theme(legend.position = "none")
 #
 #
