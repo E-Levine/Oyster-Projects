@@ -748,9 +748,6 @@ Side_p_means %>%
 Position_model <- glm(Prop ~ Type * Measurement, family = quasibinomial, data = t3)
 summary(Position_model) #Check model
 Anova(Position_model, test = "F") #Significant difference between Polydora and Cliona and between shell positions p < 0.001
-#X2 1 = 63.48 p < 0.001
-(Position_model_emm <- emmeans(Position_model, ~Measurement*Type, type = "response")) 
-pairs(Position_model_emm, adjust = "tukey") #Cliona less on top than bottom and less on top than Polydora on either shell (all p < 0.001) 
 #
 #Get means and Letters distinguishing significantly different groups:
 (Position_model_emm <- emmeans(Position_model, ~Measurement*Type, type = "response")) 
@@ -778,32 +775,34 @@ Position_p_means %>%
 #
 #
 #
-###Q8Does Polydora and Cliona differ in parasite prevalence in TB Oysters among stations? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
+###Q8: Does Polydora and Cliona differ in parasite prevalence in TB Oysters among stations?
 #Interested in comparing within pest species differences (rather than Pest*Station)
-Pest_model_2 <- glm(cbind(nI, nT) ~ Type * Station, family = binomial, data = t1)
+set.seed(54321)
+Pest_model_2 <- glm(Prop ~ Type * Station, family = quasibinomial, data = t1)
 summary(Pest_model_2) #Check model
-confint(Pest_model_2)
-Anova(Pest_model_2) #Significant difference between Polydora and Cliona among Stations
-#X2, 4 = 26.22, <0.001
-(Pest_model_2_emm <- emmeans(Pest_model_2, ~Station|Type, type = "response")) #Get differences among stations within pest type
-pairs(Pest_model_2_emm, adjust = "sidak")
+Anova(Pest_model_2, test = "F") 
 #
 #Get means and Letters distinguishing significantly different groups:
-(Pest_station_means <- left_join(t1 %>% group_by(Type, Station) %>% 
-                           summarise(n = n(),
-                                     meanProp = mean(Prop),
-                                     se = sd(Prop, na.rm = T)/sqrt(n)),
-                         data.frame(cld(object = Pest_model_2_emm, adjust = "sidak", Letters = letters, alpha = 0.05))) %>%
-    rename(Letters = .group) %>% mutate(Letters =  gsub("[[:space:]]", "", Letters), Height = (meanProp + se + 0.02))) %>%
-  dplyr::select(-df)
+(Pest_model_2_emm <- emmeans(Pest_model_2, ~Station*Type, type = "response")) 
+(Pest2_p_means <- merge(t1 %>% group_by(Type, Station) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% 
+                             dplyr::select(-c("variable")),
+                           multcomp::cld(Pest_model_2_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>%
+                             rename(Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Station, Type, SE, Lower:Letters) %>%
+                             mutate(Station = as.factor(Station), Type = as.factor(Type))))
+
+(Pest2_p <- pairs(Pest_model_2_emm, type = "response", adjust = "holm") %>% as.data.frame() %>% dplyr::select(-c(df, null))) #Both more often on external (both p <= 0.005)
+Pest2_p_means %>% arrange(Type) %>% dplyr::select(Type, everything())
+Pest2_p %>% filter(p.value < 0.05)
+#
 #Figure of differences among stations
-Pest_station_means %>%
-  ggplot(aes(Type, meanProp, fill = Station))+
+Pest2_p_means %>%
+  ggplot(aes(Type, mean, fill = Station))+
   geom_col(position = "dodge", width = 0.75, color = "black")+
-  geom_errorbar(aes(ymin = meanProp, ymax = meanProp+se), width = 0.5, stat = "identity", position = position_dodge(0.75))+
-  geom_text(aes(Type, y = Height, label = Letters), position = position_dodge(0.75))+
+  geom_errorbar(aes(ymin = mean, ymax = Upper), width = 0.5, stat = "identity", position = position_dodge(0.75))+
+  geom_text(aes(Type, y = Upper+0.03, label = Letters), position = position_dodge(0.75))+
   scale_fill_grey(start = 0.3, end = 0.7)+
-  scale_y_continuous(expand = c(0,0), limits = c(0,1.02)) + basetheme
+  scale_x_discrete("")+
+  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1.02)) + basetheme
 #
 #
 #
