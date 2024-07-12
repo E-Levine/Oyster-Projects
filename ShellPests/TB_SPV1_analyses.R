@@ -681,6 +681,7 @@ Pest_p %>% filter(p.adjust < 0.05)
 #
 #
 #
+#
 ###Q6: Does Polydora or Cliona differ in parasite prevalence impact among shell surfaces in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
 #
 (t2 <- left_join(TB_SP_df %>% subset(Measurement == "External" | Measurement == "Internal") %>%
@@ -729,39 +730,48 @@ Side_p_means %>%
 #
 #
 #
-###Q7Does Polydora or Cliona differ in parasite prevalence impact among shell position in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
+###Q7: Does Polydora or Cliona differ in parasite prevalence impact among shell position in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
 #
-(t3 <- TB_SP_df %>% subset(Measurement == "Top" | Measurement == "Bot") %>% 
-    group_by(Year, Month, Station, Measurement) %>% #Grouping factors
-    summarise(nT = n(), #Total number of oysters
-              Polydora = sum(Poly_Prev), #Number of oysters with Polydora
-              Cliona = sum(Cliona_Prev)) %>%  #Number of oysters with Cliona
-    pivot_longer(cols = c(Polydora, Cliona), names_to = "Type", values_to = "nI") %>% #Restructure data for analyses
-    mutate(Prop = nI/nT)) #Calculate proporiton infected
+(t3 <- left_join(TB_SP_df %>% subset(Measurement == "Top" | Measurement == "Bot") %>%
+                     mutate(Type = as.factor(case_when(Poly_Prev == 1 & Cliona_Prev == 0 ~ "Polydora",
+                                                       Poly_Prev == 0 & Cliona_Prev == 1 ~ "Cliona",
+                                                       Poly_Prev == 1 & Cliona_Prev == 1 ~ "Both",
+                                                       TRUE ~ "None"))) %>%
+                     filter(Type != "None") %>%
+                     group_by(Year, Month, Station, Measurement, Type) %>% #Grouping factors
+                     summarise(Count = n()), #Total number of oysters per Type
+                   TB_SP_df %>% subset(Measurement == "Top" | Measurement == "Bot") %>% 
+                     group_by(Year, Month, Station, Measurement) %>%
+                     summarise(Total = n())) %>%
+      mutate(Prop = Count/Total, Type = factor(Type, levels = c("Polydora", "Cliona", "Both"))))
 #
-Position_model <- glm(cbind(nI, nT) ~ Type * Measurement, family = binomial, data = t3)
+Position_model <- glm(Prop ~ Type * Measurement, family = quasibinomial, data = t3)
 summary(Position_model) #Check model
-confint(Position_model)
-Anova(Position_model) #Significant difference between Polydora and Cliona and between shell positions p < 0.001
+Anova(Position_model, test = "F") #Significant difference between Polydora and Cliona and between shell positions p < 0.001
 #X2 1 = 63.48 p < 0.001
 (Position_model_emm <- emmeans(Position_model, ~Measurement*Type, type = "response")) 
 pairs(Position_model_emm, adjust = "tukey") #Cliona less on top than bottom and less on top than Polydora on either shell (all p < 0.001) 
 #
 #Get means and Letters distinguishing significantly different groups:
-(Position_means <- left_join(t3 %>% group_by(Type, Measurement) %>% 
-                           summarise(n = n(),
-                                     meanProp = mean(Prop),
-                                     se = sd(Prop, na.rm = T)/sqrt(n)),
-                         data.frame(cld(object = Position_model_emm, adjust = "sidak", Letters = letters, alpha = 0.05))) %>%
-    rename(Letters = .group)) %>% mutate(Letters =  gsub("[[:space:]]", "", Letters)) %>%  dplyr::select(-df)
+(Position_model_emm <- emmeans(Position_model, ~Measurement*Type, type = "response")) 
+(Position_p_means <- merge(t3 %>% group_by(Type, Measurement) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% 
+                         dplyr::select(-c("variable")),
+                       multcomp::cld(Position_model_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>%
+                         rename(Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Measurement, Type, SE, Lower:Letters) %>%
+                         mutate(Measurement = as.factor(Measurement), Type = as.factor(Type))))
+
+(Position_p <- pairs(Position_model_emm, type = "response", adjust = "holm") %>% as.data.frame() %>% dplyr::select(-c(df, null))) #Both more often on external (both p <= 0.005)
+Position_p %>% filter(p.value < 0.05)
+#
 #Figure of means with letters
-Position_means %>%
-  ggplot(aes(Type, meanProp, fill = Measurement))+
-  geom_errorbar(aes(ymin = meanProp, ymax = meanProp+se), width = 0.5, stat = "identity", position = position_dodge(0.75))+
+Position_p_means %>%
+  ggplot(aes(Type, mean, fill = Measurement))+
+  geom_errorbar(aes(ymin = mean, ymax = Upper), width = 0.5, stat = "identity", position = position_dodge(0.75))+
   geom_col(position = "dodge", width = 0.75)+
-  geom_text(aes(Type, y = meanProp+se+0.03, label = Letters), position = position_dodge(0.75))+
+  geom_text(aes(Type, y = Upper+0.03, label = Letters), position = position_dodge(0.75))+
   scale_fill_grey(start = 0.3, end = 0.7)+
-  scale_y_continuous(expand = c(0,0), limits = c(0,1)) + basetheme  
+  scale_x_discrete("")+
+  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1)) + basetheme  
 #
 #
 #
