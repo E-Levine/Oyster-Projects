@@ -634,7 +634,7 @@ Station_CI_p %>% filter(p.adjust < 0.05) %>% print(n = 57)
 #
 #
 #
-####Pest Summary Questions (Q5-)####
+####Pest Summary Questions (Q5-Q8)####
 #
 ###Q5:Does Polydora and Cliona differ in parasite prevalence in TB Oysters? 
 #want # infected out of total oysters per sample (1 sample = 1 year/month/station) - need to consider oysters with both separately from each pest
@@ -790,7 +790,7 @@ Anova(Pest_model_2, test = "F")
                              rename(Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Station, Type, SE, Lower:Letters) %>%
                              mutate(Station = as.factor(Station), Type = as.factor(Type))))
 
-(Pest2_p <- pairs(Pest_model_2_emm, type = "response", adjust = "holm") %>% as.data.frame() %>% dplyr::select(-c(df, null))) #Both more often on external (both p <= 0.005)
+(Pest2_p <- pairs(Pest_model_2_emm, type = "response", adjust = "holm") %>% as.data.frame() %>% dplyr::select(-c(df, null))) #
 Pest2_p_means %>% arrange(Type) %>% dplyr::select(Type, everything())
 Pest2_p %>% filter(p.value < 0.05)
 #
@@ -805,12 +805,46 @@ Pest2_p_means %>%
   scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1.02)) + basetheme
 #
 #
+#Curiosity. What about just Cliona & Polydora?
+set.seed(54321)
+Pest_model_2b <- glm(Prop ~ Type * Station, family = quasibinomial, data = (t1 %>% filter(Type != "Both")))
+summary(Pest_model_2b) #Check model
+Anova(Pest_model_2b, test = "F") 
+#Get means and Letters distinguishing significantly different groups:
+(Pest_model_2b_emm <- emmeans(Pest_model_2b, ~Station*Type, type = "response")) 
+(Pest2b_p_means <- merge(t1 %>% filter(Type != "Both") %>% group_by(Type, Station) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% 
+                          dplyr::select(-c("variable")),
+                        multcomp::cld(Pest_model_2b_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>%
+                          rename(Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Station, Type, SE, Lower:Letters) %>%
+                          mutate(Station = as.factor(Station), Type = as.factor(Type))))
+
+(Pest2b_p <- pairs(Pest_model_2b_emm, type = "response", adjust = "holm") %>% as.data.frame() %>% dplyr::select(-c(df, null))) #
+Pest2b_p_means %>% arrange(Type) %>% dplyr::select(Type, everything())
+Pest2b_p %>% filter(p.value < 0.05)
+#
+#Figure of differences among stations
+Pest2b_p_means %>%
+  ggplot(aes(Type, mean, fill = Station))+
+  geom_col(position = "dodge", width = 0.75, color = "black")+
+  geom_errorbar(aes(ymin = mean, ymax = Upper), width = 0.5, stat = "identity", position = position_dodge(0.75))+
+  geom_text(aes(Type, y = Upper+0.03, label = Letters), position = position_dodge(0.75))+
+  scale_fill_grey(start = 0.3, end = 0.7)+
+  scale_x_discrete("")+
+  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1.02)) + basetheme
 #
 #
-#Since Cliona and Polydora differ among stations, Station will be included in all models.
 #
-####Next Questions####
+####Trends (Q9-Q12)####
+#
 ##What is the relationship between Polydora and Cliona percent affected? (Correlation)
+#
+head(t1)
+cor()
+#
+#
+#
+#
+#
 ##What is the relationship between Polydora or Cliona with CI? (Correlation)
 ##Has the amount of Polydora or Cliona at each station changed over time? (glm)
 ##Which WQ parameters best explain the trend observed in Polydora or Cliona? (glm)
