@@ -51,7 +51,7 @@ TB_CI_raw <- read_excel("Data/TB_CI_2018_2021.xlsx", sheet = "Sheet1", #File nam
                     .name_repair = "unique")
 head(TB_CI_raw)
 #Simplify column names
-colnames(TB_CI_raw) <- c("Date", "Site", "Sample_Number", "Station", "SH", "SL", "SW", "TW", "TarePan", "TissueWW", "ShellWW", "TissueDW", "ShellDW", "FinalTisse", "CI", "CI_Hanley")
+colnames(TB_CI_raw) <- c("Date", "Site", "Sample_Number", "Station", "SH", "SL", "SW", "TW", "TarePan", "TissueWW", "ShellWW", "TissueDW", "ShellDW", "FinalTisse", "CI", "CI_Hanley", "New_Sample_Number")
 head(TB_CI_raw)
 #
 #
@@ -150,7 +150,7 @@ head(TB_SP)
 #Summarize data by Shell_Side, Shell_Pos, and overall
 TB_SP_df <- 
   rbind(TB_SP %>%  
-          group_by(Date, Year, Month, Site, Station, Sample.Number, Shell_Side) %>%
+          group_by(Date, Year, Month, Site, Station, Sample.Number, Shell_Side, New_Sample_Number) %>%
           summarise(Pct.Polydora = mean(Pct.Polydora, na.rm = T),
                     Pct.Cliona = mean(Pct.Cliona, na.rm = T),
                     Pct_Affected = mean(Pct_Affected, na.rm = T),
@@ -160,7 +160,7 @@ TB_SP_df <-
           rename(Measurement = Shell_Side),
         #
         TB_SP %>%  mutate(Shell_Pos = recode_factor(Shell_Pos, 'Top' = "Top", 'Bottom' = "Bot")) %>%
-          group_by(Date, Year, Month, Site, Station, Sample.Number, Shell_Pos) %>%
+          group_by(Date, Year, Month, Site, Station, Sample.Number, Shell_Pos, New_Sample_Number) %>%
           summarise(Pct.Polydora = mean(Pct.Polydora, na.rm = T),
                     Pct.Cliona = mean(Pct.Cliona, na.rm = T),
                     Pct_Affected = mean(Pct_Affected, na.rm = T),
@@ -170,7 +170,7 @@ TB_SP_df <-
           rename(Measurement = Shell_Pos)) %>%
   #
   rbind(TB_SP %>%  
-          group_by(Date, Year, Month, Site, Station, Sample.Number) %>%
+          group_by(Date, Year, Month, Site, Station, Sample.Number, New_Sample_Number) %>%
           summarise(Pct.Polydora = mean(Pct.Polydora, na.rm = T),
                     Pct.Cliona = mean(Pct.Cliona, na.rm = T),
                     Pct_Affected = mean(Pct_Affected, na.rm = T),
@@ -229,7 +229,7 @@ head(TB_SP_df)
 #
 #
 #Each station all years and all TB all years - Pests - Pcts and Richness
-TB_Pest_summ <- rbind(TB_SP_df %>% ungroup() %>% dplyr::select(-Date, -Year, -Month, -Site, -Sample.Number) %>%
+TB_Pest_summ <- rbind(TB_SP_df %>% ungroup() %>% dplyr::select(-Date, -Year, -Month, -Site, -Sample.Number, -New_Sample_Number) %>%
                         pivot_longer(cols = -c(Station, Measurement), names_to = "Parameter", values_to = "Value") %>% 
                         group_by(Station, Measurement, Parameter) %>%
                         summarise(n = n(),
@@ -237,7 +237,7 @@ TB_Pest_summ <- rbind(TB_SP_df %>% ungroup() %>% dplyr::select(-Date, -Year, -Mo
                                   se = sd(Value, na.rm = T)/sqrt(n), 
                                   min = min(Value, na.rm = T),
                                   max = max(Value, na.rm = T)),
-                      TB_SP_df %>% ungroup() %>% dplyr::select(-Date, -Year, -Month, -Station, -Sample.Number) %>%
+                      TB_SP_df %>% ungroup() %>% dplyr::select(-Date, -Year, -Month, -Station, -Sample.Number, -New_Sample_Number) %>%
                         pivot_longer(cols = -c(Site, Measurement), names_to = "Parameter", values_to = "Value") %>% 
                         group_by(Site, Measurement, Parameter) %>%
                         summarise(n = n(),
@@ -886,8 +886,49 @@ Pct_trends %>%
 #
 #
 #
-##Q10: What is the relationship between Polydora or Cliona with CI? (Correlation)
+#
+##Q10: What is the relationship between Polydora or Cliona with CI? (ANCOVA)
 #CI = ratio between shell weight and tissue weight
+#Need CI data and Pct affected for each sample
+(Combined_data <- full_join(TB_SP_df %>% subset(Measurement == "All") %>%
+  mutate(Type = as.factor(case_when(Pct.Polydora == 0 & Pct.Cliona > 0 ~ "Cliona",
+                                    Pct.Polydora > 0 & Pct.Cliona == 0 ~ "Polydora",
+                                    Pct.Polydora > 0 & Pct.Cliona > 0 ~ "Both",
+                                    TRUE ~ "None"))) %>% filter(Type != "None") %>% droplevels() %>%
+  mutate(Type = fct_relevel(Type, "Polydora", "Cliona", "Both"),
+         Pct = as.numeric(case_when(Type == "Polydora" ~ Pct.Polydora,
+                                    Type == "Cliona" ~ Pct.Cliona,
+                                    Type == "Both" ~ Pct_Affected,
+                                    TRUE ~ NA)))%>% ungroup() %>% dplyr::select(-Sample.Number, -Measurement),
+TB_CI %>% dplyr::select(Date:TW, CI, CI_Hanley, New_Sample_Number:Station_Name)) %>%
+    drop_na(Type))
+#
+ggscatter(Combined_data, x = "CI_Hanley", y = "Pct", color = "Type")
+#
+#Permutation ANCOVA
+set.seed(4321)
+Pest_CI_test <- aovp(Pct ~ Type * CI_Hanley, data = Combined_data, perm = "", nperm = 10000)
+summary(Pest_CI_test)
 
+(Pest_CI_p <- Combined_data %>% emmeans_test(Pct ~ Type, covariate = CI_Hanley, p.adjust.method = "holm") %>%
+  dplyr::select(group1, group2, statistic, p, p.adj, p.adj.signif) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>% #Add new column of grp v gr
+  dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
+(Pest_CI_means <- get_emmeans(Combined_data %>% emmeans_test(Pct ~ Type, covariate = CI_Hanley, p.adjust.method = "holm")))
+#
+ggplot()+
+  geom_point(data = Combined_data, aes(CI_Hanley, Pct, color = Type, shape = Type),  alpha = 0.6, size = 2)+
+  geom_errorbar(data = Pest_CI_means, aes(x = CI_Hanley, ymin = conf.low, ymax = conf.high), color = "black", linewidth = 1.25)+
+  geom_point(data = Pest_CI_means, aes(CI_Hanley, emmean, color = Type, shape = Type), color = "black", size = 5)+
+  scale_y_continuous("Percent", limits = c(0,100), expand = c(0,0))+
+  scale_x_continuous("Condition Index", expand = c(0,0), limits = c(0,30.25))+
+  geom_smooth(data = Combined_data, aes(CI_Hanley, Pct, color = Type), se = FALSE, method = "lm")+
+  basetheme
+#
+#####Predictions for lines on figure. Still need to output summary.
+#
+#
+#
+#
+#
 ##Has the amount of Polydora or Cliona at each station changed over time? (glm)
 ##Which WQ parameters best explain the trend observed in Polydora or Cliona? (glm)
