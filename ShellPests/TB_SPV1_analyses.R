@@ -836,10 +836,26 @@ Pest2b_p_means %>%
 #
 ####Trends (Q9-Q12)####
 #
-##What is the relationship between Polydora and Cliona percent affected? (Correlation)
+##What is the relationship between Polydora and Cliona proportion affected? (Wilcoxon rank sum test)
 #
 head(t1)
-cor()
+#Select and reformat data
+(Trends <- t1 %>% ungroup() %>% dplyr::select(Type, Prop))
+#Sumamrize
+Trends %>% group_by(Type) %>% get_summary_stats(Prop, type = "five_number")
+#Visualize data
+Trends %>% 
+  ggplot(aes(Type, Prop))+
+  geom_boxplot(fill = "#999999", size = 1, outlier.shape = 18, outlier.size = 5)+
+  geom_jitter(width = 0.2, alpha = 0.4)+
+  scale_y_continuous("Proportion", expand = c(0,0), limits = c(0,1.1))+
+  basetheme
+#
+#Wilcoxon test and significance
+(Trend_WC <- left_join(Trends %>% ungroup() %>% dplyr::select(Type, Prop) %>%
+  wilcox_test(Prop ~ Type, p.adjust.method = "holm") %>% add_significance(),
+  Trends %>% wilcox_effsize(Prop ~ Type)) %>%
+    dplyr::select(-.y., -p) %>% rename("effect_size" = effsize))
 #
 #
 #
