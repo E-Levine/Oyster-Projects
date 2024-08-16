@@ -836,12 +836,12 @@ Pest2b_p_means %>%
 #
 ####Trends (Q9-Q12)####
 #
-##What is the relationship between Polydora and Cliona proportion affected? (Wilcoxon rank sum test)
+##Q9: What is the relationship between Polydora and Cliona proportion affected, and between percentage affected? (Wilcoxon rank sum test)
 #
 head(t1)
 #Select and reformat data
 (Trends <- t1 %>% ungroup() %>% dplyr::select(Type, Prop))
-#Sumamrize
+#Summarize
 Trends %>% group_by(Type) %>% get_summary_stats(Prop, type = "five_number")
 #Visualize data
 Trends %>% 
@@ -857,10 +857,37 @@ Trends %>%
   Trends %>% wilcox_effsize(Prop ~ Type)) %>%
     dplyr::select(-.y., -p) %>% rename("effect_size" = effsize))
 #
+(Pct_trends <- TB_SP_df %>% subset(Measurement == "All") %>%
+  mutate(Type = as.factor(case_when(Pct.Polydora == 0 & Pct.Cliona > 0 ~ "Cliona",
+                          Pct.Polydora > 0 & Pct.Cliona == 0 ~ "Polydora",
+                          Pct.Polydora > 0 & Pct.Cliona > 0 ~ "Both",
+                          TRUE ~ "None"))) %>% filter(Type != "None") %>% droplevels() %>%
+  mutate(Type = fct_relevel(Type, "Polydora", "Cliona", "Both"),
+         Pct = as.numeric(case_when(Type == "Polydora" ~ Pct.Polydora,
+                                    Type == "Cliona" ~ Pct.Cliona,
+                                    Type == "Both" ~ Pct_Affected,
+                                    TRUE ~ NA))) %>% ungroup() %>% dplyr::select(Type, Pct))
+Pct_trends %>% group_by(Type) %>% get_summary_stats(Pct, type = "five_number")
+#
+#Visualize data
+Pct_trends %>% 
+  ggplot(aes(Type, Pct))+
+  geom_boxplot(fill = "#999999", size = 1, outlier.shape = 18, outlier.size = 5)+
+  geom_jitter(width = 0.2, alpha = 0.4)+
+  scale_y_continuous("Percentage", expand = c(0,0), limits = c(0,100))+
+  basetheme
+#
+#Wilcoxon test and significance
+(Pct_trend_WC <- left_join(Pct_trends %>% ungroup() %>% dplyr::select(Type, Pct) %>%
+                             wilcox_test(Pct ~ Type, p.adjust.method = "holm") %>% add_significance(),
+                         Pct_trends %>% wilcox_effsize(Pct ~ Type)) %>%
+    dplyr::select(-.y., -p) %>% rename("effect_size" = effsize))
 #
 #
 #
 #
-##What is the relationship between Polydora or Cliona with CI? (Correlation)
+##Q10: What is the relationship between Polydora or Cliona with CI? (Correlation)
+#CI = ratio between shell weight and tissue weight
+
 ##Has the amount of Polydora or Cliona at each station changed over time? (glm)
 ##Which WQ parameters best explain the trend observed in Polydora or Cliona? (glm)
