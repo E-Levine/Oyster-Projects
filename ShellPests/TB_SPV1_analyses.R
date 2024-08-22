@@ -836,7 +836,62 @@ Pest2b_p_means %>%
 #
 ####Trends (Q9-Q12)####
 #
-##Q9: What is the relationship between Polydora and Cliona proportion affected, and between percentage affected? (Wilcoxon rank sum test)
+##Q9: What is the relationship between Polydora or Cliona with CI?
+#Dependent = CI value
+#Independent = Type
+ggboxplot(Combined_data, x = "Type", y = "CI_Hanley", fill = "#999999")
+#
+#Permutation ANOVA 
+set.seed(4321)
+Type_CI <- aovp(CI_Hanley ~ Type, data = Combined_data, perm = "", nperm = 10000)
+summary(Type_CI) #Barely significant
+#
+(Type_CI_p <- rstatix::pairwise_t_test(CI_Hanley ~ Type, data = Combined_data, p.adjust.method = "holm") %>%
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
+(Type_CI_means <- merge(Combined_data %>% group_by(Type) %>% rstatix::get_summary_stats(CI_Hanley, show = c("n", "mean", "sd", "min", "max")) %>% 
+                          transform(lower = mean-sd, upper = mean+sd),
+                        biostat::make_cld(Type_CI_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Type = group, Letters = cld)))
+#
+ggboxplot(Combined_data, x = "Type", y = "CI_Hanley", fill = "#999999") + 
+  scale_y_continuous("Condition Index", expand = c(0,0), limits = c(0, 30.5)) +
+  basetheme
+#
+#Is it different among stations?
+ggboxplot(Combined_data, x = "Station", y = "CI_Hanley", fill = "Type")
+#
+#Permutation ANOVA 
+set.seed(54321)
+Type_station <- glm(CI_Hanley ~ Type * Station, data = Combined_data)
+summary(Type_station) #Check model
+Anova(Type_station, test = "F") #Significant difference among pest "Types"
+#
+#Get means and Letters distinguishing significantly different groups:
+(Pest_model_emm <- emmeans(Pest_model, ~Type, type = "response")) #Polydora = Cliona < Both = None
+(Pest_p_means <- merge(t1 %>% group_by(Type) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% 
+                         dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                       multcomp::cld(Pest_model_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>%
+                         rename(Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Type, Lower:Letters)))
+#
+(Pest_p <- pairs(Pest_model_emm, type = "response", adjust = "holm") %>% as.data.frame() %>% dplyr::select(-c(df, null)))
+#
+#Figure of means with letters
+Pest_means %>%
+  ggplot(aes(Type, meanProp, fill = Letters))+
+  geom_errorbar(aes(ymin = meanProp, ymax = meanProp+se), width = 0.5)+
+  geom_bar(stat = "identity")+
+  geom_text(aes(Type, y = meanProp+se+0.03, label = Letters))+
+  scale_fill_grey(start = 0.3, end = 0.7)+
+  scale_x_discrete("")+
+  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1)) + basetheme + 
+  theme(legend.position = "none")
+#
+#
+#
+#
+#
+#
+##Q10: What is the relationship between Polydora and Cliona proportion affected, and between percentage affected? (Wilcoxon rank sum test)
 #
 head(t1)
 #Select and reformat data
@@ -884,10 +939,7 @@ Pct_trends %>%
     dplyr::select(-.y., -p) %>% rename("effect_size" = effsize))
 #
 #
-#
-#
-#
-##Q10: What is the relationship between Polydora or Cliona with CI? (ANCOVA)
+#What is the relationship between Polydora and Cliona with percent of shell affect if we control for CI?
 #CI = ratio between shell weight and tissue weight
 #Need CI data and Pct affected for each sample
 (Combined_data <- full_join(TB_SP_df %>% subset(Measurement == "All") %>%
@@ -903,12 +955,14 @@ Pct_trends %>%
 TB_CI %>% dplyr::select(Date:TW, CI, CI_Hanley, New_Sample_Number:Station_Name)) %>%
     drop_na(Type))
 #
-ggscatter(Combined_data, x = "CI_Hanley", y = "Pct", color = "Type")
+ggscatter(Combined_data, x = "CI_Hanley", y = "Pct", color = "Type", add = "reg.line") + 
+  stat_regline_equation(aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~~"), color = Type))
 #
 #Permutation ANCOVA
 set.seed(4321)
-Pest_CI_test <- aovp(Pct ~ Type * CI_Hanley, data = Combined_data, perm = "", nperm = 10000)
+Pest_CI_test <- aovp(Pct ~ Type * CI_Hanley, data = Combined_data,  perm = "", nperm = 10000)
 summary(Pest_CI_test)
+plot(Pest_CI_test$residuals)
 
 (Pest_CI_p <- Combined_data %>% emmeans_test(Pct ~ Type, covariate = CI_Hanley, p.adjust.method = "holm") %>%
   dplyr::select(group1, group2, statistic, p, p.adj, p.adj.signif) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>% #Add new column of grp v gr
@@ -916,15 +970,15 @@ summary(Pest_CI_test)
 (Pest_CI_means <- get_emmeans(Combined_data %>% emmeans_test(Pct ~ Type, covariate = CI_Hanley, p.adjust.method = "holm")))
 #
 ggplot()+
-  geom_point(data = Combined_data, aes(CI_Hanley, Pct, color = Type, shape = Type),  alpha = 0.6, size = 2)+
-  geom_errorbar(data = Pest_CI_means, aes(x = CI_Hanley, ymin = conf.low, ymax = conf.high), color = "black", linewidth = 1.25)+
-  geom_point(data = Pest_CI_means, aes(CI_Hanley, emmean, color = Type, shape = Type), color = "black", size = 5)+
-  scale_y_continuous("Percent", limits = c(0,100), expand = c(0,0))+
-  scale_x_continuous("Condition Index", expand = c(0,0), limits = c(0,30.25))+
-  geom_smooth(data = Combined_data, aes(CI_Hanley, Pct, color = Type), se = FALSE, method = "lm")+
+  geom_boxplot(data = Combined_data, aes(Type, Pct), fill = "#999999", size = 1, outlier.shape = 18, outlier.size = 5)+
+  scale_y_continuous("Percentage", expand = c(0,0), limits = c(0,100))+
   basetheme
 #
-#####Predictions for lines on figure. Still need to output summary.
+#
+#
+#
+#
+####Finish Q9 and Q10 with stations.
 #
 #
 #
