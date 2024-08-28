@@ -17,7 +17,15 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
 #
 #
 ####Load Files####
-#Reading in Excel files
+#Reading in Excel files, adding station information to dfs.
+#
+##Station information
+Locations_raw <- read_excel("../Data/Growth_database_2024_08_26.xlsx", sheet = "FixedLocation", #File name and sheet name
+                          skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+                          na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                          .name_repair = "unique")
+head(Locations_raw)
+(Locations <- Locations_raw %>% dplyr::select(FixedLocationID:StationNumber))
 #
 ###Water quality
 Cage_WQ_raw <- read_excel("../Data/Growth_database_2024_08_26.xlsx", sheet = "SampleEventWQ", #File name and sheet name
@@ -25,9 +33,12 @@ Cage_WQ_raw <- read_excel("../Data/Growth_database_2024_08_26.xlsx", sheet = "Sa
                      na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                      .name_repair = "unique")
 #Check data and column names
-head(Dage_WQ_raw)
-#Remove uneeded columns
-(Cage_WQ <- WQ_raw %>% dplyr::select(SampleEventWQID:DissolvedOxygen, PercentDissolvedOxygen, pH:TurbidityYSI, CollectionTime, Comments))
+head(Cage_WQ_raw)
+#Remove unneeded columns and add in station info
+(Cage_WQ <- Cage_WQ_raw %>% 
+    dplyr::select(SampleEventWQID:DissolvedOxygen, PercentDissolvedOxygen, pH:TurbidityYSI, CollectionTime, Comments) %>%
+    mutate(FixedLocationID = substring(SampleEventID, 19, 22)) %>%
+    left_join(Locations))
 #
 ###Cage Counts
 Cage_counts_raw <- read_excel("../Data/Growth_database_2024_08_26.xlsx", sheet = "CageCount", #File name and sheet name
@@ -35,11 +46,25 @@ Cage_counts_raw <- read_excel("../Data/Growth_database_2024_08_26.xlsx", sheet =
                           na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                           .name_repair = "unique")
 head(Cage_counts_raw)
-(Cage_counts <- Cage_counts_raw %>% dplyr::select(CageCountID:DaysDeployed, Comments))
+(Cage_counts <- Cage_counts_raw %>% dplyr::select(CageCountID:DaysDeployed, Comments) %>%
+    mutate(FixedLocationID = substring(SampleEventID, 19, 22)) %>%
+    left_join(Locations))
 #
 ###Cage SHS
-Cage_SH <- read_excel("../Data/Growth_database_2024_08_26.xlsx", sheet = "CageSH", #File name and sheet name
+Cage_SH_raw <- read_excel("../Data/Growth_database_2024_08_26.xlsx", sheet = "CageSH", #File name and sheet name
                       skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                       na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                       .name_repair = "unique")
-head(Cage_SH)
+head(Cage_SH_raw)
+(Cage_SH <- Cage_SH_raw %>% dplyr::select(ShellHeightID:ShellHeight, Comments) %>%
+  mutate(FixedLocationID = substring(CageCountID, 19, 22)) %>%
+  left_join(Locations))
+#
+#
+#
+#
+####Cage data####
+#
+#Nu live, dead, missing. Percentage live, pct mortality, pct unknown
+#Same with lower limit based on deployed SH
+#How many times oysters smaller on ret, ave number smaller
