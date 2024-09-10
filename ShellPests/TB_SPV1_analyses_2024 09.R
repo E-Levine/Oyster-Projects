@@ -9,10 +9,10 @@
 if (!require("pacman")) {install.packages("pacman")}
 pacman::p_load(plyr, tidyverse, #Df manipulation, 
                ggpubr,
-               rstatix, corrplot, vegan, lmPerm, DHARMa, #Summary stats, correlations
+               rstatix, lme4, corrplot, vegan, lmPerm, DHARMa, #Summary stats, correlations
                zoo, lubridate, #Dates and times
                readxl, #Reading excel files
-               car, emmeans, multcomp, #Basic analyses
+               car, emmeans, multcomp, broom.mixed, #Basic analyses
                install = TRUE)
 #
 #
@@ -684,80 +684,63 @@ Station_CIH_p %>% filter(p.adjust < 0.05) %>% arrange(Comparison) %>% print(n = 
 ####Pest Summary Questions (Q5-Q8)####
 #
 ###Q5:Does Polydora and Cliona differ in parasite prevalence in TB Oysters? 
-#want # infected out of total oysters per sample (1 sample = 1 year/month/station) - need to consider oysters with both separately from each pest
-(t1 <- left_join(TB_SP_df %>% subset(Measurement == "All") %>% 
-                   mutate(Type = as.factor(case_when(Poly_Prev == 1 & Cliona_Prev == 0 ~ "Polydora",
-                                                     Poly_Prev == 0 & Cliona_Prev == 1 ~ "Cliona",
-                                                     Poly_Prev == 1 & Cliona_Prev == 1 ~ "Both",
-                                                     TRUE ~ "None"))) %>% 
-                   filter(Type != "None") %>%
-                   group_by(Year, Month, Station, Type) %>% 
-                   summarise(Count = n()),
-                 TB_SP_df %>% subset(Measurement == "All") %>% 
-                   group_by(Year, Month, Station) %>% 
-                   summarise(Total = n())) %>%
-   mutate(Prop = Count/Total, Type = factor(Type, levels = c("Polydora", "Cliona", "Both"))))
 #
-#Fill missing 0s
-tt1 <- t1 %>% ungroup() %>% complete(Year, Month, Station, Type, fill = list(Count = 0, Total = 5, Prop = 0), explicit = FALSE) %>% 
-  subset(!(Year == "2020" & Month == "04")) %>% subset(!(Year == "2020" & Month == "05")) %>% #Remove 2020/04-05
-  mutate(sqProp = sqrt(Prop))
+#Check amount of correlation between Poly and Clio
+t0 <- TB_SP_df %>% subset(Measurement == "All") %>% dplyr::select(Date:Station, New_Sample_Number, Pct.Polydora, Pct.Cliona, Poly_Prev:Richness) 
+t0 %>% ggplot(aes(Pct.Polydora, Pct.Cliona))+ geom_point()
+cor(t0$Pct.Polydora, t0$Pct.Cliona, method = "spearman") #Mildly correlated - 0.619931
 #
-tt1 %>% ggplot(aes(Type, Prop)) + geom_jitter(width = 0.05, height = 0.15) #Different variance among Type
-boxplot(Prop ~ Type, data = tt1)
+#Data frame of presence/absence for Polydora and Cliona for each sample
+(t1 <- t0 %>% ungroup() %>% dplyr::select(Date:New_Sample_Number, Poly_Prev, Cliona_Prev) %>% 
+    rename("Polydora" = Poly_Prev, "Cliona" = Cliona_Prev) %>% 
+    gather("Type", "Prev", -Date, -Year, -Month, -Site, -Station, -New_Sample_Number))
 #
-library(lme4)
+#
 set.seed(54321)
-#Pest_model <- glm(Prop ~ Type, family = quasibinomial, data = tt1) #quasi - [0,1]
-Pest_model0 <- glmer(Prop ~ 1|Station, family = "binomial", data = tt1)
-Pest_model1 <- glmer(Prop ~ Type + Station + (1|Year), family = "binomial", data = tt1)
-summary(Pest_model1) #Check model
-predict(Pest_model1, type = "response", re.form = NA, newdata = data.frame(Type = c("Polydora", "Cliona", "Both"), Staion = c("1", "2", "3", "4", "5")))
-#confint(Pest_model, parm = "theta_", oldNames = FALSE) #confidence interval for the estimated standard deviation of the intercept random effect
-#Evaluate model
-plot(simulateResiduals(Pest_model1))
-testDispersion(simulateResiduals(Pest_model1))
-
-plot(Pest_model1, resid(., type = "pearson") ~ fitted(.) | Station, abline = 0) 
-plot(Pest_model1, resid(., type = "pearson") ~ fitted(.), abline = 0) 
-leveneTest(tt1$Prop, tt1$Type, center = mean)
-aggregate(tt1$Prop, by = list(Type = tt1$Type), mean)
-Pest_model_2 <- update(Pest_model, weights = varIdent(form = ~ 1|Station))
-predicts <- do.call(rbind, lapply(simulate(Pest_model, nsim = 100), aggregate, by = list(Type = tt1$Type), mean))
-ggplot()+
-  geom_jitter(data = tt1, aes(Type, Prop))+
-  geom_jitter(data = predicts, aes(Type, x), color = "red")
-
-Anova(Pest_model, test = "F") #Significant difference among pest "Types"
-tt1$predict <- predict.glm(Pest_model, type = "response")
+Pest_model0 <- glmer(Prev ~ Type + (1|Station), family = "binomial", data = t1)
+Pest_model1 <- glmer(Prev ~ Type * Station + (1|Month), family = "binomial", data = t1)
+Pest_model2 <- glmer(Prev ~ Type * Station + (1|Year), family = "binomial", data = t1)
+AIC(Pest_model0, Pest_model1, Pest_model2) #model with year as random is better
 #
-#Check model fit
-ggplot(tt1) +
-  geom_jitter(aes(Type, Prop), width = 0.05, height = 0.15)+
-  geom_jitter(aes(Type, predict), width = 0.05, height = 0.15, color = "red")
-#
-#
+Pest_model <- Pest_model2
+summary(Pest_model)
 #Get means and Letters distinguishing significantly different groups:
-(Pest_model_emm <- emmeans(Pest_model, ~Type, type = "response")) #Polydora = Cliona < Both = None
-(Pest_p_means <- merge(t1 %>% group_by(Type) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% 
+(Pest_model_emm <- emmeans(Pest_model, ~Type*Station, type = "response")) 
+(Pest_p_means <- merge(t1 %>% group_by(Type, Station) %>% rstatix::get_summary_stats(Prev, show = c("n", "mean", "sd", "min", "max")) %>% 
                          dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
-                       multcomp::cld(Pest_model_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>%
-                         rename(Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Type, Lower:Letters)))
+                       multcomp::cld(Pest_model_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>% data.frame() %>%
+                         rename(Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Station, Type, Lower:Letters) %>%
+                         mutate(Letters = gsub(" ", "", Letters))))
+##Check assumptions/model fit
+plot(Pest_model, Type ~ resid(.))
+testDispersion(Pest_model) #
+P_mod1_res <- simulateResiduals(Pest_model)
+plot(P_mod1_res, quantreg = T)
+testZeroInflation(P_mod1_res)
+testCategorical(P_mod1_res, catPred = t1$Type)
+testCategorical(P_mod1_res, catPred = t1$Station)
 #
-(Pest_p <- pairs(Pest_model_emm, type = "response", adjust = "holm") %>% as.data.frame() %>% dplyr::select(-c(df, null)))
+tidy(Pest_model) %>% dplyr::select(-group) %>% filter(effect == "fixed")
+contrast(Pest_model_emm, method = "pairwise")
 #
-#Figure of means with letters
-Pest_means %>%
-  ggplot(aes(Type, meanProp, fill = Letters))+
-  geom_errorbar(aes(ymin = meanProp, ymax = meanProp+se), width = 0.5)+
-  geom_bar(stat = "identity")+
-  geom_text(aes(Type, y = meanProp+se+0.03, label = Letters))+
-  scale_fill_grey(start = 0.3, end = 0.7)+
+Pest_p_means %>%
+  ggplot(aes(Type, mean, fill = Station))+
+  geom_errorbar(aes(ymin = mean, ymax = Upper), width = 0.5, position = position_dodge(0.9))+
+  geom_bar(position = "dodge", stat = "identity")+
+  geom_text(aes(y = Upper+0.03, label = Letters), position = position_dodge(0.9))+
+  scale_fill_grey(start = 0.2, end = 0.7)+
   scale_x_discrete("")+
-  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1)) + basetheme + 
+  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1.025)) + basetheme + 
   theme(legend.position = "none")
 #
-Pest_p %>% filter(p.adjust < 0.05)
+#
+#
+#
+#
+#
+#
+#
+#
 #
 #
 #
