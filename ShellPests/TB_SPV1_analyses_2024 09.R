@@ -12,7 +12,7 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
                rstatix, lme4, corrplot, vegan, lmPerm, DHARMa, #Summary stats, correlations
                zoo, lubridate, #Dates and times
                readxl, #Reading excel files
-               car, emmeans, multcomp, broom.mixed, #Basic analyses
+               car, emmeans, multcomp, broom.mixed, ggeffects, #Basic analyses
                install = TRUE)
 #
 #
@@ -179,6 +179,10 @@ TB_SP_df <-
   arrange(Sample.Number)
 #
 head(TB_SP_df)
+#
+#
+#Combine shell pest and conidtion data by sample ID
+(Combined_df <- full_join(TB_SP_df %>% dplyr::select(Date:Station, Measurement:Richness), TB_CI %>% dplyr::select(Date, Site, Station:Type)))
 #
 #
 #
@@ -695,21 +699,23 @@ cor(t0$Pct.Polydora, t0$Pct.Cliona, method = "spearman") #Mildly correlated - 0.
     rename("Polydora" = Poly_Prev, "Cliona" = Cliona_Prev) %>% 
     gather("Type", "Prev", -Date, -Year, -Month, -Site, -Station, -New_Sample_Number))
 #
-#
+#Compare models and selectbest
 set.seed(54321)
-Pest_model0 <- glmer(Prev ~ Type + (1|Station), family = "binomial", data = t1)
-Pest_model1 <- glmer(Prev ~ Type * Station + (1|Month), family = "binomial", data = t1)
-Pest_model2 <- glmer(Prev ~ Type * Station + (1|Year), family = "binomial", data = t1)
-AIC(Pest_model0, Pest_model1, Pest_model2) #model with year as random is better
+Pest_model0 <- glmer(Prev ~ Type + (1|Station), family = "binomial", data = t1, control=glmerControl(optCtrl=list(maxfun=10000)))
+Pest_model1 <- glmer(Prev ~ Type + (1|New_Sample_Number), family = "binomial", data = t1, control=glmerControl(optCtrl=list(maxfun=10000)))
+Pest_model2 <- glmer(Prev ~ Type + (1|Station) + (1|New_Sample_Number), family = "binomial", data = t1, control=glmerControl(optCtrl=list(maxfun=10000)))
+AIC(Pest_model0, Pest_model1, Pest_model2) #model 2 is best
 #
+#Model summary
 Pest_model <- Pest_model2
+rm(Pest_model0, Pest_model1, Pest_model2)
 summary(Pest_model)
 #Get means and Letters distinguishing significantly different groups:
-(Pest_model_emm <- emmeans(Pest_model, ~Type*Station, type = "response")) 
-(Pest_p_means <- merge(t1 %>% group_by(Type, Station) %>% rstatix::get_summary_stats(Prev, show = c("n", "mean", "sd", "min", "max")) %>% 
+(Pest_model_emm <- emmeans(Pest_model, ~Type, type = "response", adjust = "holm")) 
+(Pest_p_means <- merge(t1 %>% group_by(Type) %>% rstatix::get_summary_stats(Prev, show = c("n", "mean", "sd", "min", "max")) %>% 
                          dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
                        multcomp::cld(Pest_model_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>% data.frame() %>%
-                         rename(Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Station, Type, Lower:Letters) %>%
+                         rename(Model_mean = prob, Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Type, Model_mean, Lower:Letters) %>%
                          mutate(Letters = gsub(" ", "", Letters))))
 ##Check assumptions/model fit
 plot(Pest_model, Type ~ resid(.))
@@ -718,21 +724,27 @@ P_mod1_res <- simulateResiduals(Pest_model)
 plot(P_mod1_res, quantreg = T)
 testZeroInflation(P_mod1_res)
 testCategorical(P_mod1_res, catPred = t1$Type)
-testCategorical(P_mod1_res, catPred = t1$Station)
-#
-tidy(Pest_model) %>% dplyr::select(-group) %>% filter(effect == "fixed")
-contrast(Pest_model_emm, method = "pairwise")
+#Report results
+Anova(Pest_model)
+tidy(Pest_model)  %>% filter(effect == "fixed") %>% dplyr::select(-group, -effect)
+Pest_p_means
+contrast(Pest_model_emm, method = "pairwise") %>% data.frame() %>% arrange(contrast) %>% filter(p.value < 0.05) %>% dplyr::select(-df, -null)
 #
 Pest_p_means %>%
-  ggplot(aes(Type, mean, fill = Station))+
-  geom_errorbar(aes(ymin = mean, ymax = Upper), width = 0.5, position = position_dodge(0.9))+
+  ggplot(aes(Type, Model_mean, fill = Type))+
+  geom_errorbar(aes(ymin = Model_mean, ymax = Upper), width = 0.5, position = position_dodge(0.9))+
   geom_bar(position = "dodge", stat = "identity")+
   geom_text(aes(y = Upper+0.03, label = Letters), position = position_dodge(0.9))+
   scale_fill_grey(start = 0.2, end = 0.7)+
-  scale_x_discrete("")+
-  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1.025)) + basetheme + 
+  scale_x_discrete("Type")+
+  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1.05)) + basetheme + 
   theme(legend.position = "none")
 #
+ggpredict(Pest_model, terms = c("Type"))
+ggpredict(Pest_model, terms = c("Type")) |> plot(ci_style = "errorbar", dot_size = 4, line_size = 1) + 
+  ggtitle("Predicted probabilities of pest prevelence")+
+  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1.05)) +
+  scale_color_grey(start = 0.2, end = 0.7) + basetheme
 #
 #
 #
@@ -748,46 +760,71 @@ Pest_p_means %>%
 #
 ###Q6: Does Polydora or Cliona differ in parasite prevalence impact among shell surfaces in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
 #
-(t2 <- left_join(TB_SP_df %>% subset(Measurement == "External" | Measurement == "Internal") %>%
-    mutate(Type = as.factor(case_when(Poly_Prev == 1 & Cliona_Prev == 0 ~ "Polydora",
-                                      Poly_Prev == 0 & Cliona_Prev == 1 ~ "Cliona",
-                                      Poly_Prev == 1 & Cliona_Prev == 1 ~ "Both",
-                                      TRUE ~ "None"))) %>%
-      filter(Type != "None") %>%
-      group_by(Year, Month, Station, Measurement, Type) %>% #Grouping factors
-      summarise(Count = n()), #Total number of oysters per Type
-    TB_SP_df %>% subset(Measurement == "External" | Measurement == "Internal") %>% 
-      group_by(Year, Month, Station, Measurement) %>%
-      summarise(Total = n())) %>%
-    mutate(Prop = Count/Total, Type = factor(Type, levels = c("Polydora", "Cliona", "Both"))))
+#Check amount of correlation between Poly and Clio
+t2 <- TB_SP_df %>% subset(Measurement == "External" | Measurement == "Internal") %>% 
+  dplyr::select(Date:Station, New_Sample_Number, Pct.Polydora, Pct.Cliona, Poly_Prev:Richness) %>% droplevels(.)
+t2 %>% ggplot(aes(Pct.Polydora, Pct.Cliona))+ geom_point()
+cor(t2$Pct.Polydora, t2$Pct.Cliona, method = "spearman") #Mildly correlated - 0.5336638
 #
+#Data frame of presence/absence for Polydora and Cliona for each sample for both External and Internal shell surfaces
+(t3 <- t2 %>% ungroup() %>% dplyr::select(Date:New_Sample_Number, Measurement, Poly_Prev, Cliona_Prev) %>% 
+    rename("Polydora" = Poly_Prev, "Cliona" = Cliona_Prev) %>% 
+    gather("Type", "Prev", -Date, -Year, -Month, -Site, -Station, -New_Sample_Number, -Measurement))
+#
+ggarrange(t3 %>% ggplot(aes(Measurement, Prev, shape = Type))+ geom_jitter(size = 3, alpha = 0.5, width = 0.25, height = 0.25),
+          t3 %>% ggplot(aes(Measurement, Prev, shape = Type, color = Station))+ geom_jitter(size = 3, alpha = 0.5, width = 0.25, height = 0.25))
+#
+#Compare models and select best
 set.seed(54321)
-Side_model <- glm(Prop ~ Type * Measurement, family = quasibinomial, data = t2)
-summary(Side_model) #Check model
-Anova(Side_model, test = "F") #Significant difference between Polydora and Cliona, between shell sides p < 0.01
+Pest_surface0 <- glmer(Prev ~ Type + Measurement + (1|Station), family = "binomial", data = t3, control=glmerControl(optCtrl=list(maxfun=10000)))
+Pest_surface1 <- glmer(Prev ~ Type + Measurement + (1|New_Sample_Number), family = "binomial", data = t3, control=glmerControl(optCtrl=list(maxfun=10000)))
+Pest_surface2 <- glmer(Prev ~ Type * Measurement + (1|Station), family = "binomial", data = t3, control=glmerControl(optCtrl=list(maxfun=10000)))
+Pest_surface3 <- glmer(Prev ~ Type * Measurement + (1|New_Sample_Number), family = "binomial", data = t3, control=glmerControl(optCtrl=list(maxfun=10000)))
+AIC(Pest_surface0, Pest_surface1, Pest_surface2, Pest_surface3) #model 2 is best
 #
+#Model summary
+Pest_surface <- Pest_surface2
+rm(Pest_surface0, Pest_surface1, Pest_surface2, Pest_surface3)
+summary(Pest_surface)
 #Get means and Letters distinguishing significantly different groups:
-(Side_model_emm <- emmeans(Side_model, ~Measurement*Type, type = "response")) 
-(Side_p_means <- merge(t2 %>% group_by(Type, Measurement) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% 
-                         dplyr::select(-c("variable")),
-                       multcomp::cld(Side_model_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>%
-                         rename(Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Measurement, Type, SE, Lower:Letters) %>%
-                         mutate(Measurement = as.factor(Measurement), Type = as.factor(Type))))
-
-(Side_p <- pairs(Side_model_emm, type = "response", adjust = "holm") %>% as.data.frame() %>% dplyr::select(-c(df, null))) #Both more often on external (both p <= 0.005)
-Side_p %>% filter(p.value < 0.05)
+(Pest_surface_emm <- emmeans(Pest_surface, ~Measurement*Type, type = "response", adjust = "holm")) 
+(Pest_surface_means <- merge(t3 %>% group_by(Type, Measurement) %>% rstatix::get_summary_stats(Prev, show = c("n", "mean", "sd", "min", "max")) %>% 
+                         dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                       multcomp::cld(Pest_surface_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>% data.frame() %>%
+                         rename(Model_mean = prob, Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Type, Measurement, Model_mean, Lower:Letters) %>%
+                         mutate(Letters = gsub(" ", "", Letters))))
+##Check assumptions/model fit
+plot(Pest_surface, Type ~ resid(.))
+testDispersion(Pest_surface) 
+P_surface_res <- simulateResiduals(Pest_surface)
+plot(P_surface_res, quantreg = T)
+testZeroInflation(P_surface_res)
+testCategorical(P_surface_res, catPred = t3$Type)
+testCategorical(P_surface_res, catPred = t3$Measurement)
+#Report results
+Anova(Pest_surface)
+tidy(Pest_surface)  %>% filter(effect == "fixed") %>% dplyr::select(-group, -effect) %>% mutate(term = gsub("Measurement", "Meas-", term))
+Pest_surface_means
+contrast(Pest_surface_emm, method = "pairwise") %>% data.frame() %>% arrange(contrast) %>% filter(p.value < 0.05) %>% dplyr::select(-df, -null) 
+#
+Pest_surface_means %>%
+  ggplot(aes(Type, Model_mean, fill = Measurement))+
+  geom_errorbar(aes(ymin = Model_mean, ymax = Upper), width = 0.5, position = position_dodge(0.9))+
+  geom_bar(position = "dodge", stat = "identity")+
+  geom_text(aes(y = Upper+0.03, label = Letters), position = position_dodge(0.9))+
+  scale_fill_grey(start = 0.2, end = 0.7)+
+  scale_x_discrete("Type")+
+  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1.05)) + basetheme 
+#
+ggpredict(Pest_surface, terms = c("Measurement", "Type"))
+ggpredict(Pest_surface, terms = c("Type", "Measurement")) |> plot(ci_style = "errorbar", dot_size = 4, line_size = 1, dodge = -0.55) + 
+  ggtitle("Predicted probabilities of pest prevelence")+
+  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1.05)) +
+  scale_color_grey(start = 0.2, end = 0.7) + basetheme
 #
 #
-#Figure of means with letters
-Side_p_means %>%
-  ggplot(aes(Type, mean, fill = Measurement))+
-  geom_errorbar(aes(ymin = mean, ymax = Upper), width = 0.5, stat = "identity", position = position_dodge(0.75))+
-  geom_col(position = "dodge", width = 0.75)+
-  geom_text(aes(Type, y = Upper+0.03, label = Letters), position = position_dodge(0.75))+
-  scale_fill_grey(start = 0.3, end = 0.7)+
-  scale_x_discrete("")+
-  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1)) + basetheme  
-  theme(legend.position = "none")
+#
+#
 #
 #
 #
@@ -796,43 +833,70 @@ Side_p_means %>%
 #
 ###Q7: Does Polydora or Cliona differ in parasite prevalence impact among shell position in TB Oysters? - want # infected out of total oysters per sample (1 sample = 1 year/month/station)
 #
-(t3 <- left_join(TB_SP_df %>% subset(Measurement == "Top" | Measurement == "Bot") %>%
-                     mutate(Type = as.factor(case_when(Poly_Prev == 1 & Cliona_Prev == 0 ~ "Polydora",
-                                                       Poly_Prev == 0 & Cliona_Prev == 1 ~ "Cliona",
-                                                       Poly_Prev == 1 & Cliona_Prev == 1 ~ "Both",
-                                                       TRUE ~ "None"))) %>%
-                     filter(Type != "None") %>%
-                     group_by(Year, Month, Station, Measurement, Type) %>% #Grouping factors
-                     summarise(Count = n()), #Total number of oysters per Type
-                   TB_SP_df %>% subset(Measurement == "Top" | Measurement == "Bot") %>% 
-                     group_by(Year, Month, Station, Measurement) %>%
-                     summarise(Total = n())) %>%
-      mutate(Prop = Count/Total, Type = factor(Type, levels = c("Polydora", "Cliona", "Both"))))
+#Check amount of correlation between Poly and Clio
+t4 <- TB_SP_df %>% subset(Measurement == "Top" | Measurement == "Bot") %>% 
+  dplyr::select(Date:Station, New_Sample_Number, Pct.Polydora, Pct.Cliona, Poly_Prev:Richness) %>% droplevels(.)
+t4 %>% ggplot(aes(Pct.Polydora, Pct.Cliona))+ geom_point()
+cor(t4$Pct.Polydora, t4$Pct.Cliona, method = "spearman") #Mildly correlated - 0.4045071
 #
-Position_model <- glm(Prop ~ Type * Measurement, family = quasibinomial, data = t3)
-summary(Position_model) #Check model
-Anova(Position_model, test = "F") #Significant difference between Polydora and Cliona and between shell positions p < 0.001
+#Data frame of presence/absence for Polydora and Cliona for each sample for both External and Internal shell surfaces
+(t5 <- t4 %>% ungroup() %>% dplyr::select(Date:New_Sample_Number, Measurement, Poly_Prev, Cliona_Prev) %>% 
+    rename("Polydora" = Poly_Prev, "Cliona" = Cliona_Prev) %>% 
+    gather("Type", "Prev", -Date, -Year, -Month, -Site, -Station, -New_Sample_Number, -Measurement))
 #
+ggarrange(t5 %>% ggplot(aes(Measurement, Prev, shape = Type))+ geom_jitter(size = 3, alpha = 0.5, width = 0.25, height = 0.25),
+          t5 %>% ggplot(aes(Measurement, Prev, shape = Type, color = Station))+ geom_jitter(size = 3, alpha = 0.5, width = 0.25, height = 0.25))
+#
+#Compare models and select best
+set.seed(54321)
+Pest_pos0 <- glmer(Prev ~ Type + Measurement + (1|Station), family = "binomial", data = t5, control=glmerControl(optCtrl=list(maxfun=10000)))
+Pest_pos1 <- glmer(Prev ~ Type + Measurement + (1|New_Sample_Number), family = "binomial", data = t5, control=glmerControl(optCtrl=list(maxfun=10000)))
+Pest_pos2 <- glmer(Prev ~ Type * Measurement + (1|Station), family = "binomial", data = t5, control=glmerControl(optCtrl=list(maxfun=10000)))
+Pest_pos3 <- glmer(Prev ~ Type * Measurement + (1|New_Sample_Number), family = "binomial", data = t5, control=glmerControl(optCtrl=list(maxfun=10000)))
+AIC(Pest_pos0, Pest_pos1, Pest_pos2, Pest_pos3) #model 2 is best
+#
+#Model summary
+Pest_position <- Pest_pos2
+rm(Pest_pos0, Pest_pos1, Pest_pos2, Pest_pos3)
+summary(Pest_position)
 #Get means and Letters distinguishing significantly different groups:
-(Position_model_emm <- emmeans(Position_model, ~Measurement*Type, type = "response")) 
-(Position_p_means <- merge(t3 %>% group_by(Type, Measurement) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% 
-                         dplyr::select(-c("variable")),
-                       multcomp::cld(Position_model_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>%
-                         rename(Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Measurement, Type, SE, Lower:Letters) %>%
-                         mutate(Measurement = as.factor(Measurement), Type = as.factor(Type))))
-
-(Position_p <- pairs(Position_model_emm, type = "response", adjust = "holm") %>% as.data.frame() %>% dplyr::select(-c(df, null))) #Both more often on external (both p <= 0.005)
-Position_p %>% filter(p.value < 0.05)
+(Pest_pos_emm <- emmeans(Pest_position, ~Measurement*Type, type = "response", adjust = "holm")) 
+(Pest_pos_means <- merge(t5 %>% group_by(Type, Measurement) %>% rstatix::get_summary_stats(Prev, show = c("n", "mean", "sd", "min", "max")) %>% 
+                               dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                             multcomp::cld(Pest_pos_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>% data.frame() %>%
+                               rename(Model_mean = prob, Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Type, Measurement, Model_mean, Lower:Letters) %>%
+                               mutate(Letters = gsub(" ", "", Letters))))
+##Check assumptions/model fit
+plot(Pest_position, Type ~ resid(.))
+testDispersion(Pest_position) 
+P_pos_res <- simulateResiduals(Pest_position)
+plot(P_pos_res, quantreg = T)
+testZeroInflation(P_pos_res)
+testCategorical(P_pos_res, catPred = t3$Type)
+testCategorical(P_pos_res, catPred = t3$Measurement)
+#Report results
+Anova(Pest_position)
+tidy(Pest_position)  %>% filter(effect == "fixed") %>% dplyr::select(-group, -effect) %>% mutate(term = gsub("Measurement", "Meas-", term))
+Pest_pos_means
+contrast(Pest_pos_emm, method = "pairwise") %>% data.frame() %>% arrange(contrast) %>% filter(p.value < 0.05) %>% dplyr::select(-df, -null) 
 #
-#Figure of means with letters
-Position_p_means %>%
-  ggplot(aes(Type, mean, fill = Measurement))+
-  geom_errorbar(aes(ymin = mean, ymax = Upper), width = 0.5, stat = "identity", position = position_dodge(0.75))+
-  geom_col(position = "dodge", width = 0.75)+
-  geom_text(aes(Type, y = Upper+0.03, label = Letters), position = position_dodge(0.75))+
-  scale_fill_grey(start = 0.3, end = 0.7)+
-  scale_x_discrete("")+
-  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1)) + basetheme  
+Pest_pos_means %>%
+  ggplot(aes(Type, Model_mean, fill = Measurement))+
+  geom_errorbar(aes(ymin = Model_mean, ymax = Upper), width = 0.5, position = position_dodge(0.9))+
+  geom_bar(position = "dodge", stat = "identity")+
+  geom_text(aes(y = Upper+0.03, label = Letters), position = position_dodge(0.9))+
+  scale_fill_grey(start = 0.2, end = 0.7)+
+  scale_x_discrete("Type")+
+  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1.05)) + basetheme 
+#
+ggpredict(Pest_position, terms = c("Measurement", "Type"))
+ggpredict(Pest_position, terms = c("Type", "Measurement")) |> plot(ci_style = "errorbar", dot_size = 4, line_size = 1, dodge = -0.55) + 
+  ggtitle("Predicted probabilities of pest prevelence")+
+  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1.05)) +
+  scale_color_grey(start = 0.2, end = 0.7) + basetheme
+#
+#
+#
 #
 #
 #
@@ -840,115 +904,105 @@ Position_p_means %>%
 #
 #
 ###Q8: Does Polydora and Cliona differ in parasite prevalence in TB Oysters among stations?
-#Interested in comparing within pest species differences (rather than Pest*Station)
+#
+head(t1)
+#Compare models and selectbest
 set.seed(54321)
-Pest_model_2 <- glm(Prop ~ Type * Station, family = quasibinomial, data = t1)
-summary(Pest_model_2) #Check model
-Anova(Pest_model_2, test = "F") 
+Pest_stations0 <- glmer(Prev ~ Type + (1|Station), family = "binomial", data = t1, control=glmerControl(optCtrl=list(maxfun=10000)))
+Pest_stations1 <- glmer(Prev ~ Type + Station + (1|New_Sample_Number), family = "binomial", data = t1, control=glmerControl(optCtrl=list(maxfun=10000)))
+Pest_stations2 <- glmer(Prev ~ Type * Station + (1|New_Sample_Number), family = "binomial", data = t1, control=glmerControl(optCtrl=list(maxfun=10000)))
+AIC(Pest_stations0, Pest_stations1, Pest_stations2) #model2 is best
 #
+#Model summary
+Pest_stations_model <- Pest_stations2
+summary(Pest_stations_model)
 #Get means and Letters distinguishing significantly different groups:
-(Pest_model_2_emm <- emmeans(Pest_model_2, ~Station*Type, type = "response")) 
-(Pest2_p_means <- merge(t1 %>% group_by(Type, Station) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% 
-                             dplyr::select(-c("variable")),
-                           multcomp::cld(Pest_model_2_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>%
-                             rename(Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Station, Type, SE, Lower:Letters) %>%
-                             mutate(Station = as.factor(Station), Type = as.factor(Type))))
-
-(Pest2_p <- pairs(Pest_model_2_emm, type = "response", adjust = "holm") %>% as.data.frame() %>% dplyr::select(-c(df, null))) #
-Pest2_p_means %>% arrange(Type) %>% dplyr::select(Type, everything())
-Pest2_p %>% filter(p.value < 0.05)
+(Pest_stations_emm <- emmeans(Pest_stations_model, ~Type*Station, type = "response", adjust = "holm")) 
+(Pest_stations_p_means <- merge(t1 %>% group_by(Type, Station) %>% rstatix::get_summary_stats(Prev, show = c("n", "mean", "sd", "min", "max")) %>% 
+                         dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                       multcomp::cld(Pest_stations_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>% data.frame() %>%
+                         rename(Model_mean = prob, Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Station, Type, Model_mean, Lower:Letters) %>%
+                         mutate(Letters = gsub(" ", "", Letters))))
+##Check assumptions/model fit
+plot(Pest_stations_model, Type ~ resid(.))
+testDispersion(Pest_stations_model) #
+P_sta_mod1_res <- simulateResiduals(Pest_stations_model)
+plot(P_sta_mod1_res, quantreg = T)
+testZeroInflation(P_sta_mod1_res)
+testCategorical(P_sta_mod1_res, catPred = t1$Type)
+testCategorical(P_sta_mod1_res, catPred = t1$Station)
+#Report results
+Anova(Pest_stations_model)
+tidy(Pest_stations_model)  %>% filter(effect == "fixed") %>% dplyr::select(-group, -effect)
+Pest_stations_p_means
+contrast(Pest_stations_emm, method = "pairwise") %>% data.frame() %>% arrange(contrast) %>% filter(p.value < 0.05) %>% dplyr::select(-df, -null)
+contrast(Pest_stations_emm, method = "pairwise") %>% data.frame() %>% arrange(contrast) %>% filter(p.value >= 0.05) %>% dplyr::select(-df, -null)
 #
-#Figure of differences among stations
-Pest2_p_means %>%
-  ggplot(aes(Type, mean, fill = Station))+
-  geom_col(position = "dodge", width = 0.75, color = "black")+
-  geom_errorbar(aes(ymin = mean, ymax = Upper), width = 0.5, stat = "identity", position = position_dodge(0.75))+
-  geom_text(aes(Type, y = Upper+0.03, label = Letters), position = position_dodge(0.75))+
-  scale_fill_grey(start = 0.3, end = 0.7)+
-  scale_x_discrete("")+
-  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1.02)) + basetheme
+Pest_stations_p_means %>%
+  ggplot(aes(Type, Model_mean, fill = Station))+
+  geom_errorbar(aes(ymin = Model_mean, ymax = Upper), width = 0.5, position = position_dodge(0.9))+
+  geom_bar(position = "dodge", stat = "identity")+
+  geom_text(aes(y = Upper+0.03, label = Letters), position = position_dodge(0.9))+
+  scale_fill_grey(start = 0.2, end = 0.7)+
+  scale_x_discrete("Type")+
+  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1.05)) + basetheme + 
+  theme(legend.position = "none")
+#
+ggpredict(Pest_stations_model, terms = c("Type", "Station")) |> plot(ci_style = "errorbar", dot_size = 4, line_size = 1) + 
+  ggtitle("Predicted probabilities of pest prevelence")+
+  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1.05)) +
+  scale_color_grey(start = 0.2, end = 0.7) + basetheme
+ggpredict(Pest_stations_model, terms = c("Type", "Station"))
 #
 #
-#Curiosity. What about just Cliona & Polydora?
-set.seed(54321)
-Pest_model_2b <- glm(Prop ~ Type * Station, family = quasibinomial, data = (t1 %>% filter(Type != "Both")))
-summary(Pest_model_2b) #Check model
-Anova(Pest_model_2b, test = "F") 
-#Get means and Letters distinguishing significantly different groups:
-(Pest_model_2b_emm <- emmeans(Pest_model_2b, ~Station*Type, type = "response")) 
-(Pest2b_p_means <- merge(t1 %>% filter(Type != "Both") %>% group_by(Type, Station) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% 
-                          dplyr::select(-c("variable")),
-                        multcomp::cld(Pest_model_2b_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>%
-                          rename(Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Station, Type, SE, Lower:Letters) %>%
-                          mutate(Station = as.factor(Station), Type = as.factor(Type))))
-
-(Pest2b_p <- pairs(Pest_model_2b_emm, type = "response", adjust = "holm") %>% as.data.frame() %>% dplyr::select(-c(df, null))) #
-Pest2b_p_means %>% arrange(Type) %>% dplyr::select(Type, everything())
-Pest2b_p %>% filter(p.value < 0.05)
 #
-#Figure of differences among stations
-Pest2b_p_means %>%
-  ggplot(aes(Type, mean, fill = Station))+
-  geom_col(position = "dodge", width = 0.75, color = "black")+
-  geom_errorbar(aes(ymin = mean, ymax = Upper), width = 0.5, stat = "identity", position = position_dodge(0.75))+
-  geom_text(aes(Type, y = Upper+0.03, label = Letters), position = position_dodge(0.75))+
-  scale_fill_grey(start = 0.3, end = 0.7)+
-  scale_x_discrete("")+
-  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1.02)) + basetheme
+#
+#
 #
 #
 #
 ####Trends (Q9-Q12)####
 #
 ##Q9: What is the relationship between Polydora or Cliona with CI?
-#Dependent = CI value
+(c1 <- Combined_df %>% ungroup() %>% filter(Measurement == "All") %>% 
+  mutate(Type = as.factor(case_when(Poly_Prev == 0 & Cliona_Prev == 1 ~ "Cliona",
+                          Poly_Prev == 1 & Cliona_Prev == 0 ~ "Polydora",
+                          Poly_Prev == 1 & Cliona_Prev == 1 ~ "Both",
+                          TRUE ~ "Neither"))) %>% 
+   mutate(Type = fct_relevel(Type, "Polydora", "Cliona", "Both", "Neither")) %>%
+  dplyr::select(Date:New_Sample_Number, Type, CI_Hanley))
+#Dependent = CI value 
 #Independent = Type
-ggboxplot(Combined_data, x = "Type", y = "CI_Hanley", fill = "#999999")
+ggboxplot(c1, x = "Type", y = "CI_Hanley", fill = "#999999")
 #
 #Permutation ANOVA 
 set.seed(4321)
-Type_CI <- aovp(CI_Hanley ~ Type, data = Combined_data, perm = "", nperm = 10000)
-summary(Type_CI) #Barely significant
+Type_CI <- aovp(CI_Hanley ~ Type, data = c1, perm = "", nperm = 10000)
+summary(Type_CI) 
 #
-(Type_CI_p <- rstatix::pairwise_t_test(CI_Hanley ~ Type, data = Combined_data, p.adjust.method = "holm") %>%
+(Type_CI_p <- rstatix::pairwise_t_test(CI_Hanley ~ Type, data = c1, p.adjust.method = "holm") %>%
     dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
     dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
-(Type_CI_means <- merge(Combined_data %>% group_by(Type) %>% rstatix::get_summary_stats(CI_Hanley, show = c("n", "mean", "sd", "min", "max")) %>% 
+(Type_CI_means <- merge(c1 %>% group_by(Type) %>% rstatix::get_summary_stats(CI_Hanley, show = c("n", "mean", "sd", "min", "max")) %>% 
                           transform(lower = mean-sd, upper = mean+sd),
                         biostat::make_cld(Type_CI_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Type = group, Letters = cld)))
+#Report results
+summary(Type_CI)
+Type_CI_means
+Type_CI_p %>% arrange(Comparison)
 #
-ggboxplot(Combined_data, x = "Type", y = "CI_Hanley", fill = "#999999") + 
-  scale_y_continuous("Condition Index", expand = c(0,0), limits = c(0, 30.5)) +
-  basetheme
-#
-#Is it different among stations?
-ggboxplot(Combined_data, x = "Station", y = "CI_Hanley", fill = "Type")
-#
-#Permutation ANOVA 
-set.seed(54321)
-Type_station <- glm(CI_Hanley ~ Type * Station, data = Combined_data)
-summary(Type_station) #Check model
-Anova(Type_station, test = "F") #Significant difference among pest "Types"
-#
-#Get means and Letters distinguishing significantly different groups:
-(Pest_model_emm <- emmeans(Pest_model, ~Type, type = "response")) #Polydora = Cliona < Both = None
-(Pest_p_means <- merge(t1 %>% group_by(Type) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% 
-                         dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
-                       multcomp::cld(Pest_model_emm, alpha = 0.05, decreasing = TRUE, Letters = c(letters)) %>%
-                         rename(Letters = .group, Lower = asymp.LCL, Upper = asymp.UCL) %>% dplyr::select(Type, Lower:Letters)))
-#
-(Pest_p <- pairs(Pest_model_emm, type = "response", adjust = "holm") %>% as.data.frame() %>% dplyr::select(-c(df, null)))
-#
-#Figure of means with letters
-Pest_means %>%
-  ggplot(aes(Type, meanProp, fill = Letters))+
-  geom_errorbar(aes(ymin = meanProp, ymax = meanProp+se), width = 0.5)+
-  geom_bar(stat = "identity")+
-  geom_text(aes(Type, y = meanProp+se+0.03, label = Letters))+
-  scale_fill_grey(start = 0.3, end = 0.7)+
-  scale_x_discrete("")+
-  scale_y_continuous("Average proportion of oysters", expand = c(0,0), limits = c(0,1)) + basetheme + 
+Type_CI_means %>%
+  ggplot(aes(Type, mean, fill = Letters))+
+  geom_errorbar(aes(ymin = mean, ymax = upper), width = 0.5, position = position_dodge(0.9))+
+  geom_bar(position = "dodge", stat = "identity")+
+  geom_text(aes(y = upper+0.7, label = Letters), position = position_dodge(0.9))+
+  scale_fill_grey(start = 0.2, end = 0.7)+
+  scale_x_discrete("Type")+
+  scale_y_continuous("Average condition of oysters", expand = c(0,0), limits = c(0,30)) + basetheme + 
   theme(legend.position = "none")
+#
+#
+#
 #
 #
 #
