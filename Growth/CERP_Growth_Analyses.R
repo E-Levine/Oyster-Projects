@@ -20,15 +20,15 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
 #Reading in Excel files, adding station information to dfs.
 #
 ##Station information
-Locations_raw <- read_excel("../Data/Growth_database_2024_08_26.xlsx", sheet = "FixedLocation", #File name and sheet name
+Locations_raw <- read_excel("Growth_database_2024_09_25.xlsx", sheet = "FixedLocations", #File name and sheet name
                           skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                           na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                           .name_repair = "unique")
 head(Locations_raw)
-(Locations <- Locations_raw %>% dplyr::select(FixedLocationID:StationNumber) %>% mutate(Site = as.factor(paste0(Estuary, SectionName))))
+(Locations <- Locations_raw %>% mutate(Site = as.factor(paste0(Estuary, SectionName))))
 #
 ###Water quality
-Cage_WQ_raw <- read_excel("../Data/Growth_database_2024_08_26.xlsx", sheet = "SampleEventWQ", #File name and sheet name
+Cage_WQ_raw <- read_excel("Growth_database_2024_09_25.xlsx", sheet = "SampleEventWQ", #File name and sheet name
                      skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                      na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                      .name_repair = "unique")
@@ -42,7 +42,7 @@ head(Cage_WQ_raw)
     left_join(Locations))
 #
 ###Cage Counts
-Cage_counts_raw <- read_excel("../Data/Growth_database_2024_08_26.xlsx", sheet = "CageCount", #File name and sheet name
+Cage_counts_raw <- read_excel("Growth_database_2024_09_25.xlsx", sheet = "CageCount_Dead", #File name and sheet name
                           skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                           na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                           .name_repair = "unique")
