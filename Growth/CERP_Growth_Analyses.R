@@ -6,7 +6,7 @@
 #Load packages, install as needed
 if (!require("pacman")) {install.packages("pacman")}
 pacman::p_load(plyr, tidyverse, #Df manipulation, 
-               ggpubr,
+               ggpubr, scales,
                rstatix, #Summary stats
                zoo, lubridate, #Dates and times
                readxl, #Reading excel files
@@ -119,6 +119,7 @@ Counts_monthly %>% group_by(Site) %>%
             MeanDead = mean(Dead, na.rm = T),
             MeanMissing = mean(Missing, na.rm = T))
 #
+#Live, dead, and missing monthly counts by Site
 ggarrange(
 #Live counts
 Counts_monthly %>% 
@@ -140,14 +141,17 @@ Counts_monthly %>%
   basetheme + axistheme,
 nrow = 3, ncol = 1)
 #
-
+#Live ret count monthly
 Counts_monthly %>% 
   ggplot(aes(MonYr, Live, color = Site))+
   geom_point()+
   geom_line(aes(group = Site))+
   lemon::facet_rep_grid(Site~.)+
+  geom_smooth()+
+  scale_y_continuous("Live Ret Count", limits = c(0,30), expand = c(0,0))+
   basetheme + axistheme
 #
+#Dead ret counts monthly
 Counts_monthly %>% 
   ggplot(aes(MonYr, Dead, color = Site))+
   geom_point()+
@@ -155,6 +159,7 @@ Counts_monthly %>%
   lemon::facet_rep_grid(Site~.)+
   basetheme + axistheme
 #
+#Missing ret counts monthly
 Counts_monthly %>% 
   ggplot(aes(MonYr, Missing, color = Site))+
   geom_point()+
@@ -162,6 +167,7 @@ Counts_monthly %>%
   lemon::facet_rep_grid(Site~.)+
   basetheme + axistheme
 #
+#Dead and live monthly counts
 Counts_monthly %>% dplyr::select(-Missing) %>% #Missing is inverse of Live
   gather(Type, Count, -FixedLocationID, -Site, -MonYr, -CageCountID) %>%
   ggplot(aes(MonYr, Count, color = Type))+
@@ -171,11 +177,18 @@ Counts_monthly %>% dplyr::select(-Missing) %>% #Missing is inverse of Live
   basetheme + axistheme
 #
 #Percentage live, pct mortality, pct unknown
-
-
-
-#Same with lower limit based on deployed SH
+(Counts_summ <- Cage_counts %>% group_by(MonYr, Site) %>% 
+  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)))
 #
+#Pct Mortality (Dead: report calc) and Pct dead (Counts: only dead count) monthly
+#Pct mortatlity larger driven by unknown fates. 
+Counts_summ %>%
+  ggplot(aes(MonYr, Pct_Dead_mean, group = 1))+
+  geom_line()+
+  geom_line(aes(MonYr, Pct_DeadCounts_mean, group = 1), color = "red")+
+  lemon::facet_rep_grid(Site~.)+
+  basetheme + axistheme
+##
 #
 ####Cage Shell Heights####
 #
@@ -192,6 +205,7 @@ Counts_monthly %>% dplyr::select(-Missing) %>% #Missing is inverse of Live
           Mean_growth = Ret_MeanSH - Dep_MeanSH))
 #
 (SH_summ <- ShellHeights %>% group_by(MonYr, Site, CageCountID) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)))
+(SH_Site_summ <- ShellHeights %>% group_by(Site) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)))
 #
 SH_summ %>%
   ggplot(aes(MonYr, Mean_growth_mean, group = 1))+
@@ -201,4 +215,38 @@ SH_summ %>%
   geom_hline(yintercept = 0, linetype = "dotted")+
   lemon::facet_rep_grid(Site~.)+
   basetheme + axistheme
+SH_summ %>% 
+  ggplot(aes(MonYr, Dep_MeanSH_mean, group = 1))+
+  geom_line()+
+  geom_line(aes(MonYr, Dep_MinSH_mean, group = 1), color = "red")+
+  geom_line(aes(MonYr, Dep_MaxSH_mean, group = 1), color = "blue")+
+  geom_hline(data = SH_Site_summ, aes(yintercept = Dep_MeanSH_mean), linetype = "dashed")+
+  geom_hline(data = SH_Site_summ, aes(yintercept = Dep_MinSH_mean), linetype = "dashed", color = "red")+
+  geom_hline(data = SH_Site_summ, aes(yintercept = Dep_MaxSH_mean), linetype = "dashed", color = "blue")+
+  lemon::facet_rep_grid(Site~.)+
+  basetheme + axistheme
+#
+#
+
 #How many times oysters smaller on ret, ave number smaller
+####Comparison of pct mortality - minimal progress####
+#
+(Counts_cages <- Cage_counts %>% group_by(MonYr, Site) %>% 
+   summarise(MeanPctDead = mean(Pct_Dead, na.rm = T), MeanPctCounts = mean(Pct_DeadCounts, na.rm = T)) %>%
+   mutate(Year = as.factor(format(MonYr, "%Y")), Month = as.factor(format(MonYr, "%m")),
+          MeanPctDead_s = scale(MeanPctDead)))
+##Comparing within Site since different time frames for CRE/CRW and LX/SL
+library(zoib)
+SL_model <- zoib::zoib(MeanPctDead ~ Year + Month, data = Counts_cages %>% subset(Site == "SLC"), random = 1,
+                       zero.inflated = T, one.inflation  = T)
+#
+#
+#
+####Comparison of growth####
+#
+t <-ShellHeights %>% group_by(MonYr, Site, CageCountID, CageColor) %>%  summarise(across(where(is.numeric), list(mean = mean), na.rm = TRUE))
+
+#
+#
+#
+#
