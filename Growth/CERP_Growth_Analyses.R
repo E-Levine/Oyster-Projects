@@ -8,9 +8,10 @@ if (!require("pacman")) {install.packages("pacman")}
 pacman::p_load(plyr, tidyverse, #Df manipulation, 
                ggpubr, scales,
                rstatix, #Summary stats
-               zoo, lubridate, #Dates and times
+               zoo, lubridate, forecast, #Dates and times
                readxl, #Reading excel files
                car, emmeans, multcomp, #Basic analyses
+               lmPerm,
                install = TRUE)
 #
 #
@@ -188,7 +189,8 @@ Counts_summ %>%
   geom_line(aes(MonYr, Pct_DeadCounts_mean, group = 1), color = "red")+
   lemon::facet_rep_grid(Site~.)+
   basetheme + axistheme
-##
+#
+#
 #
 ####Cage Shell Heights####
 #
@@ -244,9 +246,155 @@ SL_model <- zoib::zoib(MeanPctDead ~ Year + Month, data = Counts_cages %>% subse
 #
 ####Comparison of growth####
 #
-t <-ShellHeights %>% group_by(MonYr, Site, CageCountID, CageColor) %>%  summarise(across(where(is.numeric), list(mean = mean), na.rm = TRUE))
-
+#mm/day growth by CageColor - "raw replicate data"
+(Cage_growth_raw <- left_join(ShellHeights %>% dplyr::select(MonYr:CageColor, Dep_MeanSH, Ret_MeanSH, Mean_growth),
+          Cage_counts_raw %>% mutate(CageCountID = substr(CageCountID, 1, 22)) %>% 
+            filter(DataType == "Retrieved") %>% dplyr::select(CageCountID, CageColor, TotalCount, DaysDeployed)) %>%
+  mutate(Year = as.factor(format(MonYr, "%Y")), Month = as.factor(format(MonYr, "%m")), 
+         Site = as.factor(Site), mm_day = Mean_growth/DaysDeployed))
+(Cage_growth <- Cage_growth_raw %>% group_by(MonYr, Year, Month, CageCountID, Site) %>%
+  summarise(MeanDep = mean(Dep_MeanSH, na.rm = T), MeanRet = mean(Ret_MeanSH, na.rm = T), 
+            MeanCount = mean(TotalCount, na.rm = T), MeanGrowth = mean(Mean_growth, na.rm = T), DaysDeployed = mean(DaysDeployed),
+            MeanDaily = MeanGrowth/DaysDeployed))
+#
+#Visualize 
+ggarrange(
+  Cage_growth %>% group_by(MonYr, Site) %>% summarise(Mean_growth = mean(MeanGrowth, na.rm = T)) %>%
+  ggplot(aes(MonYr, Mean_growth, group = 1))+
+  geom_line()+
+  geom_smooth()+
+    geom_hline(yintercept = 0, linetype = "dashed")+
+  lemon::facet_rep_grid(Site~.)+
+  basetheme + axistheme,
+  Cage_growth %>% group_by(Year, Site) %>% summarise(Mean_growth = mean(MeanGrowth, na.rm = T)) %>%
+    ggplot(aes(Year, Mean_growth, group = 1))+
+    geom_line()+
+    geom_hline(yintercept = 0, linetype = "dashed")+
+    geom_smooth()+
+    lemon::facet_rep_grid(Site~.)+
+    basetheme + axistheme,
+Cage_growth %>% group_by(Month, Site) %>% summarise(Mean_growth = mean(MeanGrowth, na.rm = T)) %>%
+  ggplot(aes(Month, Mean_growth, group = 1))+
+  geom_line()+
+  geom_hline(yintercept = 0, linetype = "dashed")+
+  geom_smooth()+
+  lemon::facet_rep_grid(Site~.)+
+  basetheme + axistheme,
+nrow = 1, ncol=3)
+#
+###Month Year - overall trend
+#Know there is seasonality in growth - need to detrend data by Site - additive since pattern is theoretically the same each time period (i.e. year)
+###Detrend each parameter - additive - function "detrending"
+detrending <- function(df, param){
+  temp <- df %>% ungroup() %>% dplyr::select(c("MonYr", all_of(param)))
+  #temp$MonYr <- as.yearmon(temp$MonYr, format = "%m/%Y")
+  temp <- na.interp(as.ts(read.zoo(temp, FUN = as.yearmon)))
+  temp %>% decompose("additive") -> decompTemp
+  tempAdj <- temp-decompTemp$seasonal #Removes seasonal component, leaves trend and random components in final output values
+  return(tempAdj)
+}
+#
+(LXN_de <- detrending(Cage_growth %>% filter(Site == "LXN"), "MeanGrowth"))
+(SLC_de <- detrending(Cage_growth %>% filter(Site == "SLC"), "MeanGrowth"))
+(CRE_de <- detrending(Cage_growth %>% filter(Site == "CRE"), "MeanGrowth"))
+(CRW_de <- detrending(Cage_growth %>% filter(Site == "CRW"), "MeanGrowth"))
+(LXN_da <- detrending(Cage_growth %>% filter(Site == "LXN"), "MeanDaily"))
+(SLC_da <- detrending(Cage_growth %>% filter(Site == "SLC"), "MeanDaily"))
+(CRE_da <- detrending(Cage_growth %>% filter(Site == "CRE"), "MeanDaily"))
+(CRW_da <- detrending(Cage_growth %>% filter(Site == "CRW"), "MeanDaily"))
+#
+#Get dataframe of detrended data and add to growth data for final data frame
+(Growth_detrended <- left_join(
+  left_join(data.frame(MonYr = as.yearmon(time(LXN_de)), LXN_de, SLC_de),
+            data.frame(MonYr = as.yearmon(time(CRE_de)), CRE_de)),
+  data.frame(MonYr = as.yearmon(time(CRW_de)), CRW_de)) %>% rename(LXN = LXN_de, SLC = SLC_de, CRE = CRE_de, CRW = CRW_de) %>%
+    gather("Site", "Growth_de", -MonYr))
+(Daily_detrended <- left_join(
+  left_join(data.frame(MonYr = as.yearmon(time(LXN_de)), LXN_da, SLC_da),
+            data.frame(MonYr = as.yearmon(time(CRE_de)), CRE_da)),
+  data.frame(MonYr = as.yearmon(time(CRW_da)), CRW_da)) %>% rename(LXN = LXN_da, SLC = SLC_da, CRE = CRE_da, CRW = CRW_da) %>%
+    gather("Site", "Growth_da", -MonYr))
+(Growth_final <- left_join(Cage_growth, Growth_detrended) %>% left_join(Daily_detrended) %>% mutate(Site = as.factor(Site)))
+#
+ggarrange(
+  Growth_final %>% 
+    ggplot(aes(MonYr, MeanGrowth, group = 1))+
+    geom_line()+
+    geom_hline(yintercept = 0, linetype = "dashed")+
+    geom_smooth()+
+    lemon::facet_rep_grid(Site~.)+
+    basetheme + axistheme,
+  Growth_final %>% 
+  ggplot(aes(MonYr, Growth_de, group = 1))+
+  geom_line()+
+  geom_hline(yintercept = 0, linetype = "dashed")+
+  geom_smooth()+
+  lemon::facet_rep_grid(Site~.)+
+  basetheme + axistheme,
+  Growth_final %>% 
+    ggplot(aes(MonYr, Growth_da, group = 1))+
+    geom_line()+
+    geom_hline(yintercept = 0, linetype = "dashed")+
+    geom_smooth()+
+    lemon::facet_rep_grid(Site~.)+
+    basetheme + axistheme,
+  nrow = 1, ncol = 3)
+#
+ggarrange(
+  Growth_final %>% 
+    ggplot(aes(MonYr, Growth_de, group = 1))+
+    geom_line()+
+    geom_hline(yintercept = 0, linetype = "dashed")+
+    geom_smooth()+
+    lemon::facet_rep_grid(Site~.)+
+    basetheme + axistheme,
+  Growth_final %>% group_by(Site, Year) %>% summarise(MeanDe = mean(Growth_de, na.rm = T)) %>%
+    ggplot(aes(Year, MeanDe, group = 1))+
+    geom_line()+
+    geom_hline(yintercept = 0, linetype = "dashed")+
+    geom_smooth()+
+    lemon::facet_rep_grid(Site~.)+
+    basetheme + axistheme,
+  Growth_final %>% group_by(Site, Month) %>% summarise(MeanDe = mean(Growth_de, na.rm = T)) %>% 
+    ggplot(aes(Month, MeanDe, group = 1))+
+    geom_line()+
+    geom_hline(yintercept = 0, linetype = "dashed")+
+    geom_smooth()+
+    lemon::facet_rep_grid(Site~.)+
+    basetheme + axistheme,
+  nrow = 1, ncol = 3)
+#
+ggarrange(Growth_final %>% ggplot(aes(x = Growth_de)) + geom_histogram(), #normal but negative so add 10 to all values to make non-negative, continuous, normal dist
+          Growth_final %>% mutate(Growth_de1 = Growth_de + 10) %>% ggplot(aes(x = Growth_de1)) + geom_histogram(), nrow = 2)
+(Growth_final$Growth_de1 <- Growth_final$Growth_de + 10)
+#
+##Permutation based ANOVA - MonYr, Site##
+set.seed(54321)
+Growth_all <- aovp(Growth_de1 ~ MonYr * Site, data = Growth_final, perm = "",  nperm = 10000)
+(Growth_all_summ <- summary(Growth_all))
+Growth_all_tidy <- tidy(Growth_all)
+names(Growth_all_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
+Growth_all_tidy
+#Significant difference among MonYr within Sites
+#
+pairwise.t.test(Growth_final$Growth_de1, Growth_final$Site, p.adjust.method = "BH")
+ggline(Growth_final, x = "MonYr", y = "Growth_de1", color = "Site", facet.by = "Site") + 
+  geom_hline(data = Growth_final %>% group_by(Site) %>% summarise(Mean = mean(Growth_de1)), aes(yintercept = Mean), linetype = "dashed")+
+  scale_y_continuous(limits = c(0, 30), expand = c(0,0))
 #
 #
+######Working######
+##Permutation based ANOVA - Month, Year, Site##
+set.seed(54321)
+Growth_time <- aovp(Growth_de1 ~ Year * Site, data = Growth_final, perm = "",  nperm = 10000)
+(Growth_time_summ <- summary(Growth_time))
+Growth_time_tidy <- tidy(Growth_time)
+names(Growth_time_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
+Growth_time_tidy
+#Significant difference among MonYr within Sites
 #
+pairwise.t.test(Growth_final$Growth_de1, Growth_final$Year, p.adjust.method = "BH")
+ggline(Growth_final, x = "MonYr", y = "Growth_de1", color = "Site", facet.by = "Site") + 
+  geom_hline(data = Growth_final %>% group_by(Site) %>% summarise(Mean = mean(Growth_de1)), aes(yintercept = Mean), linetype = "dashed")+
+  scale_y_continuous(limits = c(0, 30), expand = c(0,0))
 #
