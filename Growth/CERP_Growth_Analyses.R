@@ -286,6 +286,7 @@ nrow = 1, ncol=3)
 ggarrange(Growth_final %>% ggplot(aes(x = MeanGrowth)) + geom_histogram(), #normal but negative so add 10 to all values to make non-negative, continuous, normal dist
           Growth_final %>% mutate(Growth1 = MeanGrowth + 10) %>% ggplot(aes(x = Growth1)) + geom_histogram(), nrow = 2)
 (Growth_final$Growth_1 <- Growth_final$MeanGrowth + 10)
+#
 ##Permutation based ANOVA - Month, Site##
 set.seed(54321)
 Growth_mon <- aovp(Growth_1 ~ Month * Site, data = Growth_final, perm = "",  nperm = 10000)
@@ -293,20 +294,17 @@ Growth_mon <- aovp(Growth_1 ~ Month * Site, data = Growth_final, perm = "",  npe
 Growth_mon_tidy <- tidy(Growth_mon)
 names(Growth_mon_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
 Growth_mon_tidy
-#Significant difference among Months within Sites - detrend each Site by month
+#Significant difference among Months within Sites - detrend each Site by month -- additive since pattern is theoretically the same each time period (i.e. year)
 #
-Growth_final %>% pairwise.t.test(Growth_1 ~ Month, p.adjust.method = "holm")
-emmeans(Growth_mon, ~Month, type = "response", adjust = "holm")
-Growth_final %>% group_by(Month, Site) %>% summarise(meanGrowth = mean(MeanGrowth, na.rm = T)) %>%
+Growth_final %>% group_by(Month, Site) %>% summarise(meanGrowth = mean(MeanGrowth, na.rm = T), se = sd(MeanGrowth, na.rm = T)/sqrt(length(MeanGrowth))) %>%
   ggplot(aes(Month, meanGrowth, group = 1, color = Site)) + 
   geom_line() +
+  geom_errorbar(aes(ymin = meanGrowth - se, ymax = meanGrowth+se), width = 0.25)+
   geom_hline(data = Growth_final %>% group_by(Site) %>% summarise(Mean = mean(MeanGrowth)), aes(yintercept = Mean), linetype = "dashed")+
   lemon::facet_rep_grid(Site~.)+
   scale_y_continuous(limits = c(0, 15), expand = c(0,0))+
   basetheme + axistheme
-
-
-#Know there is seasonality in growth - need to detrend data by Site - additive since pattern is theoretically the same each time period (i.e. year)
+#
 ###Detrend each parameter - additive - function "detrending"
 detrending <- function(df, param){
   temp <- df %>% ungroup() %>% dplyr::select(c("MonYr", all_of(param)))
@@ -387,37 +385,113 @@ ggarrange(
     basetheme + axistheme,
   nrow = 1, ncol = 3)
 #
-ggarrange(Growth_final %>% ggplot(aes(x = Growth_de)) + geom_histogram(), #normal but negative so add 10 to all values to make non-negative, continuous, normal dist
-          Growth_final %>% mutate(Growth_de1 = Growth_de + 10) %>% ggplot(aes(x = Growth_de1)) + geom_histogram(), nrow = 2)
 (Growth_final$Growth_de1 <- Growth_final$Growth_de + 10)
 #
-##Permutation based ANOVA - MonYr, Site##
+#
+##Permutation based ANOVA - Year for each site mean growth
 set.seed(54321)
-Growth_all <- aovp(Growth_de1 ~ MonYr * Site, data = Growth_final, perm = "",  nperm = 10000)
-(Growth_all_summ <- summary(Growth_all))
-Growth_all_tidy <- tidy(Growth_all)
-names(Growth_all_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
-Growth_all_tidy
-#Significant difference among MonYr within Sites
+Growth_LXN <- aovp(Growth_de1 ~ Year, data = Growth_final %>% filter(Site == "LXN"), perm = "",  nperm = 10000)
+Growth_SLC <- aovp(Growth_de1 ~ Year, data = Growth_final %>% filter(Site == "SLC"), perm = "",  nperm = 10000)
+Growth_CRE <- aovp(Growth_de1 ~ Year, data = Growth_final %>% filter(Site == "CRE"), perm = "",  nperm = 10000)
+Growth_CRW <- aovp(Growth_de1 ~ Year, data = Growth_final %>% filter(Site == "CRW"), perm = "",  nperm = 10000)
+
+(Growth_summ <- rbind(rbind(rbind(tidy(Growth_LXN) %>% mutate(Site = "LXN"), tidy(Growth_SLC) %>% mutate(Site = "SLC")),
+                          tidy(Growth_CRE) %>% mutate(Site = "CRE")), tidy(Growth_CRW) %>% mutate(Site = "CRW")) %>%
+    dplyr::select(Site, everything())) 
+names(Growth_summ) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr"); Growth_summ
+#Significant difference among Year in LXN and SLC
 #
-pairwise.t.test(Growth_final$Growth_de1, Growth_final$Site, p.adjust.method = "BH")
-ggline(Growth_final, x = "MonYr", y = "Growth_de1", color = "Site", facet.by = "Site") + 
-  geom_hline(data = Growth_final %>% group_by(Site) %>% summarise(Mean = mean(Growth_de1)), aes(yintercept = Mean), linetype = "dashed")+
-  scale_y_continuous(limits = c(0, 30), expand = c(0,0))
+#P values for  pairwise comparisons
+(LXN_gro_p <- pairwise_t_test(Growth_de1 ~ Year, data = ungroup(Growth_final) %>% filter(Site == "LXN"), p.adjust.method = "BH") %>%
+  dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+  dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj) %>% mutate(Site = "LXN", .before = "Comparison"))()
+
+###Not giving any results due to incomplete data - Proof all data, regather data then continue working. 
+SLC_gro_p <- pairwise.t.test(Growth_de1 ~ Year, data = ungroup(Growth_final) %>% filter(Site == "SLC"), p.adjust.method = "holm") %>%
+  dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+  dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj) %>% mutate(Site = "SLC", .before = "Comparison"))
+
+(Growth_year_p <- rbind(
+  pairwise_t_test(Growth_de1 ~ Year, data = ungroup(Growth_final) %>% filter(Site == "SLC"), p.adjust.method = "BH") %>%
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj) %>% mutate(Site = "SLC", .before = "Comparison")))
+#Table of summary stats per Site each Year and Letters
+(Growth_year_tab <- rbind(rbind(rbind(merge(Growth_final %>% filter(Site == "LXN") %>% group_by(Year) %>% get_summary_stats(MeanGrowth, show = c("n", "mean", "sd", "min", "max")) %>% 
+        dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+      biostat::make_cld(pairwise_t_test(Growth_de1 ~ Year, data = ungroup(Growth_final) %>% filter(Site == "LXN"), p.adjust.method = "BH") %>%
+                          dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+                          dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj)) %>% dplyr::select(-c(spaced_cld)) %>% rename(Year = group, Letters = cld)) %>% 
+  mutate(Site = "LXN", .before = "Year"),
+  merge(Growth_final %>% filter(Site == "SLC") %>% group_by(Year) %>% get_summary_stats(MeanGrowth, show = c("n", "mean", "sd", "min", "max")) %>% 
+          dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+        biostat::make_cld(pairwise_t_test(Growth_de1 ~ Year, data = ungroup(Growth_final) %>% filter(Site == "SLC"), p.adjust.method = "BH") %>%
+                            dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+                            dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj)) %>% dplyr::select(-c(spaced_cld)) %>% rename(Year = group, Letters = cld)) %>% 
+    mutate(Site = "SLC", .before = "Year")),
+  Growth_final %>% filter(Site == "CRE") %>% group_by(Year) %>% get_summary_stats(MeanGrowth, show = c("n", "mean", "sd", "se", "min", "max")) %>% 
+    mutate(Site = "CRE", .before = "Year") %>% mutate(lower = mean-se, upper = mean+se, Letters = NA) %>% dplyr::select(-variable, - se)),
+  Growth_final %>% filter(Site == "CRW") %>% group_by(Year) %>% get_summary_stats(MeanGrowth, show = c("n", "mean", "sd", "se", "min", "max")) %>% 
+    mutate(Site = "CRW", .before = "Year") %>% mutate(lower = mean-se, upper = mean+se, Letters = NA) %>% dplyr::select(-variable, -se)))
+#
+#Plot of mean Growth per year for each Site with pairwise letter differences.
+Growth_year_tab %>%
+  ggplot(aes(Year, mean))+
+  geom_point()+
+  geom_line(aes(group = 1))+
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25)+
+  geom_hline(aes(yintercept = 0), linetype = "dashed")+
+  geom_text(aes(y = upper+2, label = Letters))+
+  lemon::facet_rep_grid(Site~.)+
+  scale_y_continuous(expand = c(0,0), limits = c(-5, 20))+
+  basetheme + axistheme
 #
 #
-######Working######
-##Permutation based ANOVA - Month, Year, Site##
+#
+#
+##Permutation based ANOVA - Year for each site mean daily growth
 set.seed(54321)
-Growth_time <- aovp(Growth_de1 ~ Year * Site, data = Growth_final, perm = "",  nperm = 10000)
-(Growth_time_summ <- summary(Growth_time))
-Growth_time_tidy <- tidy(Growth_time)
-names(Growth_time_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
-Growth_time_tidy
-#Significant difference among Year within Sites
+Daily_LXN <- aovp(Growth_da ~ Year, data = Growth_final %>% filter(Site == "LXN"), perm = "",  nperm = 10000)
+Daily_SLC <- aovp(Growth_da ~ Year, data = Growth_final %>% filter(Site == "SLC"), perm = "",  nperm = 10000)
+Daily_CRE <- aovp(Growth_da ~ Year, data = Growth_final %>% filter(Site == "CRE"), perm = "",  nperm = 10000)
+Daily_CRW <- aovp(Growth_da ~ Year, data = Growth_final %>% filter(Site == "CRW"), perm = "",  nperm = 10000)
+
+(Daily_summ <- rbind(rbind(rbind(tidy(Daily_LXN) %>% mutate(Site = "LXN"), tidy(Daily_SLC) %>% mutate(Site = "SLC")),
+                            tidy(Daily_CRE) %>% mutate(Site = "CRE")), tidy(Daily_CRW) %>% mutate(Site = "CRW")) %>%
+    dplyr::select(Site, everything())) 
+names(Daily_summ) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr"); Daily_summ
+#Significant difference among Year in LXN and SLC
 #
-pairwise.t.test(Growth_final$Growth_de1, Growth_final$Year, p.adjust.method = "BH")
-ggline(Growth_final, x = "MonYr", y = "Growth_de1", color = "Site", facet.by = "Site") + 
-  geom_hline(data = Growth_final %>% group_by(Site) %>% summarise(Mean = mean(Growth_de1)), aes(yintercept = Mean), linetype = "dashed")+
-  scale_y_continuous(limits = c(0, 30), expand = c(0,0))
+#P values for  pairwise comparisons
+(Daily_year_p <- rbind(pairwise_t_test(Growth_da ~ Year, data = ungroup(Growth_final) %>% filter(Site == "LXN"), p.adjust.method = "BH") %>%
+                          dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+                          dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj) %>% mutate(Site = "LXN", .before = "Comparison"),
+                        pairwise_t_test(Growth_da ~ Year, data = ungroup(Growth_final) %>% filter(Site == "SLC"), p.adjust.method = "BH") %>%
+                          dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+                          dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj) %>% mutate(Site = "SLC", .before = "Comparison")))
+#Table of summary stats per Site each Year and Letters
+(Daily_year_tab <- rbind(rbind(rbind(merge(Growth_final %>% filter(Site == "LXN") %>% group_by(Year) %>% get_summary_stats(Growth_da, show = c("n", "mean", "sd", "min", "max")) %>% 
+                                              dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                                            biostat::make_cld(LXN_year_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Year = group, Letters = cld)) %>% 
+                                        mutate(Site = "LXN", .before = "Year"),
+                                      merge(Growth_final %>% filter(Site == "SLC") %>% group_by(Year) %>% get_summary_stats(MeanGrowth, show = c("n", "mean", "sd", "min", "max")) %>% 
+                                              dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                                            biostat::make_cld(LXN_year_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Year = group, Letters = cld)) %>% 
+                                        mutate(Site = "SLC", .before = "Year")),
+                                Growth_final %>% filter(Site == "CRE") %>% group_by(Year) %>% get_summary_stats(MeanGrowth, show = c("n", "mean", "sd", "se", "min", "max")) %>% 
+                                  mutate(Site = "CRE", .before = "Year") %>% mutate(lower = mean-se, upper = mean+se, Letters = NA) %>% dplyr::select(-variable, - se)),
+                          Growth_final %>% filter(Site == "CRW") %>% group_by(Year) %>% get_summary_stats(MeanGrowth, show = c("n", "mean", "sd", "se", "min", "max")) %>% 
+                            mutate(Site = "CRW", .before = "Year") %>% mutate(lower = mean-se, upper = mean+se, Letters = NA) %>% dplyr::select(-variable, -se)))
+#
+#Plot of mean Growth per year for each Site with pairwise letter differences.
+Growth_year_tab %>%
+  ggplot(aes(Year, mean))+
+  geom_point()+
+  geom_line(aes(group = 1))+
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25)+
+  geom_hline(aes(yintercept = 0), linetype = "dashed")+
+  geom_text(aes(y = upper+2, label = Letters))+
+  lemon::facet_rep_grid(Site~.)+
+  scale_y_continuous(expand = c(0,0), limits = c(-5, 20))+
+  basetheme + axistheme
+
 #
