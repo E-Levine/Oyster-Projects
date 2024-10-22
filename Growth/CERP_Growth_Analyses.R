@@ -282,7 +282,30 @@ Cage_growth %>% group_by(Month, Site) %>% summarise(Mean_growth = mean(MeanGrowt
   basetheme + axistheme,
 nrow = 1, ncol=3)
 #
-###Month Year - overall trend
+###Does each site have different variability among Months?
+ggarrange(Growth_final %>% ggplot(aes(x = MeanGrowth)) + geom_histogram(), #normal but negative so add 10 to all values to make non-negative, continuous, normal dist
+          Growth_final %>% mutate(Growth1 = MeanGrowth + 10) %>% ggplot(aes(x = Growth1)) + geom_histogram(), nrow = 2)
+(Growth_final$Growth_1 <- Growth_final$MeanGrowth + 10)
+##Permutation based ANOVA - Month, Site##
+set.seed(54321)
+Growth_mon <- aovp(Growth_1 ~ Month * Site, data = Growth_final, perm = "",  nperm = 10000)
+(Growth_mon_summ <- summary(Growth_mon))
+Growth_mon_tidy <- tidy(Growth_mon)
+names(Growth_mon_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
+Growth_mon_tidy
+#Significant difference among Months within Sites - detrend each Site by month
+#
+Growth_final %>% pairwise.t.test(Growth_1 ~ Month, p.adjust.method = "holm")
+emmeans(Growth_mon, ~Month, type = "response", adjust = "holm")
+Growth_final %>% group_by(Month, Site) %>% summarise(meanGrowth = mean(MeanGrowth, na.rm = T)) %>%
+  ggplot(aes(Month, meanGrowth, group = 1, color = Site)) + 
+  geom_line() +
+  geom_hline(data = Growth_final %>% group_by(Site) %>% summarise(Mean = mean(MeanGrowth)), aes(yintercept = Mean), linetype = "dashed")+
+  lemon::facet_rep_grid(Site~.)+
+  scale_y_continuous(limits = c(0, 15), expand = c(0,0))+
+  basetheme + axistheme
+
+
 #Know there is seasonality in growth - need to detrend data by Site - additive since pattern is theoretically the same each time period (i.e. year)
 ###Detrend each parameter - additive - function "detrending"
 detrending <- function(df, param){
@@ -391,7 +414,7 @@ Growth_time <- aovp(Growth_de1 ~ Year * Site, data = Growth_final, perm = "",  n
 Growth_time_tidy <- tidy(Growth_time)
 names(Growth_time_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
 Growth_time_tidy
-#Significant difference among MonYr within Sites
+#Significant difference among Year within Sites
 #
 pairwise.t.test(Growth_final$Growth_de1, Growth_final$Year, p.adjust.method = "BH")
 ggline(Growth_final, x = "MonYr", y = "Growth_de1", color = "Site", facet.by = "Site") + 
