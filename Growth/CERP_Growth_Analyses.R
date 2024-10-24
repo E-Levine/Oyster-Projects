@@ -209,28 +209,71 @@ Counts_summ %>%
 (SH_summ <- ShellHeights %>% group_by(MonYr, Site, CageCountID) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)))
 (SH_Site_summ <- ShellHeights %>% group_by(Site) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)))
 #
-SH_summ %>%
-  ggplot(aes(MonYr, Mean_growth_mean, group = 1))+
-  geom_line()+
-  geom_line(aes(MonYr, Min_growth_mean, group = 1), color = "red")+
-  geom_line(aes(MonYr, Max_growth_mean, group = 1), color = "blue")+
-  geom_hline(yintercept = 0, linetype = "dotted")+
-  lemon::facet_rep_grid(Site~.)+
-  basetheme + axistheme
-SH_summ %>% 
-  ggplot(aes(MonYr, Dep_MeanSH_mean, group = 1))+
-  geom_line()+
-  geom_line(aes(MonYr, Dep_MinSH_mean, group = 1), color = "red")+
-  geom_line(aes(MonYr, Dep_MaxSH_mean, group = 1), color = "blue")+
-  geom_hline(data = SH_Site_summ, aes(yintercept = Dep_MeanSH_mean), linetype = "dashed")+
-  geom_hline(data = SH_Site_summ, aes(yintercept = Dep_MinSH_mean), linetype = "dashed", color = "red")+
-  geom_hline(data = SH_Site_summ, aes(yintercept = Dep_MaxSH_mean), linetype = "dashed", color = "blue")+
-  lemon::facet_rep_grid(Site~.)+
+#
+#
+### - differences in size among sites
+#
+ShellHeights %>% group_by(Site) %>%
+  ggplot(aes(Site, Dep_MeanSH))+
+  geom_point()+
+  geom_boxplot()+
+  scale_y_continuous(expand = c(0,0), limits = c(0,85))+
   basetheme + axistheme
 #
+#Compare deployed shell heights among Sites
+set.seed(54321)
+Site_Dep_SHs <- aovp(Dep_MeanSH_mean  ~ Site, data = SH_summ, perm = "", nperm = 10000)
+(Site_Dep_SH_summ <- summary(Site_Dep_SHs))
+Site_Dep_SH_tidy <- tidy(Site_Dep_SHs)
+names(Site_Dep_SH_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
+Site_Dep_SH_tidy
+#
+##Pairwise comparisons - Sites deployed
+(Site_dep_pair <- as.data.frame(SH_summ) %>% pairwise_t_test(Dep_MeanSH_mean ~ Site, p.adjust.method = "holm"))
+Site_dep_tab <- dplyr::select(Site_dep_pair, c("group1", "group2", "p", "p.adj")) %>%
+  mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+  dplyr::select("Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)    #Move 'Comparison' to front and drop grp1 & grp2
+Site_dep_letters <- biostat::make_cld(Site_dep_tab) %>% dplyr::select(-c("spaced_cld")) %>% rename(Site = group, Letters = cld)
+(Site_dep_comps <- merge(SH_summ %>% group_by(Site) %>% rstatix::get_summary_stats(Dep_MeanSH_mean , type = "mean_sd") %>% 
+                dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), Site_dep_letters, by = "Site"))
+#Significant differences among all sites... maybe due to current data being used
+#
+#Compare retrieved shell heights among Sites
+set.seed(54321)
+Site_Ret_SHs <- aovp(Ret_MeanSH_mean  ~ Site, data = SH_summ, perm = "", nperm = 10000)
+(Site_Ret_SH_summ <- summary(Site_Ret_SHs))
+Site_Ret_SH_tidy <- tidy(Site_Ret_SHs)
+names(Site_Ret_SH_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
+Site_Ret_SH_tidy
+#
+##Pairwise comparisons - Sites deployed
+(Site_Ret_pair <- as.data.frame(SH_summ) %>% pairwise_t_test(Ret_MeanSH_mean ~ Site, p.adjust.method = "holm"))
+Site_Ret_tab <- dplyr::select(Site_Ret_pair, c("group1", "group2", "p", "p.adj")) %>%
+  mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+  dplyr::select("Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)    #Move 'Comparison' to front and drop grp1 & grp2
+Site_Ret_letters <- biostat::make_cld(Site_Ret_tab) %>% dplyr::select(-c("spaced_cld")) %>% rename(Site = group, Letters = cld)
+(Site_Ret_comps <- merge(SH_summ %>% group_by(Site) %>% rstatix::get_summary_stats(Ret_MeanSH_mean , type = "mean_sd") %>% 
+                           dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), Site_Ret_letters, by = "Site"))
+#
+SH_summ %>% ungroup %>% dplyr::select(Site, Dep_MeanSH_mean, Ret_MeanSH_mean) %>% rename(Dep = "Dep_MeanSH_mean", Ret = Ret_MeanSH_mean) %>% gather(Type, SH, -Site) %>% 
+  ggplot(aes(Site, SH)) +
+  geom_jitter(alpha = 0.6, width = 0.25)+
+  geom_point(data = SH_summ %>% group_by(Site) %>% summarise(Dep = mean(Dep_MeanSH_mean, na.rm = T), Ret = mean(Ret_MeanSH_mean, na.rm = T)) %>% gather(Type, SH, -Site),
+             color = "red", size = 5)+
+  lemon::facet_rep_grid(.~Type)+
+  basetheme + axistheme
+#
+#
+#
+#
+#
+###Difference within Site among years
 #
 
-#How many times oysters smaller on ret, ave number smaller
+#
+#
+#
+#
 ####Comparison of pct mortality - minimal progress####
 #
 (Counts_cages <- Cage_counts %>% group_by(MonYr, Site) %>% 
@@ -495,3 +538,23 @@ Growth_year_tab %>%
   basetheme + axistheme
 
 #
+####Extra code####
+#From Cage Shell Heights
+SH_summ %>%
+  ggplot(aes(MonYr, Mean_growth_mean, group = 1))+
+  geom_line()+
+  geom_line(aes(MonYr, Min_growth_mean, group = 1), color = "red")+
+  geom_line(aes(MonYr, Max_growth_mean, group = 1), color = "blue")+
+  geom_hline(yintercept = 0, linetype = "dotted")+
+  lemon::facet_rep_grid(Site~.)+
+  basetheme + axistheme
+SH_summ %>% 
+  ggplot(aes(MonYr, Dep_MeanSH_mean, group = 1))+
+  geom_line()+
+  geom_line(aes(MonYr, Dep_MinSH_mean, group = 1), color = "red")+
+  geom_line(aes(MonYr, Dep_MaxSH_mean, group = 1), color = "blue")+
+  geom_hline(data = SH_Site_summ, aes(yintercept = Dep_MeanSH_mean), linetype = "dashed")+
+  geom_hline(data = SH_Site_summ, aes(yintercept = Dep_MinSH_mean), linetype = "dashed", color = "red")+
+  geom_hline(data = SH_Site_summ, aes(yintercept = Dep_MaxSH_mean), linetype = "dashed", color = "blue")+
+  lemon::facet_rep_grid(Site~.)+
+  basetheme + axistheme
