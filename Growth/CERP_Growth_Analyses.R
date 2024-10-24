@@ -206,12 +206,13 @@ Counts_summ %>%
           Max_growth = Ret_MaxSH - Dep_MaxSH, 
           Mean_growth = Ret_MeanSH - Dep_MeanSH))
 #
-(SH_summ <- ShellHeights %>% group_by(MonYr, Site, CageCountID) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)))
+(SH_summ <- ShellHeights %>% group_by(MonYr, Site, CageCountID) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)) %>%
+  mutate(Year = as.factor(format(MonYr, "%Y"))))
 (SH_Site_summ <- ShellHeights %>% group_by(Site) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)))
 #
 #
 #
-### - differences in size among sites
+### - differences in size among sites and among years
 #
 ShellHeights %>% group_by(Site) %>%
   ggplot(aes(Site, Dep_MeanSH))+
@@ -222,7 +223,7 @@ ShellHeights %>% group_by(Site) %>%
 #
 #Compare deployed shell heights among Sites
 set.seed(54321)
-Site_Dep_SHs <- aovp(Dep_MeanSH_mean  ~ Site, data = SH_summ, perm = "", nperm = 10000)
+Site_Dep_SHs <- aovp(Dep_MeanSH_mean  ~ Site * Year, data = SH_summ, perm = "", nperm = 10000)
 (Site_Dep_SH_summ <- summary(Site_Dep_SHs))
 Site_Dep_SH_tidy <- tidy(Site_Dep_SHs)
 names(Site_Dep_SH_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
@@ -236,6 +237,19 @@ Site_dep_tab <- dplyr::select(Site_dep_pair, c("group1", "group2", "p", "p.adj")
 Site_dep_letters <- biostat::make_cld(Site_dep_tab) %>% dplyr::select(-c("spaced_cld")) %>% rename(Site = group, Letters = cld)
 (Site_dep_comps <- merge(SH_summ %>% group_by(Site) %>% rstatix::get_summary_stats(Dep_MeanSH_mean , type = "mean_sd") %>% 
                 dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), Site_dep_letters, by = "Site"))
+#
+#
+pairwise.t.test(SH_summ$Dep_MeanSH_mean, SH_summ$Year)
+summary(glht(Site_Dep_SHs, linfct = mcp(Site = "Tukey")))
+#
+(Year_dep_pair <- as.data.frame(SH_summ) %>% pairwise_t_test(Dep_MeanSH_mean ~ Year, p.adjust.method = "holm"))
+Year_dep_tab <- dplyr::select(Year_dep_pair, c("group1", "group2", "p", "p.adj")) %>%
+  mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+  dplyr::select("Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)    #Move 'Comparison' to front and drop grp1 & grp2
+Site_dep_letters <- biostat::make_cld(Site_dep_tab) %>% dplyr::select(-c("spaced_cld")) %>% rename(Site = group, Letters = cld)
+(Site_dep_comps <- merge(SH_summ %>% group_by(Site) %>% rstatix::get_summary_stats(Dep_MeanSH_mean , type = "mean_sd") %>% 
+                           dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), Site_dep_letters, by = "Site"))
+
 #Significant differences among all sites... maybe due to current data being used
 #
 #Compare retrieved shell heights among Sites
@@ -266,10 +280,6 @@ SH_summ %>% ungroup %>% dplyr::select(Site, Dep_MeanSH_mean, Ret_MeanSH_mean) %>
 #
 #
 #
-#
-###Difference within Site among years
-#
-
 #
 #
 #
