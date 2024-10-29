@@ -13,7 +13,7 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
                zoo, lubridate, forecast, #Dates and times
                readxl, #Reading excel files
                car, emmeans, multcomp, #Basic analyses
-               lmPerm,
+               lmPerm,  
                install = TRUE)
 #
 #
@@ -23,7 +23,7 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
 #Reading in Excel files, adding station information to dfs.
 #
 ##Station information
-Locations_raw <- read_excel("Growth_database_2024_09_25.xlsx", sheet = "FixedLocations", #File name and sheet name
+Locations_raw <- read_excel("Growth_database_2024_10_29.xlsx", sheet = "FixedLocations", #File name and sheet name
                           skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                           na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                           .name_repair = "unique")
@@ -31,7 +31,7 @@ head(Locations_raw)
 (Locations <- Locations_raw %>% mutate(Site = as.factor(paste0(Estuary, SectionName))))
 #
 ###Water quality
-Cage_WQ_raw <- read_excel("Growth_database_2024_09_25.xlsx", sheet = "SampleEventWQ", #File name and sheet name
+Cage_WQ_raw <- read_excel("Growth_database_2024_10_29.xlsx", sheet = "SampleEventWQ", #File name and sheet name
                      skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                      na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                      .name_repair = "unique")
@@ -45,12 +45,12 @@ head(Cage_WQ_raw)
     left_join(Locations))
 #
 ###Cage Counts
-Cage_counts_raw <- read_excel("Growth_database_2024_09_25.xlsx", sheet = "CageCount_Dead", #File name and sheet name
+Cage_counts_raw <- read_excel("Growth_database_2024_10_29.xlsx", sheet = "CageCount_Dead", #File name and sheet name
                           skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                           na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                           .name_repair = "unique")
 head(Cage_counts_raw)
-(Cage_counts <- Cage_counts_raw %>% dplyr::select(CageCountID, CageColor, DataType, TotalCount) %>%
+(Cage_counts <- Cage_counts_raw %>% dplyr::select(CageCountID, CageColor, DataType, TotalCount, DaysDeployed) %>%
     #Get deployed and retrieved counts
     mutate(CageCountID = substr(CageCountID, 1, 22),
            MonYr = as.yearmon(as.Date(substring(CageCountID, 8, 15), format = "%Y%m%d")),
@@ -67,7 +67,7 @@ head(Cage_counts_raw)
            Pct_DeadCounts = DeadCount/DepCount*100) %>% left_join(Locations))
 #
 ###Cage SHS
-Cage_SH_raw <- read_excel("Growth_database_2024_09_25.xlsx", sheet = "CageSH", #File name and sheet name
+Cage_SH_raw <- read_excel("Growth_database_2024_10_29.xlsx", sheet = "CageSH", #File name and sheet name
                       skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                       na = c("", "Z", "z", "NA"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                       .name_repair = "unique")
@@ -84,7 +84,7 @@ head(Cage_SH_raw)
          MonYr = as.yearmon(as.Date(substring(CageCountID, 8, 15), format = "%Y%m%d")),
          FixedLocationID = substring(CageCountID, 19, 22),
          CageCountID = substr(CageCountID, 1, 22)) %>%
-  left_join(Locations))
+  left_join(Locations) %>% left_join(Cage_counts %>% dplyr::select(CageCountID, DaysDeployed) %>% unique()) %>% unique())
 #
 #END OF SECTION
 #
@@ -113,21 +113,22 @@ names(SiteColor) <- levels(Locations$Site)
 #
 ####Cage SH data####
 #
-##Dep, Ret, Growth summay by cage 
+##Dep, Ret, Growth summary by cage 
 (ShellHeights <- Cage_SH %>% 
-   group_by(MonYr, CageCountID, DataType, Site, CageColor) %>%
+   group_by(MonYr, CageCountID, DataType, Site, CageColor, DaysDeployed) %>%
    summarise(MinSH = min(ShellHeight),
              MaxSH = max(ShellHeight),
              MeanSH = mean(ShellHeight, na.rm = TRUE)) %>% 
-   mutate(across(all_of(c("MinSH", "MaxSH")), ~ replace(., . == Inf | . == -Inf, NA))) %>% gather(Meas, Size, -MonYr, -CageCountID, -Site, -DataType, -CageColor) %>% mutate(Measurement = paste(DataType, Meas, sep = "_")) %>%
+   mutate(across(all_of(c("MinSH", "MaxSH")), ~ replace(., . == Inf | . == -Inf, NA))) %>% gather(Meas, Size, -MonYr, -CageCountID, -Site, -DataType, -CageColor, -DaysDeployed) %>% mutate(Measurement = paste(DataType, Meas, sep = "_")) %>%
    ungroup() %>% dplyr::select(-DataType, -Meas) %>%
    spread(Measurement, Size) %>%
    mutate(Min_growth = Ret_MinSH - Dep_MinSH,
           Max_growth = Ret_MaxSH - Dep_MaxSH, 
-          Mean_growth = Ret_MeanSH - Dep_MeanSH))
+          Mean_growth = Ret_MeanSH - Dep_MeanSH,
+          Growth_rate = Mean_growth/DaysDeployed))
 #
 ##Summary by site/station per MonYr and by Site overall
-(SH_summ <- ShellHeights %>% group_by(MonYr, Site, CageCountID) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)) %>%
+(SH_summ <- ShellHeights %>% group_by(MonYr, Site, CageCountID, DaysDeployed) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)) %>%
     mutate(Year = as.factor(format(MonYr, "%Y"))))
 (SH_Site_summ <- ShellHeights %>% group_by(Site) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)))
 #
@@ -137,7 +138,11 @@ ShellHeights %>% group_by(Site) %>%
   geom_point()+
   geom_boxplot()+
   scale_y_continuous(expand = c(0,0), limits = c(0,85))+
+  ggtitle("Cage data  Feb 2005 - Sept 2024")+
   basetheme + axistheme
+#
+#
+#
 #
 #Compare deployed shell heights among Sites
 set.seed(54321)
@@ -152,9 +157,174 @@ Site_Dep_SH_tidy
 Site_dep_tab <- dplyr::select(Site_dep_pair, c("group1", "group2", "p", "p.adj")) %>%
   mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
   dplyr::select("Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)    #Move 'Comparison' to front and drop grp1 & grp2
-Site_dep_letters <- biostat::make_cld(Site_dep_tab) %>% dplyr::select(-c("spaced_cld")) %>% rename(Site = group, Letters = cld)
+Site_dep_letters <- make_cld(Site_dep_tab) %>% dplyr::select(-c("spaced_cld")) %>% rename(Site = group, Letters = cld)
 (Site_dep_comps <- merge(SH_summ %>% group_by(Site) %>% rstatix::get_summary_stats(Dep_MeanSH_mean , type = "mean_sd") %>% 
                            dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), Site_dep_letters, by = "Site"))
+#
+ShellHeights %>% group_by(Site) %>%
+ggplot(aes(Site, Dep_MeanSH))+
+  geom_point()+
+  geom_boxplot()+
+  scale_y_continuous(expand = c(0,0), limits = c(0,90))+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(85, 62, 69, 75), label = c("a", "b", "c", "d"), fontface = "bold")+
+  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  basetheme + axistheme
+#
+#
+#
+#
+##Mean growth by Site
+ShellHeights %>% group_by(Site) %>%
+  ggplot(aes(Site, Growth_rate))+
+  geom_point()+
+  geom_boxplot()+
+  scale_y_continuous("Growth rate (mm/day)", expand = c(0,0), limits = c(0,1))+
+  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  basetheme + axistheme
+#
+#Compare deployed shell heights among Sites
+set.seed(54321)
+Site_Growth <- aovp(Growth_rate_mean  ~ Site, data = SH_summ, perm = "", nperm = 10000)
+(Site_Growth_summ <- summary(Site_Growth))
+Site_Growth_tidy <- tidy(Site_Growth)
+names(Site_Growth_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
+Site_Growth_tidy
+#
+##Pairwise comparisons - Sites deployed
+(Site_grow_pair <- as.data.frame(SH_summ) %>% pairwise_t_test(Growth_rate_mean ~ Site, p.adjust.method = "holm"))
+Site_grow_tab <- dplyr::select(Site_grow_pair, c("group1", "group2", "p", "p.adj")) %>%
+  mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+  dplyr::select("Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)    #Move 'Comparison' to front and drop grp1 & grp2
+Site_grow_letters <- make_cld(Site_grow_tab) %>% dplyr::select(-c("spaced_cld")) %>% rename(Site = group, Letters = cld)
+(Site_grow_comps <- merge(SH_summ %>% group_by(Site) %>% rstatix::get_summary_stats(Growth_rate_mean , type = "mean_sd") %>% 
+                           dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), Site_grow_letters, by = "Site"))
+#
+ShellHeights %>% group_by(Site) %>%
+  ggplot(aes(Site, Growth_rate))+
+  geom_point()+
+  geom_boxplot()+
+  scale_y_continuous(expand = c(0,0), limits = c(0,1))+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(0.82, 0.83, 0.9, 0.8), label = c("a", "b", "c", "b"), fontface = "bold")+
+  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  basetheme + axistheme
+#
+#
+#
+#
+#
+###Change in size (dep SH) over time?
+(DepSHs <- SH_summ %>% mutate(Year = as.factor(format(MonYr, "%Y"))) %>% dplyr::select(MonYr, Year, Site, CageCountID, Dep_MeanSH_mean) %>% rename(Dep_SH = Dep_MeanSH_mean))
+ggarrange(
+  DepSHs %>%
+    ggplot(aes(MonYr, Dep_SH, group = 1))+
+    geom_line()+
+    lemon::facet_rep_grid(Site~.)+
+    basetheme + axistheme,
+  DepSHs %>% group_by(Site, Year) %>% summarise(meanSH = mean(Dep_SH, na.rm = T)) %>%
+   ggplot(aes(Year, meanSH, group = 1))+
+   geom_line()+
+   lemon::facet_rep_grid(Site~.)+
+   basetheme +axistheme
+)
+#
+##Permutation based ANOVA - Year for each site growth rate
+set.seed(54321)
+Dep_SH_LXN <- aovp(Dep_SH ~ Year, data = DepSHs %>% filter(Site == "LXN"), perm = "",  nperm = 10000)
+Dep_SH_SLC <- aovp(Dep_SH ~ Year, data = DepSHs %>% filter(Site == "SLC"), perm = "",  nperm = 10000)
+Dep_SH_CRE <- aovp(Dep_SH ~ Year, data = DepSHs %>% filter(Site == "CRE"), perm = "",  nperm = 10000)
+Dep_SH_CRW <- aovp(Dep_SH ~ Year, data = DepSHs %>% filter(Site == "CRW" & Year != "2017"), perm = "",  nperm = 10000)
+#
+(Annual_dep_tidy <- rbind(rbind(tidy(Dep_SH_LXN) %>% mutate(Site = "LXN"), tidy(Dep_SH_SLC) %>% mutate(Site = "SLC")), 
+                         rbind(tidy(Dep_SH_CRE) %>% mutate(Site = "CRE"), tidy(Dep_SH_CRW) %>% mutate(Site = "CRW"))) %>% dplyr::select(Site, everything()))
+names(Annual_dep_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
+
+(Annual_dep_tab <- rbind(rbind(as.data.frame(DepSHs) %>% filter(Site == "LXN") %>% pairwise_t_test(Dep_SH ~ Year, p.adjust.method = "holm")%>% 
+  dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "LXN", Comparison = paste(group1, group2, sep = "-")) %>%
+  dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj), 
+  as.data.frame(DepSHs) %>% filter(Site == "SLC") %>% pairwise_t_test(Dep_SH ~ Year, p.adjust.method = "holm")%>% 
+    dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "SLC", Comparison = paste(group1, group2, sep = "-")) %>%
+    dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)),
+  rbind(as.data.frame(DepSHs) %>% filter(Site == "CRE") %>% pairwise_t_test(Dep_SH ~ Year, p.adjust.method = "holm")%>% 
+          dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "CRE", Comparison = paste(group1, group2, sep = "-")) %>%
+          dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj), 
+        as.data.frame(DepSHs) %>% filter(Site == "CRW" & Year != "2017") %>% pairwise_t_test(Dep_SH ~ Year, p.adjust.method = "holm")%>% 
+          dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "CRW", Comparison = paste(group1, group2, sep = "-")) %>%
+          dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj))))
+#
+#
+(Annual_dep_comps <- merge(DepSHs %>% group_by(Site, Year) %>% rstatix::get_summary_stats(Dep_SH , type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+      rbind(rbind(make_cld(Annual_dep_tab %>% filter(Site == "LXN")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "LXN") %>% rename(Year = group, Letters = cld),
+                  make_cld(Annual_dep_tab %>% filter(Site == "SLC")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "SLC") %>% rename(Year = group, Letters = cld)),
+            rbind(make_cld(Annual_dep_tab %>% filter(Site == "CRE")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRE") %>% rename(Year = group, Letters = cld),
+                  make_cld(Annual_dep_tab %>% filter(Site == "CRW")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRW") %>% rename(Year = group, Letters = cld)))))
+#
+Annual_dep_comps %>% 
+  ggplot(aes(Year, mean, group = 1))+
+  geom_point()+
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25)+
+  geom_line()+
+  lemon::facet_rep_grid(Site~.)+
+  geom_text(aes(y = upper+8, label = Letters)) +
+  scale_y_continuous(expand = c(0,0), limits= c(0, 90), breaks = seq(0, 90, by = 30))+
+  basetheme + axistheme
+#
+Annual_dep_tab %>% filter(Site == "SLC" & p.adjust < 0.05)
+#
+#
+#
+#
+#
+###Change in growth rate (mm/day) over time?
+(GrowthRates <- SH_summ %>% dplyr::select(MonYr, Year, Site, CageCountID, Growth_rate_mean) %>% rename(Growth_rate = Growth_rate_mean))
+ggarrange(
+  GrowthRates %>%
+    ggplot(aes(MonYr, Growth_rate, group = 1))+
+    geom_line()+
+    lemon::facet_rep_grid(Site~.)+
+    basetheme + axistheme,
+  GrowthRates %>% group_by(Site, Year) %>% summarise(meanRate = mean(Growth_rate, na.rm = T)) %>%
+    ggplot(aes(Year, meanRate, group = 1))+
+    geom_line()+
+    lemon::facet_rep_grid(Site~.)+
+    basetheme +axistheme)
+#
+##Permutation based ANOVA - Year for each site growth rate
+set.seed(54321)
+Rate_LXN <- aovp(Growth_rate ~ Year, data = GrowthRates %>% filter(Site == "LXN"), perm = "",  nperm = 10000)
+Rate_SLC <- aovp(Growth_rate ~ Year, data = GrowthRates %>% filter(Site == "SLC"), perm = "",  nperm = 10000)
+Rate_CRE <- aovp(Growth_rate ~ Year, data = GrowthRates %>% filter(Site == "CRE"), perm = "",  nperm = 10000)
+Rate_CRW <- aovp(Growth_rate ~ Year, data = GrowthRates %>% filter(Site == "CRW" & Year != "2017"), perm = "",  nperm = 10000)
+#
+(Annual_grow_tidy <- rbind(rbind(tidy(Rate_LXN) %>% mutate(Site = "LXN"), tidy(Rate_SLC) %>% mutate(Site = "SLC")), 
+                          rbind(tidy(Rate_CRE) %>% mutate(Site = "CRE"), tidy(Rate_CRW) %>% mutate(Site = "CRW"))) %>% dplyr::select(Site, everything()))
+names(Annual_grow_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
+
+(Annual_grow_tab <- rbind(as.data.frame(GrowthRates) %>% filter(Site == "LXN") %>% pairwise_t_test(Growth_rate ~ Year, p.adjust.method = "holm")%>% 
+                                 dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "LXN", Comparison = paste(group1, group2, sep = "-")) %>%
+                                 dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj), 
+                               as.data.frame(GrowthRates) %>% filter(Site == "SLC") %>% pairwise_t_test(Growth_rate ~ Year, p.adjust.method = "holm")%>% 
+                                 dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "SLC", Comparison = paste(group1, group2, sep = "-")) %>%
+                                 dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)))
+#
+#
+(Annual_grow_comps <- left_join(GrowthRates %>% group_by(Site, Year) %>% rstatix::get_summary_stats(Growth_rate , type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                           rbind(make_cld(Annual_grow_tab %>% filter(Site == "LXN")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "LXN") %>% rename(Year = group, Letters = cld),
+                                 make_cld(Annual_grow_tab %>% filter(Site == "SLC")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "SLC") %>% rename(Year = group, Letters = cld))))
+#
+Annual_grow_comps %>% 
+  ggplot(aes(Year, mean, group = 1))+
+  geom_point()+
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25)+
+  geom_line()+
+  lemon::facet_rep_grid(Site~.)+
+  geom_text(aes(y = upper+0.1, label = Letters)) +
+  scale_y_continuous(expand = c(0,0), limits= c(-0.2, 0.6), breaks = seq(-0.2, 0.6, by = 0.2))+
+  geom_hline(yintercept = 0, linetype = "dotted")+
+  basetheme + axistheme
+#
+Annual_grow_tab %>% filter(Site == "SLC" & p.adjust < 0.06)
+#
+#
 #
 #
 #
