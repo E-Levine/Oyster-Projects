@@ -63,8 +63,8 @@ head(Cage_counts_raw)
                 dplyr::select(-Deployed)) %>%
     mutate(RetTotal = LiveCount + DeadCount,
            MissCount = DepCount - RetTotal,
-           Pct_Dead = 100-((LiveCount/DepCount)*100),
-           Pct_DeadCounts = DeadCount/DepCount*100) %>% left_join(Locations))
+           DeadRate = 1-(LiveCount/DepCount),
+           DeadCountRate = (DeadCount/DepCount)) %>% left_join(Locations))
 #
 ###Cage SHS
 Cage_SH_raw <- read_excel("Growth_database_2024_10_29.xlsx", sheet = "CageSH", #File name and sheet name
@@ -329,13 +329,96 @@ Annual_grow_tab %>% filter(Site == "SLC" & p.adjust < 0.06)
 #
 #
 #
+####Comparison of pct mortality - minimal progress####
+#
+(Counts_cages <- Cage_counts %>%
+   mutate(Survivorship = LiveCount/DepCount) %>%  group_by(MonYr, Site, CageCountID, CageColor) %>% 
+   summarise(Survivor = mean(Survivorship, na.rm = T),
+             DeadCountRate = mean(DeadCountRate, na.rm = T)) %>%
+   mutate(Year = as.factor(format(MonYr, "%Y")), Month = as.factor(format(MonYr, "%m")),
+          MortRate = 1-Survivor,
+          Unknown = round(1-Survivor-DeadCountRate,3)))
+#
+#
+#
+##Summary by site/station per MonYr and by Site overall
+(Dead_summ <- Counts_cages %>% group_by(MonYr, Site, CageCountID) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)) %>%
+    mutate(Year = as.factor(format(MonYr, "%Y"))))
+(Dead_Site_summ <- Counts_cages %>% group_by(Site) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)))
+#
+##Mean SH by Site
+ggarrange(
+  Counts_cages %>% group_by(Site) %>%
+    ggplot(aes(Site, MortRate))+
+    geom_point()+
+    geom_boxplot()+
+    scale_y_continuous(expand = c(0,0), limits = c(0,1))+
+    ggtitle("Cage data  Feb 2005 - Sept 2024")+
+    basetheme + axistheme,
+  Counts_cages %>% group_by(Site) %>%
+    ggplot(aes(Site, DeadCountRate))+
+    geom_point()+
+    geom_boxplot()+
+    scale_y_continuous(expand = c(0,0), limits = c(0,0.6))+
+    ggtitle("Cage data  Feb 2005 - Sept 2024")+
+    basetheme + axistheme
+  )
+#
+#
+#Compare mortality rate among Sites
+set.seed(54321)
+Mort_mod <- aovp(MortRate_mean  ~ Site, data = Dead_summ, perm = "", nperm = 10000)
+Mort_mod_tidy <- tidy(Mort_mod)
+names(Mort_mod_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
+Mort_mod_tidy
+#
+##Pairwise comparisons - Sites deployed
+(Mort_mod_pair <- as.data.frame(Dead_summ) %>% pairwise_t_test(MortRate_mean ~ Site, p.adjust.method = "holm"))
+Mort_mod_tab <- dplyr::select(Mort_mod_pair, c("group1", "group2", "p", "p.adj")) %>%
+  mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+  dplyr::select("Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)    #Move 'Comparison' to front and drop grp1 & grp2
+Mort_mod_letters <- make_cld(Mort_mod_tab) %>% dplyr::select(-c("spaced_cld")) %>% rename(Site = group, Letters = cld)
+(Mort_mod_comps <- merge(Dead_summ %>% group_by(Site) %>% rstatix::get_summary_stats(MortRate_mean , type = "mean_sd") %>% 
+                           dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), Site_dep_letters, by = "Site"))
+#
+Counts_cages %>% group_by(Site) %>%
+  ggplot(aes(Site, MortRate))+
+  geom_point()+
+  geom_boxplot()+
+  scale_y_continuous(expand = c(0,0), limits = c(0,1.25))+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(1.15, 1.15, 1.15, 1.15), label = c("a", "b", "c", "d"), fontface = "bold")+
+  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  basetheme + axistheme
+#
+#
+#
+#Compare dead rate among Sites
+set.seed(54321)
+Dead_mod <- aovp(DeadCountRate_mean  ~ Site, data = Dead_summ, perm = "", nperm = 10000)
+Dead_mod_tidy <- tidy(Dead_mod)
+names(Dead_mod_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
+Dead_mod_tidy
+#
+Counts_cages %>% group_by(Site) %>%
+  ggplot(aes(Site, DeadCountRate))+
+  geom_point()+
+  geom_boxplot()+
+  scale_y_continuous(expand = c(0,0), limits = c(0,0.51))+
+  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  basetheme + axistheme
+#
+#
+#
+#
+#
+#
 ####Cage data####
 #
 #Average monthly/all number live, dead, and missing retrieved 
 (Counts_monthly <- Cage_counts %>% group_by(FixedLocationID, Site, MonYr, CageCountID) %>% 
-  summarise(Live = mean(LiveCount, na.rm = T),
-            Dead = mean(DeadCount, na.rm = T),
-            Missing = mean(MissCount, na.rm = T)))
+   summarise(Live = mean(LiveCount, na.rm = T),
+             Dead = mean(DeadCount, na.rm = T),
+             Missing = mean(MissCount, na.rm = T)))
 Counts_monthly %>% group_by(Site) %>% 
   summarise(MeanLive = mean(Live, na.rm = T),
             MeanDead = mean(Dead, na.rm = T),
@@ -343,25 +426,25 @@ Counts_monthly %>% group_by(Site) %>%
 #
 #Live, dead, and missing monthly counts by Site
 ggarrange(
-#Live counts
-Counts_monthly %>% 
-  ggplot(aes(MonYr, Live, fill = Site)) +
-  geom_bar(stat = "identity", position = position_dodge())+
-  scale_fill_manual(values = SiteColor)+
-  basetheme + axistheme,
-#Dead counts
-Counts_monthly %>% 
-  ggplot(aes(MonYr, Dead, fill = Site)) +
-  geom_bar(stat = "identity", position = position_dodge())+
-  scale_fill_manual(values = SiteColor)+
-  basetheme + axistheme,
-#Missing counts
-Counts_monthly %>% 
-  ggplot(aes(MonYr, Missing, fill = Site)) +
-  geom_bar(stat = "identity", position = position_dodge())+
-  scale_fill_manual(values = SiteColor)+
-  basetheme + axistheme,
-nrow = 3, ncol = 1)
+  #Live counts
+  Counts_monthly %>% 
+    ggplot(aes(MonYr, Live, fill = Site)) +
+    geom_bar(stat = "identity", position = position_dodge())+
+    scale_fill_manual(values = SiteColor)+
+    basetheme + axistheme,
+  #Dead counts
+  Counts_monthly %>% 
+    ggplot(aes(MonYr, Dead, fill = Site)) +
+    geom_bar(stat = "identity", position = position_dodge())+
+    scale_fill_manual(values = SiteColor)+
+    basetheme + axistheme,
+  #Missing counts
+  Counts_monthly %>% 
+    ggplot(aes(MonYr, Missing, fill = Site)) +
+    geom_bar(stat = "identity", position = position_dodge())+
+    scale_fill_manual(values = SiteColor)+
+    basetheme + axistheme,
+  nrow = 3, ncol = 1)
 #
 #Live ret count monthly
 Counts_monthly %>% 
@@ -400,7 +483,7 @@ Counts_monthly %>% dplyr::select(-Missing) %>% #Missing is inverse of Live
 #
 #Percentage live, pct mortality, pct unknown
 (Counts_summ <- Cage_counts %>% group_by(MonYr, Site) %>% 
-  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)))
+    summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)))
 #
 #Pct Mortality (Dead: report calc) and Pct dead (Counts: only dead count) monthly
 #Pct mortatlity larger driven by unknown fates. 
@@ -410,73 +493,6 @@ Counts_summ %>%
   geom_line(aes(MonYr, Pct_DeadCounts_mean, group = 1), color = "red")+
   lemon::facet_rep_grid(Site~.)+
   basetheme + axistheme
-#
-#
-#
-####Cage Shell Heights####
-#
-
-### - differences in size among sites and among years
-#
-
-#
-
-#
-pairwise.t.test(SH_summ$Dep_MeanSH_mean, SH_summ$Year)
-summary(glht(Site_Dep_SHs, linfct = mcp(Site = "Tukey")))
-#
-(Year_dep_pair <- as.data.frame(SH_summ) %>% pairwise_t_test(Dep_MeanSH_mean ~ Year, p.adjust.method = "holm"))
-Year_dep_tab <- dplyr::select(Year_dep_pair, c("group1", "group2", "p", "p.adj")) %>%
-  mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
-  dplyr::select("Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)    #Move 'Comparison' to front and drop grp1 & grp2
-Site_dep_letters <- biostat::make_cld(Site_dep_tab) %>% dplyr::select(-c("spaced_cld")) %>% rename(Site = group, Letters = cld)
-(Site_dep_comps <- merge(SH_summ %>% group_by(Site) %>% rstatix::get_summary_stats(Dep_MeanSH_mean , type = "mean_sd") %>% 
-                           dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), Site_dep_letters, by = "Site"))
-
-#Significant differences among all sites... maybe due to current data being used
-#
-#Compare retrieved shell heights among Sites
-set.seed(54321)
-Site_Ret_SHs <- aovp(Ret_MeanSH_mean  ~ Site, data = SH_summ, perm = "", nperm = 10000)
-(Site_Ret_SH_summ <- summary(Site_Ret_SHs))
-Site_Ret_SH_tidy <- tidy(Site_Ret_SHs)
-names(Site_Ret_SH_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
-Site_Ret_SH_tidy
-#
-##Pairwise comparisons - Sites deployed
-(Site_Ret_pair <- as.data.frame(SH_summ) %>% pairwise_t_test(Ret_MeanSH_mean ~ Site, p.adjust.method = "holm"))
-Site_Ret_tab <- dplyr::select(Site_Ret_pair, c("group1", "group2", "p", "p.adj")) %>%
-  mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
-  dplyr::select("Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)    #Move 'Comparison' to front and drop grp1 & grp2
-Site_Ret_letters <- biostat::make_cld(Site_Ret_tab) %>% dplyr::select(-c("spaced_cld")) %>% rename(Site = group, Letters = cld)
-(Site_Ret_comps <- merge(SH_summ %>% group_by(Site) %>% rstatix::get_summary_stats(Ret_MeanSH_mean , type = "mean_sd") %>% 
-                           dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), Site_Ret_letters, by = "Site"))
-#
-SH_summ %>% ungroup %>% dplyr::select(Site, Dep_MeanSH_mean, Ret_MeanSH_mean) %>% rename(Dep = "Dep_MeanSH_mean", Ret = Ret_MeanSH_mean) %>% gather(Type, SH, -Site) %>% 
-  ggplot(aes(Site, SH)) +
-  geom_jitter(alpha = 0.6, width = 0.25)+
-  geom_point(data = SH_summ %>% group_by(Site) %>% summarise(Dep = mean(Dep_MeanSH_mean, na.rm = T), Ret = mean(Ret_MeanSH_mean, na.rm = T)) %>% gather(Type, SH, -Site),
-             color = "red", size = 5)+
-  lemon::facet_rep_grid(.~Type)+
-  basetheme + axistheme
-#
-#
-#
-#
-#
-#
-#
-#
-####Comparison of pct mortality - minimal progress####
-#
-(Counts_cages <- Cage_counts %>% group_by(MonYr, Site) %>% 
-   summarise(MeanPctDead = mean(Pct_Dead, na.rm = T), MeanPctCounts = mean(Pct_DeadCounts, na.rm = T)) %>%
-   mutate(Year = as.factor(format(MonYr, "%Y")), Month = as.factor(format(MonYr, "%m")),
-          MeanPctDead_s = scale(MeanPctDead)))
-##Comparing within Site since different time frames for CRE/CRW and LX/SL
-library(zoib)
-SL_model <- zoib::zoib(MeanPctDead ~ Year + Month, data = Counts_cages %>% subset(Site == "SLC"), random = 1,
-                       zero.inflated = T, one.inflation  = T)
 #
 #
 #
