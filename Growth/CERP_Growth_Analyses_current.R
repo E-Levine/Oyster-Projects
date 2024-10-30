@@ -100,9 +100,19 @@ basetheme <- theme_bw()+
         panel.grid = element_blank(), panel.border = element_blank(), axis.line = element_line(color = "black"),
         axis.ticks.length = unit(-0.15, "cm"))
 #
+preztheme <- theme_bw()+
+  theme(axis.title.x = element_text(size = 16, face = "bold", color = "black"), axis.text.x = element_text(size = 13, margin = unit(c(0.5, 0.5, 0, 0.5), "cm")),
+        axis.title.y = element_text(size = 16, face = "bold", color = "black"), axis.text.y = element_text(size = 13, margin = unit(c(0, 0.5, 0, 0), "cm")),
+        panel.grid = element_blank(), panel.border = element_blank(), axis.line = element_line(color = "black"),
+        axis.ticks.length = unit(-0.15, "cm"))
+#
 axistheme <- theme(axis.ticks.length = unit(-0.15, "cm"), 
                    axis.text.x = element_text(color = "black", margin = unit(c(0.5, 0.5, 0, 0.5), "cm")), 
                    axis.text.y = element_text(color = "black", margin = unit(c(0, 0.5, 0, 0), "cm")))
+#
+facettheme <- theme(strip.text = element_text(size = 12, color = "black", face = "bold"))
+#
+#
 ##Colors to sites
 SiteColor <- c("#56B4E9", "#009E73", "#E69F00", "#CC79A7")
 names(SiteColor) <- levels(Locations$Site)
@@ -268,6 +278,17 @@ Annual_dep_comps %>%
   scale_y_continuous(expand = c(0,0), limits= c(0, 90), breaks = seq(0, 90, by = 30))+
   basetheme + axistheme
 #
+#Abstract
+Annual_dep_comps %>% 
+  ggplot(aes(Year, mean, group = 1))+
+  geom_point(size = 3)+
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25)+
+  geom_line()+
+  lemon::facet_rep_grid(Site~.)+
+  #geom_text(aes(y = upper+8, label = Letters)) +
+  scale_y_continuous("Mean shell height (mm)", expand = c(0,0), limits= c(0, 90), breaks = seq(0, 90, by = 30))+
+  preztheme + axistheme + facettheme
+#
 Annual_dep_tab %>% filter(Site == "SLC" & p.adjust < 0.05)
 #
 #
@@ -321,6 +342,17 @@ Annual_grow_comps %>%
   scale_y_continuous(expand = c(0,0), limits= c(-0.2, 0.6), breaks = seq(-0.2, 0.6, by = 0.2))+
   geom_hline(yintercept = 0, linetype = "dotted")+
   basetheme + axistheme
+#
+#Abstract
+Annual_grow_comps %>% 
+  ggplot(aes(Year, mean, group = 1))+
+  geom_point()+
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25)+
+  geom_line()+
+  lemon::facet_rep_grid(Site~.)+
+  scale_y_continuous("Mean growth rate (mm/day)", expand = c(0,0), limits= c(-0.2, 0.6), breaks = seq(-0.2, 0.6, by = 0.2))+
+  geom_hline(yintercept = 0, linetype = "dotted")+
+  preztheme + axistheme + facettheme
 #
 Annual_grow_tab %>% filter(Site == "SLC" & p.adjust < 0.06)
 #
@@ -383,12 +415,29 @@ Mort_mod_letters <- make_cld(Mort_mod_tab) %>% dplyr::select(-c("spaced_cld")) %
 #
 Counts_cages %>% group_by(Site) %>%
   ggplot(aes(Site, MortRate))+
-  geom_point()+
   geom_boxplot()+
+  geom_jitter(width = 0.15)+
   scale_y_continuous(expand = c(0,0), limits = c(0,1.25))+
   annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(1.15, 1.15, 1.15, 1.15), label = c("a", "b", "c", "d"), fontface = "bold")+
   ggtitle("Cage data  Feb 2005 - Sept 2024")+
   basetheme + axistheme
+#
+##Abstract
+ggarrange(
+  Counts_cages %>% group_by(Site) %>%
+    ggplot(aes(Site, DeadCountRate))+
+    geom_boxplot()+
+    geom_jitter(width = 0.15)+
+    scale_y_continuous("Mean mortality (dead count) rate", expand = c(0,0), limits = c(0,0.51))+
+    #ggtitle("Cage data  Feb 2005 - Sept 2024")+
+    preztheme + axistheme + facettheme,
+Counts_cages %>% group_by(Site) %>%
+  ggplot(aes(Site, MortRate))+
+  geom_boxplot()+
+  geom_jitter(width = 0.15)+
+  scale_y_continuous("Mean mortality (survivorship) rate", expand = c(0,0), limits = c(0,1.25))+
+  #ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  preztheme + axistheme + facettheme)
 #
 #
 #
