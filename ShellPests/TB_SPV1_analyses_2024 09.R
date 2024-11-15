@@ -12,7 +12,7 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
                rstatix, lme4, corrplot, vegan, lmPerm, DHARMa, #Summary stats, correlations
                zoo, lubridate, #Dates and times
                readxl, #Reading excel files
-               car, emmeans, multcomp, broom.mixed, ggeffects, #Basic analyses
+               car, emmeans, multcomp, multcompView, broom.mixed, ggeffects, #Basic analyses
                install = TRUE)
 #
 #
@@ -349,7 +349,13 @@ basetheme <- theme_bw()+
         axis.title.y = element_text(size = 12, face = "bold", color = "black"), axis.text.y = element_text(size = 11, margin = unit(c(0, 0.5, 0, 0), "cm")),
         panel.grid = element_blank(), panel.border = element_blank(), axis.line = element_line(color = "black"),
         axis.ticks.length = unit(-0.15, "cm"))
-
+#
+FacetTheme <- theme(strip.text.y = element_text(face = "bold", size = 12),
+                 strip.background = element_rect(fill = "#CCCCCC"),
+                 panel.spacing = unit(0.75, "lines"),
+                 strip.text.x = element_text(face = "bold", size = 12))
+#
+#
 #
 #
 #
@@ -588,6 +594,7 @@ Station_DO_p %>% filter(p.adjust < 0.05) %>% arrange(Comparison) %>% print(n = 5
 #
 #
 #
+#
 ###Q4: Oysters among stations - SH, TW, CI
 (Oyster_Stations <- TB_CI %>% ungroup() %>% 
     dplyr::select(Station, SH, TW, CI, CI_Hanley) %>% 
@@ -699,7 +706,7 @@ cor(t0$Pct.Polydora, t0$Pct.Cliona, method = "spearman") #Mildly correlated - 0.
     rename("Polydora" = Poly_Prev, "Cliona" = Cliona_Prev) %>% 
     gather("Type", "Prev", -Date, -Year, -Month, -Site, -Station, -New_Sample_Number))
 #
-#Compare models and selectbest
+#Compare models and select best
 set.seed(54321)
 Pest_model0 <- glmer(Prev ~ Type + (1|Station), family = "binomial", data = t1, control=glmerControl(optCtrl=list(maxfun=10000)))
 Pest_model1 <- glmer(Prev ~ Type + (1|New_Sample_Number), family = "binomial", data = t1, control=glmerControl(optCtrl=list(maxfun=10000)))
@@ -766,7 +773,7 @@ t2 <- TB_SP_df %>% subset(Measurement == "External" | Measurement == "Internal")
 t2 %>% ggplot(aes(Pct.Polydora, Pct.Cliona))+ geom_point()
 cor(t2$Pct.Polydora, t2$Pct.Cliona, method = "spearman") #Mildly correlated - 0.5336638
 #
-#Data frame of presence/absence for Polydora and Cliona for each sample for both External and Internal shell surfaces
+#Data frame of presence/absence for Polydora and Cliona for each sample for Cliona External and Internal shell surfaces
 (t3 <- t2 %>% ungroup() %>% dplyr::select(Date:New_Sample_Number, Measurement, Poly_Prev, Cliona_Prev) %>% 
     rename("Polydora" = Poly_Prev, "Cliona" = Cliona_Prev) %>% 
     gather("Type", "Prev", -Date, -Year, -Month, -Site, -Station, -New_Sample_Number, -Measurement))
@@ -839,7 +846,7 @@ t4 <- TB_SP_df %>% subset(Measurement == "Top" | Measurement == "Bot") %>%
 t4 %>% ggplot(aes(Pct.Polydora, Pct.Cliona))+ geom_point()
 cor(t4$Pct.Polydora, t4$Pct.Cliona, method = "spearman") #Mildly correlated - 0.4045071
 #
-#Data frame of presence/absence for Polydora and Cliona for each sample for both External and Internal shell surfaces
+#Data frame of presence/absence for Polydora and Cliona for each sample for Cliona External and Internal shell surfaces
 (t5 <- t4 %>% ungroup() %>% dplyr::select(Date:New_Sample_Number, Measurement, Poly_Prev, Cliona_Prev) %>% 
     rename("Polydora" = Poly_Prev, "Cliona" = Cliona_Prev) %>% 
     gather("Type", "Prev", -Date, -Year, -Month, -Site, -Station, -New_Sample_Number, -Measurement))
@@ -906,7 +913,7 @@ ggpredict(Pest_position, terms = c("Type", "Measurement")) |> plot(ci_style = "e
 ###Q8: Does Polydora and Cliona differ in parasite prevalence in TB Oysters among stations?
 #
 head(t1)
-#Compare models and selectbest
+#Compare models and select best
 set.seed(54321)
 Pest_stations0 <- glmer(Prev ~ Type + (1|Station), family = "binomial", data = t1, control=glmerControl(optCtrl=list(maxfun=10000)))
 Pest_stations1 <- glmer(Prev ~ Type + Station + (1|New_Sample_Number), family = "binomial", data = t1, control=glmerControl(optCtrl=list(maxfun=10000)))
@@ -970,20 +977,24 @@ ggpredict(Pest_stations_model, terms = c("Type", "Station"))
                           Poly_Prev == 1 & Cliona_Prev == 1 ~ "Both",
                           TRUE ~ "Neither"))) %>% 
    mutate(Type = fct_relevel(Type, "Polydora", "Cliona", "Both", "Neither")) %>%
-  dplyr::select(Date:New_Sample_Number, Type, CI_Hanley))
+  dplyr::select(Date:New_Sample_Number, Type, CI, CI_Hanley))
+#
+##We know CI is different among Station (see Q4) but we're just interested in the overall comparison. 
+#
 #Dependent = CI value 
 #Independent = Type
-ggboxplot(c1, x = "Type", y = "CI_Hanley", fill = "#999999")
+ggboxplot(c1, x = "Type", y = "CI_Hanley", fill = "Station")
+ggboxplot(c1, x = "Type", y = "CI", fill = "Station")
 #
-#Permutation ANOVA 
+#Permutation ANOVA - CI
 set.seed(4321)
-Type_CI <- aovp(CI_Hanley ~ Type, data = c1, perm = "", nperm = 10000)
+Type_CI <- aovp(CI ~ Type, data = c1, perm = "", nperm = 10000)
 summary(Type_CI) 
 #
-(Type_CI_p <- rstatix::pairwise_t_test(CI_Hanley ~ Type, data = c1, p.adjust.method = "holm") %>%
+(Type_CI_p <- rstatix::pairwise_t_test(CI ~ Type, data = c1, p.adjust.method = "holm") %>%
     dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
     dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
-(Type_CI_means <- merge(c1 %>% group_by(Type) %>% rstatix::get_summary_stats(CI_Hanley, show = c("n", "mean", "sd", "min", "max")) %>% 
+(Type_CI_means <- merge(c1 %>% group_by(Type) %>% rstatix::get_summary_stats(CI, show = c("n", "mean", "sd", "min", "max")) %>% 
                           transform(lower = mean-sd, upper = mean+sd),
                         biostat::make_cld(Type_CI_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Type = group, Letters = cld)))
 #Report results
@@ -992,6 +1003,34 @@ Type_CI_means
 Type_CI_p %>% arrange(Comparison)
 #
 Type_CI_means %>%
+  ggplot(aes(Type, mean, fill = Letters))+
+  geom_errorbar(aes(ymin = mean, ymax = upper), width = 0.5, position = position_dodge(0.9))+
+  geom_bar(position = "dodge", stat = "identity")+
+  geom_text(aes(y = upper+0.7, label = Letters), position = position_dodge(0.9))+
+  scale_fill_grey(start = 0.2, end = 0.7)+
+  scale_x_discrete("Type")+
+  scale_y_continuous("Average condition of oysters", expand = c(0,0), limits = c(0,8)) + basetheme + 
+  theme(legend.position = "none")
+#
+#
+#
+#Permutation ANOVA - CI_Hanley
+set.seed(4321)
+Type_CI_H <- aovp(CI_Hanley ~ Type, data = c1, perm = "", nperm = 10000)
+summary(Type_CI_H) 
+#
+(Type_CI_H_p <- rstatix::pairwise_t_test(CI_Hanley ~ Type, data = c1, p.adjust.method = "holm") %>%
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
+(Type_CI_H_means <- merge(c1 %>% group_by(Type) %>% rstatix::get_summary_stats(CI_Hanley, show = c("n", "mean", "sd", "min", "max")) %>% 
+                          transform(lower = mean-sd, upper = mean+sd),
+                        biostat::make_cld(Type_CI_H_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Type = group, Letters = cld)))
+#Report results
+summary(Type_CI_H)
+Type_CI_H_means
+Type_CI_H_p %>% arrange(Comparison)
+#
+Type_CI_H_means %>%
   ggplot(aes(Type, mean, fill = Letters))+
   geom_errorbar(aes(ymin = mean, ymax = upper), width = 0.5, position = position_dodge(0.9))+
   geom_bar(position = "dodge", stat = "identity")+
@@ -1008,14 +1047,24 @@ Type_CI_means %>%
 #
 #
 #
-#
 ##Q10: What is the relationship between Polydora and Cliona proportion affected, and between percentage affected? (Wilcoxon rank sum test)
 #
-head(t1)
+(c2 <- Combined_df %>% ungroup() %>% filter(Measurement == "All") %>% 
+  mutate(Type = as.factor(case_when(Poly_Prev == 0 & Cliona_Prev == 1 ~ "Cliona",
+                                    Poly_Prev == 1 & Cliona_Prev == 0 ~ "Polydora",
+                                    Poly_Prev == 1 & Cliona_Prev == 1 ~ "Both",
+                                    TRUE ~ "Neither"))) %>% 
+  mutate(Type = fct_relevel(Type, "Polydora", "Cliona", "Both", "Neither")) %>%
+  dplyr::select(Year:Station, Type))
+#
+
 #Select and reformat data
-(Trends <- t1 %>% ungroup() %>% dplyr::select(Type, Prop))
+(Trends <- left_join(c2 %>% ungroup() %>% group_by(Year, Month, Site, Station, Type) %>% 
+                       summarise(Count = n()), 
+                     c2 %>% ungroup() %>% group_by(Year, Month, Site, Station) %>% summarise(Total = n())) %>% 
+    mutate(Prop = Count/Total))
 #Summarize
-Trends %>% group_by(Type) %>% get_summary_stats(Prop, type = "five_number")
+Trends %>% group_by(Type) %>% get_summary_stats(Prop, type = c("full")) %>% dplyr::select(-iqr, -mad, -ci)
 #Visualize data
 Trends %>% 
   ggplot(aes(Type, Prop))+
@@ -1027,8 +1076,9 @@ Trends %>%
 #Wilcoxon test and significance
 (Trend_WC <- left_join(Trends %>% ungroup() %>% dplyr::select(Type, Prop) %>%
   wilcox_test(Prop ~ Type, p.adjust.method = "holm") %>% add_significance(),
-  Trends %>% wilcox_effsize(Prop ~ Type)) %>%
+  Trends %>% ungroup() %>% dplyr::select(Type, Prop) %>% wilcox_effsize(Prop ~ Type)) %>%
     dplyr::select(-.y., -p) %>% rename("effect_size" = effsize))
+#
 #
 (Pct_trends <- TB_SP_df %>% subset(Measurement == "All") %>%
   mutate(Type = as.factor(case_when(Pct.Polydora == 0 & Pct.Cliona > 0 ~ "Cliona",
@@ -1040,7 +1090,7 @@ Trends %>%
                                     Type == "Cliona" ~ Pct.Cliona,
                                     Type == "Both" ~ Pct_Affected,
                                     TRUE ~ NA))) %>% ungroup() %>% dplyr::select(Type, Pct))
-Pct_trends %>% group_by(Type) %>% get_summary_stats(Pct, type = "five_number")
+Pct_trends %>% group_by(Type) %>% get_summary_stats(Pct, type = c("full")) %>% dplyr::select(-iqr, -mad, -ci)
 #
 #Visualize data
 Pct_trends %>% 
@@ -1068,7 +1118,7 @@ Pct_trends %>%
   mutate(Type = fct_relevel(Type, "Polydora", "Cliona", "Both"),
          Pct = as.numeric(case_when(Type == "Polydora" ~ Pct.Polydora,
                                     Type == "Cliona" ~ Pct.Cliona,
-                                    Type == "Both" ~ Pct_Affected,
+                                    Type == "Cliona" ~ Pct_Affected,
                                     TRUE ~ NA)))%>% ungroup() %>% dplyr::select(-Sample.Number, -Measurement),
 TB_CI %>% dplyr::select(Date:TW, CI, CI_Hanley, New_Sample_Number:Station_Name)) %>%
     drop_na(Type))
@@ -1096,14 +1146,325 @@ ggplot()+
 #
 #
 #
-####Finish Q9 and Q10 with stations.
 #
 #
 #
 #
 #
-##Has the amount of Polydora or Cliona at each station changed over time? (glm)
-##Which WQ parameters best explain the trend observed in Polydora or Cliona? (glm)
+##Q11:Has the amount of Polydora or Cliona at each station changed over time? (glm)
+#
+head(Trends)
+Trends2 <- Trends %>% ungroup() %>% complete(Year, Type, Month, Station, fill = list(Site = "TB", Count = 0, Total = 5, Prop = 0)) %>%
+  mutate(Prop = case_when(Year == "2020" & Month == "04" ~ NA, Year == "2020" & Month == "05" ~ NA, TRUE ~ Prop)) 
+#Comparing within each station, nested by pest Type (to compare within each pest type)
+#
+###Polydora
+set.seed(4321)
+Poly_mod <- aovp(Prop ~ Year * Station, data = ungroup(Trends2 %>% filter(Type == "Polydora")), perm = "", nperm = 10000)
+summary(Poly_mod)
+tidy(Poly_mod)
+#
+(Poly_p <- rbind(TukeyHSD(Poly_mod, Year = "Tukey")$'Year' %>% as.data.frame(), TukeyHSD(Poly_mod, Year = "Tukey")$'Station' %>% as.data.frame()) %>% 
+  rownames_to_column("Comp") %>% rename(lower = lwr, upper = upr, p.adjust = 'p adj'))
+(Poly_means <- left_join(rbind(Trends2 %>% filter(Type == "Polydora") %>% group_by(Year) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% rename(Level = Year),
+Trends2 %>% filter(Type == "Polydora") %>% group_by(Station) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% rename(Level = Station)),
+rbind((multcompLetters4(Poly_mod, TukeyHSD(Poly_mod, Year = "Tukey"))$`Year` %>% as.data.frame.list())  %>% dplyr::select(Letters), 
+      (multcompLetters4(Poly_mod, TukeyHSD(Poly_mod, Station = "Tukey"))$`Station` %>% as.data.frame.list()) %>% dplyr::select(Letters)) %>% 
+  rownames_to_column("Level")))
+#
+(Poly_int_p <- TukeyHSD(Poly_mod, Year = "Tukey")$'Year:Station' %>% as.data.frame() %>% rownames_to_column("Comp") %>% 
+    rename(lower = lwr, upper = upr, p.adjust = 'p adj'))
+(Poly_int_means <- merge(Trends2 %>% filter(Type == "Polydora") %>% group_by(Year, Station) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% 
+                       mutate(Comp = paste(Year, Station, sep  = ":")),
+                     (multcompLetters4(Poly_mod, TukeyHSD(Poly_mod, Year = "Tukey"))$`Year:Station` %>% as.data.frame.list()) %>% 
+                       dplyr::select(Letters) %>% rownames_to_column("Comp")))
+#
+Poly_p %>% filter(p.adjust < 0.05) %>% arrange(Comp)
+Poly_int_p %>% filter(p.adjust < 0.05) %>% arrange(Comp)
+#
+Poly_int_means %>%
+  ggplot(aes(Year, mean, color = Station))+
+  geom_point(size = 3)+ geom_line(aes(group = Station), linewidth = 1)+
+  scale_fill_grey(start = 0.2, end = 0.7)+
+  basetheme+ 
+  scale_y_continuous("Average proportion", expand = c(0,0), limits = c(0, 0.5))
+#
+#
+###Cliona
+set.seed(4321)
+Clio_mod <- aovp(Prop ~ Year * Station, data = ungroup(Trends2 %>% filter(Type == "Cliona")), perm = "", nperm = 10000)
+summary(Clio_mod)
+tidy(Clio_mod)
+#
+(Clio_p <- rbind(TukeyHSD(Clio_mod, Year = "Tukey")$'Year' %>% as.data.frame(), TukeyHSD(Clio_mod, Year = "Tukey")$'Station' %>% as.data.frame()) %>% 
+    rownames_to_column("Comp") %>% rename(lower = lwr, upper = upr, p.adjust = 'p adj'))
+(Clio_means <- left_join(rbind(Trends2 %>% filter(Type == "Cliona") %>% group_by(Year) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% rename(Level = Year),
+                               Trends2 %>% filter(Type == "Cliona") %>% group_by(Station) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% rename(Level = Station)),
+                         rbind((multcompLetters4(Clio_mod, TukeyHSD(Clio_mod, Year = "Tukey"))$`Year` %>% as.data.frame.list())  %>% dplyr::select(Letters), 
+                               (multcompLetters4(Clio_mod, TukeyHSD(Clio_mod, Station = "Tukey"))$`Station` %>% as.data.frame.list()) %>% dplyr::select(Letters)) %>% 
+                           rownames_to_column("Level")))
+#
+(Clio_int_p <- TukeyHSD(Clio_mod, Year = "Tukey")$'Year:Station' %>% as.data.frame() %>% rownames_to_column("Comp") %>% 
+    rename(lower = lwr, upper = upr, p.adjust = 'p adj'))
+(Clio_int_means <- merge(Trends2 %>% filter(Type == "Cliona") %>% group_by(Year, Station) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% 
+                           mutate(Comp = paste(Year, Station, sep  = ":")),
+                         (multcompLetters4(Clio_mod, TukeyHSD(Clio_mod, Year = "Tukey"))$`Year:Station` %>% as.data.frame.list()) %>% 
+                           dplyr::select(Letters) %>% rownames_to_column("Comp")))
+#
+Clio_p %>% filter(p.adjust < 0.05) %>% arrange(Comp)
+Clio_int_p %>% filter(p.adjust < 0.05) %>% arrange(Comp)
+#
+Clio_int_means %>%
+  ggplot(aes(Year, mean, color = Station))+
+  geom_point(size = 3)+ geom_line(aes(group = Station), linewidth = 1)+
+  scale_fill_grey(start = 0.2, end = 0.7)+
+  basetheme+ 
+  scale_y_continuous("Average proportion", expand = c(0,0), limits = c(0, 0.5))
+#
+#
+###Both
+set.seed(4321)
+Both_mod <- aovp(Prop ~ Year * Station, data = ungroup(Trends2 %>% filter(Type == "Both")), perm = "", nperm = 10000)
+summary(Both_mod)
+tidy(Both_mod)
+#
+(Both_p <- rbind(TukeyHSD(Both_mod, Year = "Tukey")$'Year' %>% as.data.frame(), TukeyHSD(Both_mod, Year = "Tukey")$'Station' %>% as.data.frame()) %>% 
+    rownames_to_column("Comp") %>% rename(lower = lwr, upper = upr, p.adjust = 'p adj'))
+(Both_means <- left_join(rbind(Trends2 %>% filter(Type == "Both") %>% group_by(Year) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% rename(Level = Year),
+                               Trends2 %>% filter(Type == "Both") %>% group_by(Station) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% rename(Level = Station)),
+                         rbind((multcompLetters4(Both_mod, TukeyHSD(Both_mod, Year = "Tukey"))$`Year` %>% as.data.frame.list())  %>% dplyr::select(Letters), 
+                               (multcompLetters4(Both_mod, TukeyHSD(Both_mod, Station = "Tukey"))$`Station` %>% as.data.frame.list()) %>% dplyr::select(Letters)) %>% 
+                           rownames_to_column("Level")))
+#
+(Both_int_p <- TukeyHSD(Both_mod, Year = "Tukey")$'Year:Station' %>% as.data.frame() %>% rownames_to_column("Comp") %>% 
+    rename(lower = lwr, upper = upr, p.adjust = 'p adj'))
+(Both_int_means <- merge(Trends2 %>% filter(Type == "Both") %>% group_by(Year, Station) %>% rstatix::get_summary_stats(Prop, show = c("n", "mean", "sd", "min", "max")) %>% 
+                           mutate(Comp = paste(Year, Station, sep  = ":")),
+                         (multcompLetters4(Both_mod, TukeyHSD(Both_mod, Year = "Tukey"))$`Year:Station` %>% as.data.frame.list()) %>% 
+                           dplyr::select(Letters) %>% rownames_to_column("Comp")))
+#
+Both_p %>% filter(p.adjust < 0.05) %>% arrange(Comp)
+Both_int_p %>% filter(p.adjust < 0.05) %>% arrange(Comp)
+#
+Both_int_means %>%
+  ggplot(aes(Year, mean, color = Station))+
+  geom_point(size = 3)+ geom_line(aes(group = Station), linewidth = 1)+
+  scale_fill_grey(start = 0.2, end = 0.7)+
+  basetheme+ 
+  scale_y_continuous("Average proportion", expand = c(0,0), limits = c(0, 1))
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+##Q11: #Which WQ parameters best explain the trend observed in Polydora or Cliona? (glm)
+#Remove station since it's a confounding factor - want to look at each WQ param on its own
+(Trends_WQ <- full_join(Trends2 %>% dplyr::select(-Site, -Count), 
+                        ungroup(TB_WQ_df) %>% dplyr::select(Year, Month, Station, DO_mgl, Salinity, Temperature, Turbidity, pH)))
+#
+##Polydora
+#
+#initial MLR
+(Poly_df <- Trends_WQ[complete.cases(Trends_WQ),] %>% filter(Type == "Polydora") %>% dplyr::select(-Type, -Station)) 
+Poly_df %>% ggplot(aes(x = Prop))+ geom_histogram(aes(y = ..count..)) #skewed/proportional needs transformation
+#
+set.seed(4321)
+fullPoly <- glm(Prop ~ Year + DO_mgl + Salinity + Temperature + Turbidity + pH, data = Poly_df, family = quasibinomial)
+summary(fullPoly)
+fullPoly_tab <- tidy(fullPoly)
+names(fullPoly_tab) <- c("term", "Est.", "SE", "t", "p-value")
+fullPoly_tab
+#
+summary(fullPoly)
+(Polystep <- drop1(fullPoly, test = "F"))
+#
+#Updated model
+fullPoly2 <- update(fullPoly, .~. -DO_mgl -Turbidity -Temperature -Salinity, data = Poly_df)
+#
+###Reporting final model
+fullPoly2
+fullPoly2_sum <- summary(fullPoly2)
+#MLR table with test values
+fullPoly2_tab <- tidy(fullPoly2)
+names(fullPoly2_tab) <- c("term", "Est.", "SE", "t", "p-value")
+fullPoly2_sum_tab <- glance(fullPoly2) 
+names(fullPoly2_sum_tab) <- c("Null_Dev", "df_null", "LL", "AIC", "BIC", "Deviance", "df_redis", "n")
+fullPoly2_tab
+#
+predicted_Poly <- data.frame(predW = predict(fullPoly2, Poly_df, type = "response", se.fit = TRUE), Year = Poly_df$Year)
+(modelPolyWQ <- predicted_Poly %>% dplyr::select(Year, predW.fit, everything()) %>% dplyr::select(-predW.residual.scale) %>%
+    group_by(Year) %>% dplyr::summarise(predW = mean(predW.fit, na.rm = T), se = mean(predW.se.fit)))
+#
+ggarrange(Poly_df %>% group_by(Year) %>% summarise(AveProp = mean(Prop, na.rm = T)) %>%
+            ggplot()+
+            geom_point(aes(Year, AveProp, color = "Mean"))+
+            geom_line(data = modelPolyWQ, aes(Year, predW, color = "Predict", group = 1))+
+            geom_line(data = modelPolyWQ, aes(Year, predW-se, color = "95% CI", group = 1), linetype = "dashed")+
+            geom_line(data = modelPolyWQ, aes(Year, predW+se, color = "95% CI", group = 1), linetype = "dashed")+
+            basetheme + theme(legend.position = c(0.899, 0.91))+ 
+            ylab("Average proportion affected")+ 
+            scale_x_discrete(expand = c(0,0.1)) + 
+            scale_y_continuous(expand = c(0,0), limits = c(0,0.4)) +
+            geom_hline(yintercept = 0, linetype = "dotted")+
+            scale_color_manual(name = "",
+                               breaks = c("Mean", "Predict", "95% CI"),
+                               values = c("#000000", "#FF0000", "#999999"),
+                               labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
+                               guide = guide_legend(override.aes = list(
+                                 linetype = c("blank", "solid", "dashed"),
+                                 shape = c(19, NA, NA)))),
+          Poly_df %>% group_by(Year) %>% summarise(AvepH = mean(pH, na.rm = T)) %>%
+            ggplot()+
+            geom_point(aes(Year, AvepH), color = "darkblue")+
+            geom_line(aes(Year, AvepH, group = 1))+
+            scale_y_continuous("Mean annual pH", expand = c(0,0), limits = c(7, 9))+
+            basetheme,
+          nrow = 1, ncol = 2)
+#
+#
+#
+#
+##Cliona
+#
+#initial MLR
+(Clio_df <- Trends_WQ[complete.cases(Trends_WQ),] %>% filter(Type == "Cliona") %>% dplyr::select(-Type, -Station)) 
+Clio_df %>% ggplot(aes(x = Prop))+ geom_histogram(aes(y = ..count..)) #skewed/proportional needs transformation
+#
+set.seed(4321)
+fullClio <- glm(Prop ~ Year + DO_mgl + Salinity + Temperature + Turbidity + pH, data = Clio_df, family = quasibinomial)
+summary(fullClio)
+fullClio_tab <- tidy(fullClio)
+names(fullClio_tab) <- c("term", "Est.", "SE", "t", "p-value")
+fullClio_tab
+#
+summary(fullClio)
+(Cliostep <- drop1(fullClio, test = "F"))
+#
+#Updated model
+fullClio2 <- update(fullClio, .~. -DO_mgl, data = Clio_df)
+#
+###Reporting final model
+fullClio2
+fullClio2_sum <- summary(fullClio2)
+#MLR table with test values
+fullClio2_tab <- tidy(fullClio2)
+names(fullClio2_tab) <- c("term", "Est.", "SE", "t", "p-value")
+fullClio2_sum_tab <- glance(fullClio2) 
+names(fullClio2_sum_tab) <- c("Null_Dev", "df_null", "LL", "AIC", "BIC", "Deviance", "df_redis", "n")
+fullClio2_tab
+#
+predicted_Clio <- data.frame(predW = predict(fullClio2, Clio_df, type = "response", se.fit = TRUE), Year = Clio_df$Year)
+(modelClioWQ <- predicted_Clio %>% dplyr::select(Year, predW.fit, everything()) %>% dplyr::select(-predW.residual.scale) %>%
+    group_by(Year) %>% dplyr::summarise(predW = mean(predW.fit, na.rm = T), se = mean(predW.se.fit)))
+#
+ggarrange(Clio_df %>% group_by(Year) %>% summarise(AveProp = mean(Prop, na.rm = T)) %>%
+            ggplot()+
+            geom_point(aes(Year, AveProp, color = "Mean"))+
+            geom_line(data = modelClioWQ, aes(Year, predW, color = "Predict", group = 1))+
+            geom_line(data = modelClioWQ, aes(Year, predW-se, color = "95% CI", group = 1), linetype = "dashed")+
+            geom_line(data = modelClioWQ, aes(Year, predW+se, color = "95% CI", group = 1), linetype = "dashed")+
+            basetheme + theme(legend.position = c(0.899, 0.91))+ 
+            ylab("Average proportion affected")+ 
+            scale_x_discrete(expand = c(0,0.1)) + 
+            scale_y_continuous(expand = c(0,0), limits = c(0,0.4)) +
+            geom_hline(yintercept = 0, linetype = "dotted")+
+            scale_color_manual(name = "",
+                               breaks = c("Mean", "Predict", "95% CI"),
+                               values = c("#000000", "#FF0000", "#999999"),
+                               labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
+                               guide = guide_legend(override.aes = list(
+                                 linetype = c("blank", "solid", "dashed"),
+                                 shape = c(19, NA, NA)))),
+          Clio_df %>% group_by(Year) %>% summarise(AveSal = mean(Salinity, na.rm = T)) %>%
+            ggplot()+
+            geom_point(aes(Year, AveSal), color = "darkblue")+
+            geom_line(aes(Year, AveSal, group = 1))+
+            scale_y_continuous("Mean annual salinity", expand = c(0,0), limits = c(20, 35))+
+            basetheme,
+          Clio_df %>% group_by(Year) %>% summarise(AveTemp = mean(Temperature, na.rm = T)) %>%
+            ggplot()+
+            geom_point(aes(Year, AveTemp), color = "darkblue")+
+            geom_line(aes(Year, AveTemp, group = 1))+
+            scale_y_continuous("Mean annual temperaure", expand = c(0,0), limits = c(20, 30))+
+            basetheme,
+          Clio_df %>% group_by(Year) %>% summarise(AvepH = mean(pH, na.rm = T)) %>%
+            ggplot()+
+            geom_point(aes(Year, AvepH), color = "darkblue")+
+            geom_line(aes(Year, AvepH, group = 1))+
+            scale_y_continuous("Mean annual pH", expand = c(0,0), limits = c(7, 9))+
+            basetheme,
+          nrow = 2, ncol = 2)
+#
+#
+#
+#
+##Both
+#initial MLR
+(Both_df <- Trends_WQ[complete.cases(Trends_WQ),] %>% filter(Type == "Both") %>% dplyr::select(-Type, -Station)) 
+Both_df %>% ggplot(aes(x = Prop))+ geom_histogram(aes(y = ..count..)) #skewed/proportional needs transformation
+#
+set.seed(4321)
+fullBoth <- glm(Prop ~ Year + DO_mgl + Salinity + Temperature + Turbidity + pH, data = Both_df, family = quasibinomial)
+summary(fullBoth)
+fullBoth_tab <- tidy(fullBoth)
+names(fullBoth_tab) <- c("term", "Est.", "SE", "t", "p-value")
+fullBoth_tab
+#
+summary(fullBoth)
+(Bothstep <- drop1(fullBoth, test = "F"))
+#
+#Updated model
+fullBoth2 <- update(fullBoth, .~. -DO_mgl -Temperature -pH, data = Both_df)
+#
+###Reporting final model
+fullBoth2
+fullBoth2_sum <- summary(fullBoth2)
+#MLR table with test values
+fullBoth2_tab <- tidy(fullBoth2)
+names(fullBoth2_tab) <- c("term", "Est.", "SE", "t", "p-value")
+fullBoth2_sum_tab <- glance(fullBoth2) 
+names(fullBoth2_sum_tab) <- c("Null_Dev", "df_null", "LL", "AIC", "BIC", "Deviance", "df_redis", "n")
+fullBoth2_tab
+#
+predicted_Both <- data.frame(predW = predict(fullBoth2, Both_df, type = "response", se.fit = TRUE), Year = Both_df$Year)
+(modelBothWQ <- predicted_Both %>% dplyr::select(Year, predW.fit, everything()) %>% dplyr::select(-predW.residual.scale) %>%
+    group_by(Year) %>% dplyr::summarise(predW = mean(predW.fit, na.rm = T), se = mean(predW.se.fit)))
+#
+ggarrange(Both_df %>% group_by(Year) %>% summarise(AveProp = mean(Prop, na.rm = T)) %>%
+    ggplot()+
+      geom_point(aes(Year, AveProp, color = "Mean"))+
+      geom_line(data = modelBothWQ, aes(Year, predW, color = "Predict", group = 1))+
+      geom_line(data = modelBothWQ, aes(Year, predW-se, color = "95% CI", group = 1), linetype = "dashed")+
+      geom_line(data = modelBothWQ, aes(Year, predW+se, color = "95% CI", group = 1), linetype = "dashed")+
+      basetheme + theme(legend.position = c(0.899, 0.91))+ 
+      ylab("Average proportion affected")+ 
+      scale_x_discrete(expand = c(0,0.1)) + 
+      scale_y_continuous(expand = c(0,0), limits = c(0,0.8)) +
+      geom_hline(yintercept = 0, linetype = "dotted")+
+      scale_color_manual(name = "",
+                         breaks = c("Mean", "Predict", "95% CI"),
+                         values = c("#000000", "#FF0000", "#999999"),
+                         labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
+                         guide = guide_legend(override.aes = list(
+                           linetype = c("blank", "solid", "dashed"),
+                           shape = c(19, NA, NA)))),
+    Both_df %>% group_by(Year) %>% summarise(AveSal = mean(Salinity, na.rm = T)) %>%
+      ggplot()+
+      geom_point(aes(Year, AveSal), color = "darkblue")+
+      geom_line(aes(Year, AveSal, group = 1))+
+      scale_y_continuous("Mean annual salinity", expand = c(0,0), limits = c(20, 35))+
+      basetheme,
+    nrow = 1, ncol = 2)
+#
+#
+#
+#
+#
 #####Additional comparisons####
 #
 #Comparison of minimum and maximum WQ parameters among years.
