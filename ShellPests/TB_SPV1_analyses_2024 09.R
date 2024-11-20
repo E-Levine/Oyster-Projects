@@ -107,7 +107,11 @@ head(Portal_WQ)
 #
 #Combine portal data with our data
 TB_WQ_df <- rbind(TB_WQ %>% dplyr::select(-Time, -Depth, -Station_Name, -Type, -Month_Abb, -Secchi, -TProbe, -THach, -Quali) %>% #Remove unneeded columns from our data
-                    pivot_longer(cols = -c(Year, Month, Season, Date, Site, Station), names_to = "Parameter", values_to = "Mean_Result"), #Reorganize into 2 columns to join by
+                    pivot_longer(cols = -c(Year, Month, Season, Date, Site, Station), names_to = "Parameter", values_to = "Mean_Result") %>%
+                    mutate(Season = as.factor(case_when(Month == '01' | Month == '02' | Month == '03' ~ "Spring",
+                                                         Month == '04' | Month == '05' | Month == '06' ~ "Summer",
+                                                         Month == '07' | Month == '08' | Month == '09' ~ "Fall", 
+                                                         TRUE ~ "Winter"))), #Reorganize into 2 columns to join by
                   Portal_WQ %>% rename(Site = Estuary, Date = SampleDate)) %>% #Rename Portal columns to join data
   group_by(Year, Month, Season, Date, Site, Station, Parameter) %>% summarise(Mean_Result = mean(Mean_Result, na.rm = T)) %>% #Determine mean daily value for all parameters and data
   pivot_wider(names_from = Parameter, values_from = Mean_Result) #Spread parameters into columns
@@ -1264,8 +1268,14 @@ Both_int_means %>%
 #
 ##Q11: #Which WQ parameters best explain the trend observed in Polydora or Cliona? (glm)
 #Remove station since it's a confounding factor - want to look at each WQ param on its own
+#Grouping months by season according to clustering analyses of 2002-2023 data.
 (Trends_WQ <- full_join(Trends2 %>% dplyr::select(-Site, -Count), 
-                        ungroup(TB_WQ_df) %>% dplyr::select(Year, Month, Station, DO_mgl, Salinity, Temperature, Turbidity, pH)))
+                        ungroup(TB_WQ_df) %>% dplyr::select(Year, Month, Station, DO_mgl, Salinity, Temperature, Turbidity, pH)) %>%
+    mutate(Season = as.factor(case_when(Month == '01' | Month == '02' | Month == '03' ~ 1,
+                                        Month == '08' | Month == '09' ~ 3,
+                                        Month == '10' | Month == '11' | Month == '12' ~ 4, 
+                                        TRUE ~ 2))))
+           #Prop_t = sqrt(Prop)*sqrt(2/pi))) #arcsin-square root transform Props to (0,1) exlcusive
 #
 ##Polydora
 #
@@ -1274,7 +1284,7 @@ Both_int_means %>%
 Poly_df %>% ggplot(aes(x = Prop))+ geom_histogram(aes(y = ..count..)) #skewed/proportional needs transformation
 #
 set.seed(4321)
-fullPoly <- glm(Prop ~ Year + DO_mgl + Salinity + Temperature + Turbidity + pH, data = Poly_df, family = quasibinomial)
+fullPoly <- glm(Prop ~ Year + Season + DO_mgl + Salinity + Temperature + Turbidity + pH, data = Poly_df, family = quasibinomial)
 summary(fullPoly)
 fullPoly_tab <- tidy(fullPoly)
 names(fullPoly_tab) <- c("term", "Est.", "SE", "t", "p-value")
@@ -1284,7 +1294,7 @@ summary(fullPoly)
 (Polystep <- drop1(fullPoly, test = "F"))
 #
 #Updated model
-fullPoly2 <- update(fullPoly, .~. -DO_mgl -Turbidity -Temperature -Salinity, data = Poly_df)
+fullPoly2 <- update(fullPoly, .~. -DO_mgl -Turbidity -Temperature -Salinity -Season, data = Poly_df)
 #
 ###Reporting final model
 fullPoly2
@@ -1295,36 +1305,41 @@ names(fullPoly2_tab) <- c("term", "Est.", "SE", "t", "p-value")
 fullPoly2_sum_tab <- glance(fullPoly2) 
 names(fullPoly2_sum_tab) <- c("Null_Dev", "df_null", "LL", "AIC", "BIC", "Deviance", "df_redis", "n")
 fullPoly2_tab
+#McFadden's R2:1-deviance/null.deviance)
+summary(fullPoly2)
+1-(106.33/114.60) #0.07216405
 #
-predicted_Poly <- data.frame(predW = predict(fullPoly2, Poly_df, type = "response", se.fit = TRUE), Year = Poly_df$Year)
-(modelPolyWQ <- predicted_Poly %>% dplyr::select(Year, predW.fit, everything()) %>% dplyr::select(-predW.residual.scale) %>%
-    group_by(Year) %>% dplyr::summarise(predW = mean(predW.fit, na.rm = T), se = mean(predW.se.fit)))
+predicted_Poly <- data.frame(predW = predict(fullPoly2, Poly_df, type = "response", se.fit = TRUE), Year = Poly_df$Year, Season = Poly_df$Season) %>%
+  mutate(predW_bt = predW.fit*(pi/2), predW_sefit_bt = predW.se.fit*(pi/2)) %>% unique(.)
+(modelPolyWQ <- predicted_Poly %>% dplyr::select(Year, Season, predW.fit, everything()) %>% dplyr::select(-predW.residual.scale) %>%
+    group_by(Year) %>% dplyr::summarise(predW = mean(predW.fit, na.rm = T), se = mean(predW.se.fit), 
+                                        predW_bt = mean(predW_bt), se_bt = mean(predW_sefit_bt)))
 #
-ggarrange(Poly_df %>% group_by(Year) %>% summarise(AveProp = mean(Prop, na.rm = T)) %>%
-            ggplot()+
-            geom_point(aes(Year, AveProp, color = "Mean"))+
-            geom_line(data = modelPolyWQ, aes(Year, predW, color = "Predict", group = 1))+
-            geom_line(data = modelPolyWQ, aes(Year, predW-se, color = "95% CI", group = 1), linetype = "dashed")+
-            geom_line(data = modelPolyWQ, aes(Year, predW+se, color = "95% CI", group = 1), linetype = "dashed")+
-            basetheme + theme(legend.position = c(0.899, 0.91))+ 
-            ylab("Average proportion affected")+ 
-            scale_x_discrete(expand = c(0,0.1)) + 
-            scale_y_continuous(expand = c(0,0), limits = c(0,0.4)) +
-            geom_hline(yintercept = 0, linetype = "dotted")+
-            scale_color_manual(name = "",
-                               breaks = c("Mean", "Predict", "95% CI"),
-                               values = c("#000000", "#FF0000", "#999999"),
-                               labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
-                               guide = guide_legend(override.aes = list(
-                                 linetype = c("blank", "solid", "dashed"),
-                                 shape = c(19, NA, NA)))),
-          Poly_df %>% group_by(Year) %>% summarise(AvepH = mean(pH, na.rm = T)) %>%
-            ggplot()+
-            geom_point(aes(Year, AvepH), color = "darkblue")+
-            geom_line(aes(Year, AvepH, group = 1))+
-            scale_y_continuous("Mean annual pH", expand = c(0,0), limits = c(7, 9))+
-            basetheme,
-          nrow = 1, ncol = 2)
+Poly_df %>% group_by(Year) %>% summarise(AveProp = mean(Prop, na.rm = T)) %>%
+  ggplot()+
+  geom_point(aes(Year, AveProp, color = "Mean"))+
+  geom_line(data = modelPolyWQ, aes(Year, predW, color = "Predict", group = 1))+
+  geom_line(data = modelPolyWQ, aes(Year, predW-se, color = "95% CI", group = 1), linetype = "dashed")+
+  geom_line(data = modelPolyWQ, aes(Year, predW+se, color = "95% CI", group = 1), linetype = "dashed")+
+  basetheme + theme(legend.position = c(0.899, 0.91))+ 
+  ylab("Average proportion affected")+ 
+  scale_x_discrete(expand = c(0.02,0.1)) + 
+  scale_y_continuous(expand = c(0,0), limits = c(0,0.4)) +
+  geom_hline(yintercept = 0, linetype = "dotted")+
+  scale_color_manual(name = "",
+                     breaks = c("Mean", "Predict", "95% CI"),
+                     values = c("#000000", "#FF0000", "#999999"),
+                     labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
+                     guide = guide_legend(override.aes = list(
+                       linetype = c("blank", "solid", "dashed"),
+                       shape = c(19, NA, NA))))
+#
+Poly_df %>% group_by(Year) %>% summarise(AvepH = mean(pH, na.rm = T)) %>%
+  ggplot()+
+  geom_point(aes(Year, AvepH), color = "darkblue")+
+  geom_line(aes(Year, AvepH, group = 1))+
+  scale_y_continuous("Mean annual pH", expand = c(0,0), limits = c(7, 9))+
+  basetheme
 #
 #
 #
@@ -1336,7 +1351,7 @@ ggarrange(Poly_df %>% group_by(Year) %>% summarise(AveProp = mean(Prop, na.rm = 
 Clio_df %>% ggplot(aes(x = Prop))+ geom_histogram(aes(y = ..count..)) #skewed/proportional needs transformation
 #
 set.seed(4321)
-fullClio <- glm(Prop ~ Year + DO_mgl + Salinity + Temperature + Turbidity + pH, data = Clio_df, family = quasibinomial)
+fullClio <- glm(Prop ~ Year + Season + DO_mgl + Salinity + Temperature + Turbidity + pH, data = Clio_df, family = quasibinomial)
 summary(fullClio)
 fullClio_tab <- tidy(fullClio)
 names(fullClio_tab) <- c("term", "Est.", "SE", "t", "p-value")
@@ -1346,7 +1361,7 @@ summary(fullClio)
 (Cliostep <- drop1(fullClio, test = "F"))
 #
 #Updated model
-fullClio2 <- update(fullClio, .~. -DO_mgl, data = Clio_df)
+fullClio2 <- update(fullClio, .~. -Season -DO_mgl -Turbidity - Temperature, data = Clio_df)
 #
 ###Reporting final model
 fullClio2
@@ -1357,30 +1372,34 @@ names(fullClio2_tab) <- c("term", "Est.", "SE", "t", "p-value")
 fullClio2_sum_tab <- glance(fullClio2) 
 names(fullClio2_sum_tab) <- c("Null_Dev", "df_null", "LL", "AIC", "BIC", "Deviance", "df_redis", "n")
 fullClio2_tab
+#McFadden's R2:1-deviance/null.deviance)
+summary(fullClio2)
+1-(59.138/83.060) #0.2880087
 #
 predicted_Clio <- data.frame(predW = predict(fullClio2, Clio_df, type = "response", se.fit = TRUE), Year = Clio_df$Year)
 (modelClioWQ <- predicted_Clio %>% dplyr::select(Year, predW.fit, everything()) %>% dplyr::select(-predW.residual.scale) %>%
     group_by(Year) %>% dplyr::summarise(predW = mean(predW.fit, na.rm = T), se = mean(predW.se.fit)))
 #
-ggarrange(Clio_df %>% group_by(Year) %>% summarise(AveProp = mean(Prop, na.rm = T)) %>%
-            ggplot()+
-            geom_point(aes(Year, AveProp, color = "Mean"))+
-            geom_line(data = modelClioWQ, aes(Year, predW, color = "Predict", group = 1))+
-            geom_line(data = modelClioWQ, aes(Year, predW-se, color = "95% CI", group = 1), linetype = "dashed")+
-            geom_line(data = modelClioWQ, aes(Year, predW+se, color = "95% CI", group = 1), linetype = "dashed")+
-            basetheme + theme(legend.position = c(0.899, 0.91))+ 
-            ylab("Average proportion affected")+ 
-            scale_x_discrete(expand = c(0,0.1)) + 
-            scale_y_continuous(expand = c(0,0), limits = c(0,0.4)) +
-            geom_hline(yintercept = 0, linetype = "dotted")+
-            scale_color_manual(name = "",
-                               breaks = c("Mean", "Predict", "95% CI"),
-                               values = c("#000000", "#FF0000", "#999999"),
-                               labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
-                               guide = guide_legend(override.aes = list(
-                                 linetype = c("blank", "solid", "dashed"),
-                                 shape = c(19, NA, NA)))),
-          Clio_df %>% group_by(Year) %>% summarise(AveSal = mean(Salinity, na.rm = T)) %>%
+Clio_df %>% group_by(Year) %>% summarise(AveProp = mean(Prop, na.rm = T)) %>%
+  ggplot()+
+  geom_point(aes(Year, AveProp, color = "Mean"))+
+  geom_line(data = modelClioWQ, aes(Year, predW, color = "Predict", group = 1))+
+  geom_line(data = modelClioWQ, aes(Year, predW-se, color = "95% CI", group = 1), linetype = "dashed")+
+  geom_line(data = modelClioWQ, aes(Year, predW+se, color = "95% CI", group = 1), linetype = "dashed")+
+  basetheme + theme(legend.position = c(0.899, 0.91))+ 
+  ylab("Average proportion affected")+ 
+  scale_x_discrete(expand = c(0,0.1)) + 
+  scale_y_continuous(expand = c(0,0), limits = c(-0.025,0.4)) +
+  geom_hline(yintercept = 0, linetype = "dotted")+
+  scale_color_manual(name = "",
+                     breaks = c("Mean", "Predict", "95% CI"),
+                     values = c("#000000", "#FF0000", "#999999"),
+                     labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
+                     guide = guide_legend(override.aes = list(
+                       linetype = c("blank", "solid", "dashed"),
+                       shape = c(19, NA, NA))))
+#
+ggarrange(Clio_df %>% group_by(Year) %>% summarise(AveSal = mean(Salinity, na.rm = T)) %>%
             ggplot()+
             geom_point(aes(Year, AveSal), color = "darkblue")+
             geom_line(aes(Year, AveSal, group = 1))+
