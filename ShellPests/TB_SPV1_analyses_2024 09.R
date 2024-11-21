@@ -8,11 +8,13 @@
 #Load packages, install as needed
 if (!require("pacman")) {install.packages("pacman")}
 pacman::p_load(plyr, tidyverse, #Df manipulation, 
-               ggpubr,
+               ggpubr, scales,
                rstatix, lme4, corrplot, vegan, lmPerm, DHARMa, #Summary stats, correlations
                zoo, lubridate, #Dates and times
                readxl, #Reading excel files
                car, emmeans, multcomp, multcompView, broom.mixed, ggeffects, #Basic analyses
+               blorr, DescTools, sjPlot, 
+               MuMIn,
                install = TRUE)
 #
 #
@@ -77,6 +79,8 @@ Seasons <- data.frame("Month" = as.factor(c("01", "02", "03", "04", "05", "06", 
                       "Month_Abb" = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"),
                       "Season" = c("Winter", "Winter", "Winter", "Spring", "Spring", "Spring", "Summer", "Summer", "Summer", "Fall", "Fall", "Fall"))
 #
+Seasons_c <- data.frame("Month" = as.factor(c("01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12")),
+                        "Season_c" = c("Winter", "Winter", "Winter", "Spring", "Spring", "Spring", "Spring", "Summer", "Summer", "Fall", "Fall", "Fall"))
 #
 #
 #
@@ -89,31 +93,29 @@ glimpse(TB_WQ_raw)
 #Add Year, Month, Season columns, add reef and station information
 TB_WQ <- TB_WQ_raw %>% mutate(Year = as.factor(format(Date, "%Y")),
                           Month = as.factor(format(Date, "%m"))) %>% 
-  left_join(Seasons) %>% 
+  left_join(Seasons) %>% left_join(Seasons_c) %>%
   left_join(Reef_Type) %>%
   mutate_at(c("Site", "Station", "Month", "Month_Abb", "Season", "Station_Name", "Type"), as.factor) %>% #Change columns to factor type 
-  dplyr::select(Year, Month, Season, everything(.)) #Reorder columns
+  dplyr::select(Year, Month, Season, Season_c, everything(.)) #Reorder columns
 head(TB_WQ)
 #
 glimpse(Portal_WQ_raw)
 ##Get mean daily values to work with.
 Portal_WQ <- Portal_WQ_raw %>% mutate(Month = as.factor(Month)) %>%
-  dplyr::select(-Result_Unit, -Buffer, -LocationName, -StationName, -Latitude, -Longitude) %>% #Remove unnecessary columns
-  group_by(Year, Month, Season, Estuary, Station, SampleDate, Parameter) %>% #Group by all columns needed in output
+  dplyr::select(-Result_Unit, -Buffer, -LocationName, -StationName, -Latitude, -Longitude, -Season) %>% #Remove unnecessary columns
+  left_join(Seasons) %>% left_join(Seasons_c) %>%
+  group_by(Year, Month, Season, Season_c, Estuary, Station, SampleDate, Parameter) %>% #Group by all columns needed in output
   summarise(Mean_Result = mean(Result_Value, na.rm = T)) %>% #Calculate mean daily value 
-  mutate_at(c("Year", "Month", "Season", "Estuary", "Station"), as.factor)
+  mutate_at(c("Year", "Month", "Season", "Season_c", "Estuary", "Station"), as.factor)
 #
 head(Portal_WQ)
 #
 #Combine portal data with our data
-TB_WQ_df <- rbind(TB_WQ %>% dplyr::select(-Time, -Depth, -Station_Name, -Type, -Month_Abb, -Secchi, -TProbe, -THach, -Quali) %>% #Remove unneeded columns from our data
-                    pivot_longer(cols = -c(Year, Month, Season, Date, Site, Station), names_to = "Parameter", values_to = "Mean_Result") %>%
-                    mutate(Season = as.factor(case_when(Month == '01' | Month == '02' | Month == '03' ~ "Spring",
-                                                         Month == '04' | Month == '05' | Month == '06' ~ "Summer",
-                                                         Month == '07' | Month == '08' | Month == '09' ~ "Fall", 
-                                                         TRUE ~ "Winter"))), #Reorganize into 2 columns to join by
-                  Portal_WQ %>% rename(Site = Estuary, Date = SampleDate)) %>% #Rename Portal columns to join data
-  group_by(Year, Month, Season, Date, Site, Station, Parameter) %>% summarise(Mean_Result = mean(Mean_Result, na.rm = T)) %>% #Determine mean daily value for all parameters and data
+TB_WQ_df <- rbind(TB_WQ %>% left_join(Seasons) %>% left_join(Seasons_c) %>% 
+                    dplyr::select(-Time, -Date, -Depth, -Station_Name, -Type, -Month_Abb, -Secchi, -TProbe, -THach, -Quali) %>% #Remove unneeded columns from our data
+                    pivot_longer(cols = -c(Year, Month, Season, Season_c, Site, Station), names_to = "Parameter", values_to = "Mean_Result"),
+                    ungroup(Portal_WQ) %>% rename(Site = Estuary) %>% dplyr::select(-SampleDate)) %>% #Rename Portal columns to join data
+  group_by(Year, Month, Season, Season_c, Site, Station, Parameter) %>% summarise(Mean_Result = mean(Mean_Result, na.rm = T)) %>% #Determine mean daily value for all parameters and data
   pivot_wider(names_from = Parameter, values_from = Mean_Result) #Spread parameters into columns
 #
 #
@@ -127,9 +129,9 @@ TB_CI <- TB_CI_raw %>% mutate(Year = as.factor(format(Date, "%Y")),
                           SizeClass = case_when(SH < 25 ~ "S",
                                                 SH > 75 ~ "L",
                                                 TRUE ~ "A")) %>%
-  left_join(Seasons) %>% 
+  left_join(Seasons) %>% left_join(Seasons_c) %>%
   left_join(Reef_Type) %>%
-  mutate_at(c("Year", "Month", "Site", "Station", "Month_Abb", "Season", "Station_Name", "Type", "SizeClass"), as.factor)
+  mutate_at(c("Year", "Month", "Site", "Station", "Month_Abb", "Season", "Season_c", "Station_Name", "Type", "SizeClass"), as.factor)
 head(TB_CI)
 #
 #
@@ -144,9 +146,9 @@ TB_SP <- TB_SP_raw %>% mutate(SizeClass = case_when(Height < 25 ~ "S",
                           Shell_Side = ifelse(grepl("E", Location), "External", "Internal"),
                           Shell_Pos = ifelse(grepl("B", Location), "Bottom", "Top"),
                           Pct_Affected = Pct.Polydora + Pct.Cliona) %>%
-  left_join(Seasons) %>% 
+  left_join(Seasons) %>% left_join(Seasons_c) %>%
   left_join(Reef_Type) %>%
-  mutate_at(c("Year", "Month", "Site", "Station", "Shell_Side", "Shell_Pos", "Month_Abb", "Season", "Station_Name", "Type"), as.factor)
+  mutate_at(c("Year", "Month", "Site", "Station", "Shell_Side", "Shell_Pos", "Month_Abb", "Season", "Season_c", "Station_Name", "Type"), as.factor)
 head(TB_SP)
 #
 #Summarize data by Shell_Side, Shell_Pos, and overall
@@ -185,8 +187,9 @@ TB_SP_df <-
 head(TB_SP_df)
 #
 #
-#Combine shell pest and conidtion data by sample ID
+#Combine shell pest and condition data by sample ID
 (Combined_df <- full_join(TB_SP_df %>% dplyr::select(Date:Station, Measurement:Richness), TB_CI %>% dplyr::select(Date, Site, Station:Type)))
+#
 #
 #
 #
@@ -367,7 +370,7 @@ FacetTheme <- theme(strip.text.y = element_text(face = "bold", size = 12),
 #
 ###Q1: WQ trends - overall min/max/mean; annual min/max/mean figures :: Summary data found in "TB_WQ_summ" df/sheet
 #Overall
-TB_WQ_df %>% ungroup() %>% mutate(MonYr = as.yearmon(Date)) %>% 
+TB_WQ_df %>% ungroup() %>% mutate(MonYr = as.yearmon(paste(Year, Month, sep = "-"))) %>% 
   dplyr::select(MonYr, Temperature, Salinity, pH, DO_mgl, DO_Pct) %>%
   pivot_longer(cols = -MonYr, names_to = "Parameter", values_to = "Value") %>% 
   group_by(MonYr, Parameter) %>%
@@ -441,7 +444,7 @@ summary(Overall_DOmgl) #NO sig diff among years
            DO_mgl = mean(DO_mgl, na.rm = T)) %>% distinct())
 #
 ggboxplot(TB_WQ_df, x = "Month", y = "Temperature")
-gghistogram(TB_WQ_df, x = "Temperature") #Skewed, okay for permANOVA
+gghistogram(TB_WQ_df, x = "Temperature") #Slightly skewed, okay for permANOVA
 #
 #Permutation ANOVA - temperature
 set.seed(4321)
@@ -475,7 +478,7 @@ ggplot(Month_sal_means, aes(Month, mean, color = Letters))+
   geom_errorbar(aes(ymin = lower, ymax = upper))+
   basetheme
 Month_sal_p %>% filter(p.adjust < 0.05) %>% arrange(Comparison) %>% print(n = 20)
-#Salinity is lowest in 09 highest in 05/06
+#Salinity is lowest in 09 highest in 04/05/06/07
 #
 #Permutation ANOVA - pH 
 set.seed(4321)
@@ -492,7 +495,7 @@ ggplot(Month_pH_means, aes(Month, mean, color = Letters))+
   geom_errorbar(aes(ymin = lower, ymax = upper))+
   basetheme
 Month_pH_p %>% filter(p.adjust < 0.05) %>% arrange(Comparison) %>% print(n = 57)
-#pH is lowest in 08 than in 09/07/06/03
+#pH is lowest in 08, higest in 03
 #
 #Permutation ANOVA - DOmgL 
 set.seed(4321)
@@ -980,7 +983,7 @@ ggpredict(Pest_stations_model, terms = c("Type", "Station"))
                           Poly_Prev == 1 & Cliona_Prev == 0 ~ "Polydora",
                           Poly_Prev == 1 & Cliona_Prev == 1 ~ "Both",
                           TRUE ~ "Neither"))) %>% 
-   mutate(Type = fct_relevel(Type, "Polydora", "Cliona", "Both", "Neither")) %>%
+   mutate(Type = fct_relevel(Type, "Polydora", "Cliona", "Both", "Neither"), Station = as.integer(Station)) %>%
   dplyr::select(Date:New_Sample_Number, Type, CI, CI_Hanley))
 #
 ##We know CI is different among Station (see Q4) but we're just interested in the overall comparison. 
@@ -992,53 +995,57 @@ ggboxplot(c1, x = "Type", y = "CI", fill = "Station")
 #
 #Permutation ANOVA - CI
 set.seed(4321)
-Type_CI <- aovp(CI ~ Type, data = c1, perm = "", nperm = 10000)
+Type_CI <- aovp(CI ~ Type * Station, data = ungroup(c1), perm = "", nperm = 10000)
 summary(Type_CI) 
 #
-(Type_CI_p <- rstatix::pairwise_t_test(CI ~ Type, data = c1, p.adjust.method = "holm") %>%
-    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+(Type_CI_p <- emmeans_test(c1, CI ~ Type, covariate = Station, p.adjust.method = "holm") %>% 
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>% 
     dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
 (Type_CI_means <- merge(c1 %>% group_by(Type) %>% rstatix::get_summary_stats(CI, show = c("n", "mean", "sd", "min", "max")) %>% 
                           transform(lower = mean-sd, upper = mean+sd),
-                        biostat::make_cld(Type_CI_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Type = group, Letters = cld)))
+                        get_emmeans(emmeans_test(c1, CI ~ Type, covariate = Station, p.adjust.method = "holm")) %>% dplyr::select(-c(Station, method))) %>%
+    mutate(Letters = c("b", "ab", "b", "a")))
 #Report results
 summary(Type_CI)
 Type_CI_means
 Type_CI_p %>% arrange(Comparison)
 #
 Type_CI_means %>%
-  ggplot(aes(Type, mean, fill = Letters))+
-  geom_errorbar(aes(ymin = mean, ymax = upper), width = 0.5, position = position_dodge(0.9))+
+  ggplot(aes(Type, emmean, fill = Letters))+
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.5, position = position_dodge(0.9))+
   geom_bar(position = "dodge", stat = "identity")+
-  geom_text(aes(y = upper+0.7, label = Letters), position = position_dodge(0.9))+
+  geom_text(aes(y = conf.high+0.3, label = Letters), position = position_dodge(0.9))+
   scale_fill_grey(start = 0.2, end = 0.7)+
   scale_x_discrete("Type")+
-  scale_y_continuous("Average condition of oysters", expand = c(0,0), limits = c(0,8)) + basetheme + 
+  scale_y_continuous("Average condition of oysters (emmeans)", expand = c(0,0), limits = c(0,8)) + basetheme + 
   theme(legend.position = "none")
 #
 #
 #
 #Permutation ANOVA - CI_Hanley
 set.seed(4321)
-Type_CI_H <- aovp(CI_Hanley ~ Type, data = c1, perm = "", nperm = 10000)
+Type_CI_H <- aovp(CI_Hanley ~ Type * Station, data = c1, perm = "", nperm = 10000)
 summary(Type_CI_H) 
 #
-(Type_CI_H_p <- rstatix::pairwise_t_test(CI_Hanley ~ Type, data = c1, p.adjust.method = "holm") %>%
-    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+(Type_CI_H_p <- emmeans_test(c1, CI_Hanley ~ Type, covariate = Station, p.adjust.method = "holm") %>% 
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>% 
     dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
 (Type_CI_H_means <- merge(c1 %>% group_by(Type) %>% rstatix::get_summary_stats(CI_Hanley, show = c("n", "mean", "sd", "min", "max")) %>% 
                           transform(lower = mean-sd, upper = mean+sd),
-                        biostat::make_cld(Type_CI_H_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Type = group, Letters = cld)))
+                        get_emmeans(emmeans_test(c1, CI_Hanley ~ Type, covariate = Station, p.adjust.method = "holm")) %>% dplyr::select(-c(Station, method))) %>%
+    mutate(Letters = c("a", "a", "b", "a")))
+
+#
 #Report results
 summary(Type_CI_H)
 Type_CI_H_means
 Type_CI_H_p %>% arrange(Comparison)
 #
 Type_CI_H_means %>%
-  ggplot(aes(Type, mean, fill = Letters))+
-  geom_errorbar(aes(ymin = mean, ymax = upper), width = 0.5, position = position_dodge(0.9))+
+  ggplot(aes(Type, emmean, fill = Letters))+
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.5, position = position_dodge(0.9))+
   geom_bar(position = "dodge", stat = "identity")+
-  geom_text(aes(y = upper+0.7, label = Letters), position = position_dodge(0.9))+
+  geom_text(aes(y = conf.high+0.7, label = Letters), position = position_dodge(0.9))+
   scale_fill_grey(start = 0.2, end = 0.7)+
   scale_x_discrete("Type")+
   scale_y_continuous("Average condition of oysters", expand = c(0,0), limits = c(0,30)) + basetheme + 
@@ -1061,7 +1068,6 @@ Type_CI_H_means %>%
   mutate(Type = fct_relevel(Type, "Polydora", "Cliona", "Both", "Neither")) %>%
   dplyr::select(Year:Station, Type))
 #
-
 #Select and reformat data
 (Trends <- left_join(c2 %>% ungroup() %>% group_by(Year, Month, Site, Station, Type) %>% 
                        summarise(Count = n()), 
@@ -1082,6 +1088,7 @@ Trends %>%
   wilcox_test(Prop ~ Type, p.adjust.method = "holm") %>% add_significance(),
   Trends %>% ungroup() %>% dplyr::select(Type, Prop) %>% wilcox_effsize(Prop ~ Type)) %>%
     dplyr::select(-.y., -p) %>% rename("effect_size" = effsize))
+#
 #
 #
 (Pct_trends <- TB_SP_df %>% subset(Measurement == "All") %>%
@@ -1111,41 +1118,46 @@ Pct_trends %>%
     dplyr::select(-.y., -p) %>% rename("effect_size" = effsize))
 #
 #
+#
 #What is the relationship between Polydora and Cliona with percent of shell affect if we control for CI?
 #CI = ratio between shell weight and tissue weight
 #Need CI data and Pct affected for each sample
-(Combined_data <- full_join(TB_SP_df %>% subset(Measurement == "All") %>%
-  mutate(Type = as.factor(case_when(Pct.Polydora == 0 & Pct.Cliona > 0 ~ "Cliona",
-                                    Pct.Polydora > 0 & Pct.Cliona == 0 ~ "Polydora",
-                                    Pct.Polydora > 0 & Pct.Cliona > 0 ~ "Both",
-                                    TRUE ~ "None"))) %>% filter(Type != "None") %>% droplevels() %>%
-  mutate(Type = fct_relevel(Type, "Polydora", "Cliona", "Both"),
-         Pct = as.numeric(case_when(Type == "Polydora" ~ Pct.Polydora,
-                                    Type == "Cliona" ~ Pct.Cliona,
-                                    Type == "Cliona" ~ Pct_Affected,
-                                    TRUE ~ NA)))%>% ungroup() %>% dplyr::select(-Sample.Number, -Measurement),
-TB_CI %>% dplyr::select(Date:TW, CI, CI_Hanley, New_Sample_Number:Station_Name)) %>%
-    drop_na(Type))
+#need data frame with all Pct Cliona and all Pct Polydora (no "Both")
+(c3 <- full_join(TB_SP_df %>% subset(Measurement == "All") %>% dplyr::select(Year:Station, New_Sample_Number:Pct.Cliona) %>% 
+                   gather("Type", "Percent", Pct.Polydora:Pct.Cliona) %>% mutate(Type = str_remove(Type, "Pct.")), 
+                 TB_CI %>% dplyr::select(Site:TW, CI, CI_Hanley, New_Sample_Number:Station_Name)) %>%
+    drop_na(Percent) %>% mutate(CI_Hanley_i = as.integer(CI_Hanley)) %>% ungroup())
 #
-ggscatter(Combined_data, x = "CI_Hanley", y = "Pct", color = "Type", add = "reg.line") + 
+ggscatter(c3, x = "CI_Hanley", y = "Percent", color = "Type", add = "reg.line") + 
   stat_regline_equation(aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~~"), color = Type))
 #
 #Permutation ANCOVA
 set.seed(4321)
-Pest_CI_test <- aovp(Pct ~ Type * CI_Hanley, data = Combined_data,  perm = "", nperm = 10000)
+Pest_CI_test <- aovp(Percent ~ Type * CI_Hanley, data = c3,  perm = "", nperm = 10000, center = TRUE)
 summary(Pest_CI_test)
 plot(Pest_CI_test$residuals)
-
-(Pest_CI_p <- Combined_data %>% emmeans_test(Pct ~ Type, covariate = CI_Hanley, p.adjust.method = "holm") %>%
-  dplyr::select(group1, group2, statistic, p, p.adj, p.adj.signif) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>% #Add new column of grp v gr
-  dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
-(Pest_CI_means <- get_emmeans(Combined_data %>% emmeans_test(Pct ~ Type, covariate = CI_Hanley, p.adjust.method = "holm")))
+plot(c3$Percent, c3$CI_Hanley)
 #
+(Pest_CI_p <- rstatix::pairwise_t_test(Percent ~ Type, data = c3, p.adjust.method = "holm", paired = TRUE) %>%
+    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
+    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj))   #Move 'Comparison' to front and drop grp1 & grp2
+(Pest_CI_means <- merge(c3 %>% group_by(Type) %>% rstatix::get_summary_stats(Percent, show = c("n", "mean", "sd", "min", "max")) %>% 
+                          transform(lower = mean-sd, upper = mean+sd),
+                        biostat::make_cld(Pest_CI_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Type = group, Letters = cld)))
+
+#
+ggplot(Pest_CI_means, aes(Type, mean, color = Letters))+
+  #geom_jitter(data = (c3 %>% rename(mean = CI_Hanley)), aes(Station, mean), color = "black", alpha = 0.2, width = 0.15)+
+  geom_point(size = 5)+
+  geom_errorbar(aes(ymin = lower, ymax = upper), linewidth = 1.5)+
+  scale_y_continuous("Mean percent of shell affected")+
+  geom_hline(yintercept = 0, linetype = "dashed")+
+  basetheme
+
 ggplot()+
-  geom_boxplot(data = Combined_data, aes(Type, Pct), fill = "#999999", size = 1, outlier.shape = 18, outlier.size = 5)+
+  geom_boxplot(data = c3, aes(Type, Percent), fill = "#999999", size = 1, outlier.shape = 18, outlier.size = 5)+
   scale_y_continuous("Percentage", expand = c(0,0), limits = c(0,100))+
   basetheme
-#
 #
 #
 #
@@ -1266,54 +1278,95 @@ Both_int_means %>%
 #
 #
 #
-##Q11: #Which WQ parameters best explain the trend observed in Polydora or Cliona? (glm)
+##Q12: #Which WQ parameters best explain the trend observed in Polydora or Cliona? (glm)
 #Remove station since it's a confounding factor - want to look at each WQ param on its own
 #Grouping months by season according to clustering analyses of 2002-2023 data.
-(Trends_WQ <- full_join(Trends2 %>% dplyr::select(-Site, -Count), 
-                        ungroup(TB_WQ_df) %>% dplyr::select(Year, Month, Station, DO_mgl, Salinity, Temperature, Turbidity, pH)) %>%
-    mutate(Season = as.factor(case_when(Month == '01' | Month == '02' | Month == '03' ~ 1,
-                                        Month == '08' | Month == '09' ~ 3,
-                                        Month == '10' | Month == '11' | Month == '12' ~ 4, 
-                                        TRUE ~ 2))))
-           #Prop_t = sqrt(Prop)*sqrt(2/pi))) #arcsin-square root transform Props to (0,1) exlcusive
+(Trends_WQ <- full_join(Trends2 %>% dplyr::select(-Site), 
+                        ungroup(TB_WQ_df) %>% dplyr::select(Year, Season_c, Month, Station, DO_mgl, Salinity, Temperature, Turbidity, pH)) %>%
+    mutate(Month_i = as.integer(Month), 
+           MonthYear = interaction(Month, Year), MonYrSta = interaction(Month, Year, Station)) %>% droplevels(.)) #continuous Month for covariate
 #
 ##Polydora
 #
 #initial MLR
 (Poly_df <- Trends_WQ[complete.cases(Trends_WQ),] %>% filter(Type == "Polydora") %>% dplyr::select(-Type, -Station)) 
 Poly_df %>% ggplot(aes(x = Prop))+ geom_histogram(aes(y = ..count..)) #skewed/proportional needs transformation
+mean(Poly_df$Prop == 0) #Proportion of 0s = 0.563981
+cor(Poly_df[,c(7:11)]) #Temp and DO
+#Scale continuous variables
+#Poly_df$DO_s <- scale(Poly_df$DO_mgl)[,1]
+Poly_df$Sal_s <- scale(Poly_df$Salinity)[,1]
+Poly_df$Temp_s <- scale(Poly_df$Temperature)[,1]
+Poly_df$Turb_s <- scale(Poly_df$Turbidity)[,1]
+Poly_df$pH_s <- scale(Poly_df$pH)[,1]
+head(Poly_df)
+#
 #
 set.seed(4321)
-fullPoly <- glm(Prop ~ Year + Season + DO_mgl + Salinity + Temperature + Turbidity + pH, data = Poly_df, family = quasibinomial)
+fullPoly <- glmer(cbind(Count, Total-Count) ~ Year + Season_c + Sal_s + Temp_s + Turb_s + pH_s + (1|MonYrSta), 
+                  data = Poly_df, family = binomial, glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=10000)))
 summary(fullPoly)
+testDispersion(simulateResiduals(fullPoly, n = 5000, plot = T))
+testZeroInflation(simulateResiduals(fullPoly, n = 5000, plot = T))
+#
+(Polystep <- drop1(fullPoly, test = "Chisq"))
+set.seed(4321)
+fullPoly2 <- glmer(cbind(Count, Total-Count) ~ Year + pH_s + (1|MonYrSta), 
+                   data = Poly_df, family = binomial, glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=10000)))
+#
+model.sel(fullPoly, fullPoly2) #Full model better
+#
+rawMeansSDs <- Poly_df %>% summarise(mnSal = mean(Salinity), sdSal = sd(Salinity), mnTemp = mean(Temperature), sdTemp = sd(Temperature), 
+                                     mnTurb = mean(Turbidity), sdTurb = sd(Turbidity), mnpH = mean(pH), sdpH = sd(pH))
+#
+predPoly <- expand.grid(Year = unique(Poly_df$Year), stPreT = seq(min(spat$stPreT), max(spat$stPreT), length.out = 100), 
+                        stChgST = c(min(spat$stChgST), 0, max(spat$stChgST)), stPreS = 0, stRT10K = 2, 
+                        stDays =(predDays - mean(spat$Days))/sd(spat$Days) , MYSB = NA)
+## Back-transform the standardized means for plotting
+predDatT$PreT <- predDatT$stPreT*rawMeansSDs$sdPreT + rawMeansSDs$mnPreT
+predDatT$PreS <- predDatT$stPreS*rawMeansSDs$sdPreS + rawMeansSDs$mnPreS
+predDatT$ChgST <- predDatT$stChgST*rawMeansSDs$sdChgSt + rawMeansSDs$mnChgST
+predDatT$Days <- predDatT$stDays*rawMeansSDs$sdDays + rawMeansSDs$mnDays
+predDatT$RT10K <- predDatT$stRT10K*rawMeansSDs$sdRT10K + rawMeansSDs$mnRT10K
+#
+predicted_Poly <- data.frame(predW = predict(fullPoly, Poly_df, type = "response"), Year = Poly_df$Year) #%>%
+#mutate(predW_bt = predW.fit*(pi/2), predW_sefit_bt = predW.se.fit*(pi/2)) %>% unique(.)
+(modelPolyWQ <- predicted_Poly %>% dplyr::select(Year, predW.fit) %>% 
+    group_by(Year) %>% dplyr::summarise(predW = mean(predW.fit, na.rm = T), se = mean(predW.se.fit)))#, 
+#predW_bt = mean(predW_bt), se_bt = mean(predW_sefit_bt)))
+
+#
+summary(fullPoly)
+confint(fullPoly)
+#
 fullPoly_tab <- tidy(fullPoly)
 names(fullPoly_tab) <- c("term", "Est.", "SE", "t", "p-value")
 fullPoly_tab
 #
 summary(fullPoly)
-(Polystep <- drop1(fullPoly, test = "F"))
 #
-#Updated model
-fullPoly2 <- update(fullPoly, .~. -DO_mgl -Turbidity -Temperature -Salinity -Season, data = Poly_df)
-#
+#Updated model - keep lcose variables to double check
+fullPoly2 <- update(fullPoly, .~. -Season -Salinity -Turbidity, data = Poly_df)
+summary(fullPoly2) #DO and Temp still not significant so remove from model
+fullPoly3 <- update(fullPoly2, .~. -DO_mgl -Temperature, data = Poly_df)
 ###Reporting final model
-fullPoly2
-fullPoly2_sum <- summary(fullPoly2)
+fullPoly3
+fullPoly3_sum <- summary(fullPoly3)
 #MLR table with test values
-fullPoly2_tab <- tidy(fullPoly2)
-names(fullPoly2_tab) <- c("term", "Est.", "SE", "t", "p-value")
-fullPoly2_sum_tab <- glance(fullPoly2) 
-names(fullPoly2_sum_tab) <- c("Null_Dev", "df_null", "LL", "AIC", "BIC", "Deviance", "df_redis", "n")
-fullPoly2_tab
+fullPoly3_tab <- tidy(fullPoly3)
+names(fullPoly3_tab) <- c("term", "Est.", "SE", "t", "p-value")
+fullPoly3_sum_tab <- glance(fullPoly3) 
+names(fullPoly3_sum_tab) <- c("Null_Dev", "df_null", "LL", "AIC", "BIC", "Deviance", "df_redis", "n")
+fullPoly3_tab
 #McFadden's R2:1-deviance/null.deviance)
-summary(fullPoly2)
-1-(106.33/114.60) #0.07216405
+summary(fullPoly3)
+1-(72.234/76.719) #0.05846009
 #
-predicted_Poly <- data.frame(predW = predict(fullPoly2, Poly_df, type = "response", se.fit = TRUE), Year = Poly_df$Year, Season = Poly_df$Season) %>%
-  mutate(predW_bt = predW.fit*(pi/2), predW_sefit_bt = predW.se.fit*(pi/2)) %>% unique(.)
-(modelPolyWQ <- predicted_Poly %>% dplyr::select(Year, Season, predW.fit, everything()) %>% dplyr::select(-predW.residual.scale) %>%
-    group_by(Year) %>% dplyr::summarise(predW = mean(predW.fit, na.rm = T), se = mean(predW.se.fit), 
-                                        predW_bt = mean(predW_bt), se_bt = mean(predW_sefit_bt)))
+predicted_Poly <- data.frame(predW = predict(fullPoly3, Poly_df, type = "response", se.fit = TRUE), Year = Poly_df$Year) #%>%
+  #mutate(predW_bt = predW.fit*(pi/2), predW_sefit_bt = predW.se.fit*(pi/2)) %>% unique(.)
+(modelPolyWQ <- predicted_Poly %>% dplyr::select(Year, predW.fit, everything()) %>% dplyr::select(-predW.residual.scale) %>%
+    group_by(Year) %>% dplyr::summarise(predW = mean(predW.fit, na.rm = T), se = mean(predW.se.fit)))#, 
+                                        #predW_bt = mean(predW_bt), se_bt = mean(predW_sefit_bt)))
 #
 Poly_df %>% group_by(Year) %>% summarise(AveProp = mean(Prop, na.rm = T)) %>%
   ggplot()+
@@ -1341,6 +1394,21 @@ Poly_df %>% group_by(Year) %>% summarise(AvepH = mean(pH, na.rm = T)) %>%
   scale_y_continuous("Mean annual pH", expand = c(0,0), limits = c(7, 9))+
   basetheme
 #
+####MLogisticR 
+head(Poly_df)
+levels(Poly_df$Year); levels(Poly_df$Month); levels(Poly_df$Season)
+#
+Poly_model <- glm(Prop ~ Year + Season + DO_mgl + Salinity + Temperature + Turbidity + pH, data = Poly_df, family = binomial, weights = Total)
+(Polystep_2 <- drop1(Poly_model, test = "F"))
+Poly_model2 <- update(Poly_model, .~. -Season -Salinity -Turbidity -Temperature -DO_mgl, data = Poly_df)
+exp(cbind(OR = coef(Poly_model2), confint(Poly_model2))) #OR results and CIs
+#
+blorr::blr_model_fit_stats(Poly_model2) # Gives various fit statistics
+blorr::blr_test_hosmer_lemeshow(Poly_model2) # Hosmer Lemeshow gof test
+blorr::blr_roc_curve(blorr::blr_gains_table(Poly_model2)) # ROC curve
+DescTools::Cstat(Poly_model2) # C-Statistic (concordance statistic)) # Gives various fit statistics (model  performance)
+DescTools::VIF(Poly_model2) #3 or below is okay
+sjPlot::tab_model(Poly_mod2)
 #
 #
 #
