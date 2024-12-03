@@ -47,7 +47,33 @@ DBI::dbDisconnect(con)
 #
 ```
 
-```{r Dataframe cleaning#Sediment trap summary by month}
+```{r FigureFormatting}
+#
+Sites <- c("TB", "CR")
+#Shared formatting for figure consistency
+BaseForm <- theme_classic() +
+  theme(panel.border = element_rect(color = "black", fill = NA), #Add border
+        axis.title = element_text(family = "serif", color = "black", size = 17), axis.title.x = element_text(margin = margin(t = 12)), #Adjust axis title and text
+        axis.text = element_text(family = "serif", color = "black", size = 12), axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.line = element_line(color = "black"),
+        axis.ticks.length.x = unit(0.10, "cm"),
+        axis.ticks.length.y = unit(0.15, "cm"))
+#
+PlotTitle <- theme(plot.title = element_text(size = 13, family = "serif", margin = margin(b = 0.07, t = 0)))
+#
+#Color to station number
+Stat_pal <- c(rgb(0, 0, 228, maxColorValue = 255), rgb(245, 0, 0, maxColorValue = 255), rgb(0, 118, 0, maxColorValue = 255), rgb(102, 0, 102, maxColorValue = 255), rgb(245, 0, 0, maxColorValue = 255), rgb(0, 118, 0, maxColorValue = 255), rgb(255, 128, 0, maxColorValue = 255), rgb(127, 0, 255, maxColorValue = 255))
+Stations <- c("1" = "Station 1", "2" = "Station 2", "3" = "Station 3", "4" = "Station 4", 
+              "5" = "Station 5", "6" = "Station 6", "7" = "Station 7", "8" = "Station 8") 
+Station_fill <- scale_fill_manual("", labels = Stations, values = setNames(Stat_pal, 1:8), na.value = "#999999")
+Station_color <- scale_color_manual("", labels = Stations, values = setNames(Stat_pal, 1:8), na.value = "#999999")
+#
+#
+```
+
+```{r Dataframe cleaning}
+#
+TripInfo <- TripInfo %>% mutate(TripDate = as.Date(TripDate))
 #
 Locations <- FixedLocations %>% 
   mutate(StationNumber = as.numeric(StationNumber)) %>% 
@@ -63,11 +89,12 @@ Sediment <- SedimentTrap %>% filter(is.na(Volume)) %>%
          AnalysisDate = as.Date(floor_date(RetDate, unit = "month")),
          Plot_Date = as.Date(AnalysisDate + 14),
          Proportion = round((CrucibleDW-TareCrucible)/((PanDryWeight-PanTareWeight)+(FilterDryWeight-FilterTareWeight)),3),
+         TotalWW = PanTareWeight + FilterTareWeight,
          TotalDW = (PanDryWeight - PanTareWeight) + (FilterDryWeight - FilterTareWeight),
          TotalAsh = case_when(is.na(Proportion) ~(AshWeight - TareCrucible)*(1/PortionofSample), TRUE ~ (AshWeight - TareCrucible)*(1/Proportion)),
          PctOrganic = ((TotalDW-round(TotalAsh,3))/TotalDW)*100,
          OrganicWt = TotalDW*(PctOrganic/100)) %>%
-  dplyr::select(CupSampleID, FixedLocationID,SampleEventID, DeployedDate,RetDate, AnalysisDate, Plot_Date, NumDays, Proportion, TotalDW, TotalAsh, OrganicWt, PctOrganic) %>% 
+  dplyr::select(CupSampleID, FixedLocationID,SampleEventID, DeployedDate,RetDate, AnalysisDate, Plot_Date, NumDays, Proportion, PortionofSample, TotalWW, TotalDW, TotalAsh, OrganicWt, PctOrganic) %>% 
   left_join(Locations, by = c("FixedLocationID"))
 #
 ##Measurements per cup/sample - volumetrics
@@ -98,17 +125,89 @@ SampleWQ <- SampleEventWQ %>%
 
 ```{r Sediment monthly summaries}
 #
-SediStats <- Sediment %>%
-  group_by(AnalysisDate, Plot_Date, RetDate, FixedLocationID, Estuary, SectionName, StationNumber) %>%
+Month_sedi <- Sediment %>% mutate(Station = as.factor(StationNumber)) %>%
+  group_by(AnalysisDate, Plot_Date, RetDate, FixedLocationID, Estuary, SectionName, Station) %>%
+  drop_na(TotalDW) %>%
   summarise(MonthRate = mean(TotalDW/(NumDays/28), na.rm = T),
+            RateSD = sd(TotalDW/(NumDays/28), na.rm = T),
             MeanOrganic = mean(PctOrganic, na.rm = T),
-            MonthOrgWt = mean(OrganicWt/(NumDays/28), na.rm = T))
+            SDOrganic = sd(PctOrganic, na.rm = T),
+            MonthOrgWt = mean(OrganicWt/(NumDays/28), na.rm = T),
+            SDOrgWt = sd(OrganicWt/(NumDays/28), na.rm = T))
+#
+Month_vol <- Volumes %>% mutate(Station = as.factor(StationNumber)) %>% group_by(AnalysisDate, Plot_Date, RetDate, FixedLocationID, Estuary, SectionName, Station) %>% summarise(MonthVol = mean(Volume/(NumDays/28), na.rm = T))
+
+Sedi_rate <- Month_sedi %>% ungroup() %>% dplyr::select(Estuary, Station, RetDate, contains("Rate")) %>% mutate(Helper = case_when(is.na(MonthRate) ~ "*", TRUE ~ NA))
+Sedi_PctOrg <- Month_sedi %>% ungroup() %>% dplyr::select(Estuary, Station, RetDate, contains("Organic")) %>% mutate(Helper = case_when(is.na(MeanOrganic) ~ "*", TRUE ~ NA))
+Sedi_OrgWt <- Month_sedi %>% ungroup() %>% dplyr::select(Estuary, Station, RetDate, contains("Wt")) %>% mutate(Helper = case_when(is.na(MonthOrgWt) ~ "*", TRUE ~ NA))
 ```
 
 ```{r Sediment trap summary tables}
+Sediment %>% mutate(Station = as.factor(StationNumber)) %>%
+  group_by(Estuary, SectionName, Station) %>%
+  drop_na(TotalDW) %>%
+  summarise(MonthRate = mean(TotalDW/(NumDays/28), na.rm = T),
+            MeanOrganic = mean(PctOrganic, na.rm = T),
+            MonthOrgWt = mean(OrganicWt/(NumDays/28), na.rm = T)) %>% rename("Sedimentation Rate (g/month)" = MonthRate, "% Organic" = MeanOrganic, "Oragnic Weight (g)" = MonthOrgWt) %>% ungroup() %>% gt() 
+```
+
+```{r Sedimentation rate, fig.cap = "**Figure 1.**  Mean monthly sedimentation rate (± S.D.) at stations in Tampa Bay and Caloosahatchee River. Asterisks indicate when no samples were collected from a station. Please note differences in magnitude between the y-axes.", fig.height = 9.5, fig.width = 8, fig.fullwidth=TRUE}
+#
+###Monthly sedimentation rate
+Sedi_list <- list()
+for(i in seq_along(Sites)){
+  #
+  Working_site <- paste(Sites[i])
+  df_temp <- Sedi_rate %>% filter(grepl(Working_site, Estuary)) %>% rowwise() %>% mutate(Upper = sum(MonthRate, RateSD, na.rm = TRUE))
+  df_temp$HelperLocation <- (ceiling(max(df_temp$Upper, na.rm = T)*1.05)/5)
+  max_upper <- ceiling(max(df_temp$Upper, na.rm = T)*1.05) #*1.05 adds 5% buffer to top if needed
+  #
+  Sedi_list[[i]] <- df_temp %>% ggplot(aes(RetDate, MonthRate, fill = Station, color = Station))+ 
+    geom_errorbar(aes(ymin = MonthRate, ymax = MonthRate + RateSD), color = "black", position = position_dodge(12, preserve = "single"), width = 9) +
+    geom_col(position = position_dodge(12, preserve = "single"), width = 9, color = "black") +
+    geom_text(aes(y = HelperLocation, label = Helper, color = Station), position = position_dodge(12, preserve = "single"), size = 8) +
+    scale_x_date("Date", expand= c(0.005,0), date_breaks = "1 month", date_labels = "%b %Y", limits = c(floor_date(min(TripInfo$TripDate), "month"), ceiling_date(max(TripInfo$TripDate), "month") %m-% days(1)))+
+    scale_y_continuous("Sedimentation rate (g/month)", expand = c(0,0), limits = c(0, max(pretty(0:ceiling(max_upper*10)/10))), breaks = pretty(0:ceiling(max_upper*10)/10))+
+    ggtitle(paste0(case_when(grepl("TB", Working_site) ~ "Tampa Bay", grepl("CR", Working_site) ~ "Caloosahatchee River", TRUE ~ "WRONG"))) +
+    Station_fill + Station_color + BaseForm + PlotTitle
+}
+
+Sedi_rate_fig <- ggarrange(
+  Sedi_list[[1]] + rremove("x.text") + rremove("x.title") + rremove("y.title") + guides(color = guide_legend(override.aes = list(size=2))),
+  Sedi_list[[2]] + rremove("x.title") + rremove("y.title") + guides(color = guide_legend(override.aes = list(size=2))),
+  nrow = 2, heights = c(1, 1.1), align = "v"  
+  )
+
+annotate_figure(Sedi_rate_fig, left = text_grob("Sedimentation Rate (g/month)", rot = 90, vjust = 0.4, family = "serif", size = 18, color = "black"))
 
 ```
 
-```{r Sediment trap summary figures}
+```{r Sedimentation rate, fig.cap = "**Figure 2.**  Monthly organic content (%) of sedimentation at stations in Tampa Bay and Caloosahatchee River. Asterisks indicate when no samples were collected from a station.", fig.height = 9.5, fig.width = 8, fig.fullwidth=TRUE}
+#
+Sedi_org_list <- list()
+for(i in seq_along(Sites)){
+  #
+  Working_site <- paste(Sites[i])
+  max_upper <- ceiling(max((Sedi_PctOrg %>% rowwise() %>% mutate(Upper = sum(MeanOrganic, SDOrganic, na.rm = TRUE)))$Upper, na.rm = T)*1.05) #*1.05 adds 5% buffer to top if needed
+  df_temp <- Sedi_PctOrg %>% filter(grepl(Working_site, Estuary))
+  df_temp$HelperLocation <- (ceiling(max((Sedi_PctOrg %>% rowwise() %>% mutate(Upper = sum(MeanOrganic, SDOrganic, na.rm = TRUE)))$Upper, na.rm = T)*1.05))/5
+  #
+  Sedi_org_list[[i]] <- df_temp %>% ggplot(aes(RetDate, MeanOrganic, fill = Station, color = Station))+ 
+    geom_errorbar(aes(ymin = MeanOrganic, ymax = MeanOrganic + SDOrganic), color = "black", position = position_dodge(13, preserve = "single"), width = 12) +
+    geom_col(position = position_dodge(13, preserve = "single"), width = 10, color = "black") +
+    geom_text(aes(y = HelperLocation, label = Helper, color = Station), position = position_dodge(13, preserve = "single"), size = 8) +
+    scale_x_date("Date", expand= c(0,0), date_breaks = "1 month", date_labels = "%b %Y", limits = c(floor_date(min(TripInfo$TripDate), "month"), ceiling_date(max(TripInfo$TripDate), "month") %m-% days(1)))+
+    scale_y_continuous("Organic Content (%)", expand = c(0,0), limits = c(0, max(pretty(0:ceiling(max_upper*10)/10))), breaks = pretty(0:ceiling(max_upper*10)/10))+
+    ggtitle(paste0(case_when(grepl("TB", Working_site) ~ "Tampa Bay", grepl("CR", Working_site) ~ "Caloosahatchee River", TRUE ~ "WRONG"))) +
+    Station_fill + Station_color + BaseForm + PlotTitle
+}
+
+Sedi_org_fig <- ggarrange(
+  Sedi_org_list[[1]] + rremove("x.text") + rremove("x.title") + rremove("y.title") + guides(color = guide_legend(override.aes = list(size=2))),
+  Sedi_org_list[[2]] + rremove("x.title") + rremove("y.title") + guides(color = guide_legend(override.aes = list(size=2))),
+  nrow = 2, heights = c(1, 1.1), align = "v"  
+  )
+
+annotate_figure(Sedi_org_fig, left = text_grob("Organic Content (%)", rot = 90, vjust = 0.4, family = "serif", size = 18, color = "black"))
 
 ```
