@@ -62,7 +62,7 @@ BaseForm <- theme_classic() +
 PlotTitle <- theme(plot.title = element_text(size = 13, family = "serif", margin = margin(b = 0.07, t = 0)))
 #
 #Color to station number
-Stat_pal <- c(rgb(0, 0, 228, maxColorValue = 255), rgb(245, 0, 0, maxColorValue = 255), rgb(0, 118, 0, maxColorValue = 255), rgb(102, 0, 102, maxColorValue = 255), rgb(245, 0, 0, maxColorValue = 255), rgb(0, 118, 0, maxColorValue = 255), rgb(255, 128, 0, maxColorValue = 255), rgb(127, 0, 255, maxColorValue = 255))
+Stat_pal <- c(rgb(0, 0, 228, maxColorValue = 255), rgb(153, 0, 0, maxColorValue = 255), rgb(0, 118, 0, maxColorValue = 255), rgb(102, 0, 102, maxColorValue = 255), rgb(245, 0, 0, maxColorValue = 255), rgb(76, 153, 0, maxColorValue = 255), rgb(255, 128, 0, maxColorValue = 255), rgb(127, 0, 255, maxColorValue = 255))
 Stations <- c("1" = "Station 1", "2" = "Station 2", "3" = "Station 3", "4" = "Station 4", 
               "5" = "Station 5", "6" = "Station 6", "7" = "Station 7", "8" = "Station 8") 
 Station_fill <- scale_fill_manual("", labels = Stations, values = setNames(Stat_pal, 1:8), na.value = "#999999")
@@ -166,7 +166,7 @@ for(i in seq_along(Sites)){
     geom_errorbar(aes(ymin = MonthRate, ymax = MonthRate + RateSD), color = "black", position = position_dodge(12, preserve = "single"), width = 9) +
     geom_col(position = position_dodge(12, preserve = "single"), width = 9, color = "black") +
     geom_text(aes(y = HelperLocation, label = Helper, color = Station), position = position_dodge(12, preserve = "single"), size = 8) +
-    scale_x_date("Date", expand= c(0.005,0), date_breaks = "1 month", date_labels = "%b %Y", limits = c(floor_date(min(TripInfo$TripDate), "month"), ceiling_date(max(TripInfo$TripDate), "month") %m-% days(1)))+
+    scale_x_date("Date", expand= c(0.005,0), date_breaks = "2 months", date_labels = "%b %Y", limits = c(floor_date(min(TripInfo$TripDate), "month"), ceiling_date(max(TripInfo$TripDate), "month") %m-% days(1)))+
     scale_y_continuous("Sedimentation rate (g/month)", expand = c(0,0), limits = c(0, max(pretty(0:ceiling(max_upper*10)/10))), breaks = pretty(0:ceiling(max_upper*10)/10))+
     ggtitle(paste0(case_when(grepl("TB", Working_site) ~ "Tampa Bay", grepl("CR", Working_site) ~ "Caloosahatchee River", TRUE ~ "WRONG"))) +
     Station_fill + Station_color + BaseForm + PlotTitle
