@@ -1,0 +1,114 @@
+---
+title: "Sediment Trap Summary"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+#
+Author <- c("E Levine") #Change to your name
+Database <- "SouthSDTP"  #Set the local database to use
+Server = "localhost\\ERICALOCALSQL" #Set the local Server to use
+
+##Sites of interest
+Estuaries <- c("TB", "CR")
+
+#Timeframe of summary
+Report_start <- c("2022-12-01")
+Report_end <- c("2024-11-30")
+
+#Packages
+if (!require("pacman")) {install.packages("pacman")}
+#p_unlock()
+pacman::p_load(odbc, DBI, dbplyr,
+  tidyverse, dplyr,  stringr, #DF manipulation
+  DT, openxlsx,         #Excel
+  lubridate, zoo,         #Dates
+  knitr, kableExtra, scales, gt, gtExtras, ggpubr, ggpattern, magick, 
+  install = TRUE)
+
+```
+
+```{r DatabaseDownload}
+# Connect to Local database server and pull all necessary data, then close connection 
+con <- dbConnect(odbc(),
+                    Driver = "SQL Server", 
+                    Server = Server,
+                    Database = Database,
+                    Authentication = "ActiveDirectoryIntegrated")
+
+FixedLocations <- tbl(con,in_schema("dbo", "FixedLocations")) %>%  collect() 
+TripInfo <- tbl(con,in_schema("dbo", "TripInfo")) %>%  collect() 
+SampleEvent <- tbl(con,in_schema("dbo", "SampleEvent")) %>%   collect()
+SampleEventWQ <- tbl(con,in_schema("dbo", "SampleEventWQ")) %>%   collect()
+SedimentTrap <- tbl(con,in_schema("dbo", "SedimentTrap")) %>%  collect() 
+DBI::dbDisconnect(con)
+#
+```
+
+```{r Dataframe cleaning#Sediment trap summary by month}
+#
+Locations <- FixedLocations %>% 
+  mutate(StationNumber = as.numeric(StationNumber)) %>% 
+  dplyr::select(FixedLocationID, Estuary, SectionName, StationNumber) %>% distinct()  
+#
+##Measurements per cup/sample - filtration
+Sediment <- SedimentTrap %>% filter(is.na(Volume)) %>% 
+  mutate(Proportion = (CrucibleDW-TareCrucible)/((PanDryWeight - PanTareWeight) + (FilterDryWeight - FilterTareWeight))) %>%
+  mutate(DeployedDate = as.Date(DeployedDate), 
+         RetDate = as.Date(substring(SampleEventID, 8, 15), format = "%Y%m%d"), 
+         NumDays = as.numeric(RetDate-DeployedDate),
+         FixedLocationID = substring(SampleEventID, 19, 22), 
+         AnalysisDate = as.Date(floor_date(RetDate, unit = "month")),
+         Plot_Date = as.Date(AnalysisDate + 14),
+         Proportion = round((CrucibleDW-TareCrucible)/((PanDryWeight-PanTareWeight)+(FilterDryWeight-FilterTareWeight)),3),
+         TotalDW = (PanDryWeight - PanTareWeight) + (FilterDryWeight - FilterTareWeight),
+         TotalAsh = case_when(is.na(Proportion) ~(AshWeight - TareCrucible)*(1/PortionofSample), TRUE ~ (AshWeight - TareCrucible)*(1/Proportion)),
+         PctOrganic = ((TotalDW-round(TotalAsh,3))/TotalDW)*100,
+         OrganicWt = TotalDW*(PctOrganic/100)) %>%
+  dplyr::select(CupSampleID, FixedLocationID,SampleEventID, DeployedDate,RetDate, AnalysisDate, Plot_Date, NumDays, Proportion, TotalDW, TotalAsh, OrganicWt, PctOrganic) %>% 
+  left_join(Locations, by = c("FixedLocationID"))
+#
+##Measurements per cup/sample - volumetrics
+Volumes <- SedimentTrap %>% filter(!is.na(Volume)) %>% 
+  dplyr::select(CupSampleID:DeployedDate, Volume, NumDrills:Comments) %>%
+  mutate(DeployedDate = as.Date(DeployedDate), 
+         RetDate = as.Date(substring(SampleEventID, 8, 15), format = "%Y%m%d"), 
+         NumDays = as.numeric(RetDate-DeployedDate),
+         FixedLocationID = substring(SampleEventID, 19, 22), 
+         AnalysisDate = as.Date(floor_date(RetDate, unit = "month")),
+         Plot_Date = as.Date(AnalysisDate + 14)) %>% 
+  dplyr::select(CupSampleID, FixedLocationID,SampleEventID, DeployedDate,RetDate, AnalysisDate, Plot_Date, NumDays, Volume) %>%
+  left_join(Locations, by = c("FixedLocationID"))
+#
+##Water quality data
+SampleWQ <- SampleEventWQ %>% 
+  mutate(RetDate = as.Date(substring(SampleEventID, 8, 15), format = "%Y%m%d"), 
+         FixedLocationID = substring(SampleEventID, 19, 22), 
+         AnalysisDate = as.Date(floor_date(RetDate, unit = "month")),
+         Plot_Date = as.Date(AnalysisDate + 14),
+         SecchiPercent = (Secchi / Depth) * 100) %>%
+  dplyr::select(SampleEventWQID, FixedLocationID, SampleEventID, RetDate, AnalysisDate, Plot_Date, Temperature, Salinity, DissolvedOxygen, PercentDissolvedOxygen, pH, SecchiPercent, TurbidityYSI, TurbidityHach) %>%  
+  left_join(Locations, by = c("FixedLocationID")) 
+#
+#
+#
+```
+
+```{r Sediment monthly summaries}
+#
+SediStats <- Sediment %>%
+  group_by(AnalysisDate, Plot_Date, RetDate, FixedLocationID, Estuary, SectionName, StationNumber) %>%
+  summarise(MonthRate = mean(TotalDW/(NumDays/28), na.rm = T),
+            MeanOrganic = mean(PctOrganic, na.rm = T),
+            MonthOrgWt = mean(OrganicWt/(NumDays/28), na.rm = T))
+```
+
+```{r Sediment trap summary tables}
+
+```
+
+```{r Sediment trap summary figures}
+
+```
