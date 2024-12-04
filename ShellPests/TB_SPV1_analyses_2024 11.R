@@ -1356,71 +1356,174 @@ emmip(fullPoly3, Year ~ Season, type = "response") + basetheme + scale_y_continu
 #
 ##Cliona
 #
-#initial MLR
-(Clio_df <- Trends_WQ[complete.cases(Trends_WQ),] %>% filter(Type == "Cliona") %>% dplyr::select(-Type, -Station)) 
+(Clio_df <- Trends_WQ[complete.cases(Trends_WQ),] %>% filter(Type == "Cliona") %>% dplyr::select(-Type) %>% droplevels(.)) 
 Clio_df %>% ggplot(aes(x = Prop))+ geom_histogram(aes(y = ..count..)) #skewed/proportional needs transformation
+mean(Clio_df$Prop == 0) #Proportion of 0s = 0.563981
+cor(Clio_df[,c(8:12)]) #Temp and DO correlated so remove DO
+#Scale continuous variables
+Clio_df$Sal_s <- scale(Clio_df$Salinity)[,1]
+Clio_df$Temp_s <- scale(Clio_df$Temperature)[,1]
+Clio_df$Turb_s <- scale(Clio_df$Turbidity)[,1]
+Clio_df$pH_s <- scale(Clio_df$pH)[,1]
+head(Clio_df)
+#
+#Initial model
+set.seed(4321)
+fullClio <- glmer(cbind(Count, Total-Count) ~ Year + Season + Sal_s + Temp_s + Turb_s + pH_s + (1|Station), data = Clio_df, family = binomial, glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=10000)))
+summary(fullClio)
+testDispersion(simulateResiduals(fullClio, n = 5000, plot = T)) #mild
+testZeroInflation(simulateResiduals(fullClio, n = 5000, plot = T))
+performance::check_collinearity(fullClio) #Check model. Season & Temp VIF > 3 so consider removing.
+#
+(Cliostep <- drop1(fullClio, test = "Chisq")) #Test for significant factors
+#Try model without Season/Temp (VIF > 3) and model based on ChiSq test (include Season only)
+set.seed(4321)
+fullClio2 <- glmer(cbind(Count, Total-Count) ~ Year + Sal_s + Turb_s + pH_s + (1|Station), data = Clio_df, family = binomial, glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=10000)))
+set.seed(4321)
+fullClio3 <- glmer(cbind(Count, Total-Count) ~ Year + Season + (1|Station), data = Clio_df, family = binomial, glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=10000)))
+set.seed(4321)
+fullClio4 <- glmer(cbind(Count, Total-Count) ~ Year + Season + Temp_s + (1|Station), data = Clio_df, family = binomial, glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=10000)))
+#
+model.sel(fullClio, fullClio2, fullClio3, fullClio4) #model 4 better since lower AICc
+#
+##Get means and sd of raw data. Just pH since that was the only significant variable
+Clio_rawMeansSDs <- Clio_df %>% summarise(mnTemp = mean(Temperature ), sdTemp = sd(Temperature))
+#
+#Create dataframe of all Years, pH varied over observed range, and Temp/Sal extremes
+predClio <- expand.grid(Year = unique(Clio_df$Year), Season = unique(Clio_df$Season),
+                        Temp_s = seq(min(Clio_df$Temp_s), max(Clio_df$Temp_s), length.out = 100), Station = unique(Clio_df$Station))
+#
+## Back-transform the standardized means for plotting
+predClio <- predClio %>% mutate(Temp = predClio$Temp_s*Clio_rawMeansSDs$sdTemp + Clio_rawMeansSDs$mnTemp)
+#
+# Make predictions to the pH data frame using the best-fitting model - "response" to be on same scale for proportions
+predicted_Clio <- predict(fullClio4, newdata = predClio, type = "response", se.fit = T)
+preds_Clio_4 <- data.frame(predClio, fit = predicted_Clio$fit, se.fit = predicted_Clio$se.fit)
+
+# Exponentiate predictions to go from log to real scale. It's not valid to assume normality of the variable after exponentiating, so we calculate lower and upper 95% CLs at the same time.
+preds_Clio_4 <- preds_Clio_4 %>% mutate(mean = exp(preds_Clio_4$fit), 
+                                        lwr = exp(preds_Clio_4$fit - 1.96*preds_Clio_4$se.fit), 
+                                        upr = exp(preds_Clio_4$fit + 1.96*preds_Clio_4$se.fit)) 
+#Plot annual predicted based on pH - average of Station to access all of TB as a whole
+preds_Clio_4 %>% 
+  ggplot(aes(Temp, fit, color = Year))+
+  geom_line(linewidth = 1.5)+ 
+  scale_y_continuous("Mean proportion", expand = c(0,0), limits = c(0,1), breaks = seq(0, 1, by = 0.2))+
+  lemon::facet_rep_grid(Station~Season) + 
+  basetheme + FacetTheme + theme(panel.border = element_rect(color = "black", fill = NA))
+#
+summary(fullClio4)
+emmip(fullClio4, Year ~ Season, type = "response") + basetheme + scale_y_continuous(limits = c(0,0.25), expand = c(0, 0))
+(emmeans(fullClio4, pairwise ~ Season|Year, type = "response"))$emmeans %>% data.frame() %>% dplyr::select(-df)
+(emmeans(fullClio4, pairwise ~ Year|Season, type = "response"))$contrast %>% data.frame() %>% dplyr::select(-c(df, null))
+#
+#
+#
+#
 #
 #
 #
 #
 #
 ##Both
-#initial MLR
-(Both_df <- Trends_WQ[complete.cases(Trends_WQ),] %>% filter(Type == "Both") %>% dplyr::select(-Type, -Station)) 
+#
+(Both_df <- Trends_WQ[complete.cases(Trends_WQ),] %>% filter(Type == "Both") %>% dplyr::select(-Type) %>% droplevels(.)) 
 Both_df %>% ggplot(aes(x = Prop))+ geom_histogram(aes(y = ..count..)) #skewed/proportional needs transformation
+mean(Both_df$Prop == 0) #Proportion of 0s = 0.4170616
+cor(Both_df[,c(8:12)]) #Temp and DO correlated so remove DO
+#Scale continuous variables
+Both_df$Sal_s <- scale(Both_df$Salinity)[,1]
+Both_df$Temp_s <- scale(Both_df$Temperature)[,1]
+Both_df$Turb_s <- scale(Both_df$Turbidity)[,1]
+Both_df$pH_s <- scale(Both_df$pH)[,1]
+head(Both_df)
 #
+#Initial model
 set.seed(4321)
-fullBoth <- glm(Prop ~ Year + DO_mgl + Salinity + Temperature + Turbidity + pH, data = Both_df, family = quasibinomial)
+fullBoth <- glmer(cbind(Count, Total-Count) ~ Year + Season + Sal_s + Temp_s + Turb_s + pH_s + (1|Station), data = Both_df, family = binomial, glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=10000)))
 summary(fullBoth)
-fullBoth_tab <- tidy(fullBoth)
-names(fullBoth_tab) <- c("term", "Est.", "SE", "t", "p-value")
-fullBoth_tab
+testDispersion(simulateResiduals(fullBoth, n = 5000, plot = T)) #mild
+testZeroInflation(simulateResiduals(fullBoth, n = 5000, plot = T))
+performance::check_collinearity(fullBoth) #Check model. Season & Temp VIF > 3 so consider removing...
 #
-summary(fullBoth)
-(Bothstep <- drop1(fullBoth, test = "F"))
+(Bothstep <- drop1(fullBoth, test = "Chisq")) #Test for significant factors
+#Try model without Season/Temp (VIF > 3) and model based on ChiSq test (include Season only)
+set.seed(4321)
+fullBoth2 <- glmer(cbind(Count, Total-Count) ~ Year + Sal_s + Turb_s + pH_s + (1|Station), data = Both_df, family = binomial, glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=10000)))
+set.seed(4321)
+fullBoth3 <- glmer(cbind(Count, Total-Count) ~ Year + Season + Turb_s + pH_s + (1|Station), data = Both_df, family = binomial, glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=10000)))
 #
-#Updated model
-fullBoth2 <- update(fullBoth, .~. -DO_mgl -Temperature -pH, data = Both_df)
+model.sel(fullBoth, fullBoth2, fullBoth3) #model 3 better since lower AICc
 #
-###Reporting final model
-fullBoth2
-fullBoth2_sum <- summary(fullBoth2)
-#MLR table with test values
-fullBoth2_tab <- tidy(fullBoth2)
-names(fullBoth2_tab) <- c("term", "Est.", "SE", "t", "p-value")
-fullBoth2_sum_tab <- glance(fullBoth2) 
-names(fullBoth2_sum_tab) <- c("Null_Dev", "df_null", "LL", "AIC", "BIC", "Deviance", "df_redis", "n")
-fullBoth2_tab
+##Get means and sd of raw data. 
+Both_rawMeansSDs <- Both_df %>% summarise(mnTurb = mean(Turbidity), sdTurb = sd(Turbidity),
+                                          mnpH = mean(pH), sdpH = sd(pH))
+#Predictions for Turbidity and for pH
+#Turbidity
+#Create dataframe of all Years, turbidity varied over observed range, and pH extremes
+predBoth_T <- expand.grid(Year = unique(Both_df$Year), Season = unique(Both_df$Season),
+                        Turb_s = seq(min(Both_df$Turb_s), max(Both_df$Turb_s), length.out = 80), 
+                        pH_s = c(min(Both_df$pH_s), 0, max(Both_df$pH_s)), Station = unique(Both_df$Station))
 #
-predicted_Both <- data.frame(predW = predict(fullBoth2, Both_df, type = "response", se.fit = TRUE), Year = Both_df$Year)
-(modelBothWQ <- predicted_Both %>% dplyr::select(Year, predW.fit, everything()) %>% dplyr::select(-predW.residual.scale) %>%
-    group_by(Year) %>% dplyr::summarise(predW = mean(predW.fit, na.rm = T), se = mean(predW.se.fit)))
+## Back-transform the standardized means for plotting
+predBoth_T <- predBoth_T %>% mutate(Turb = predBoth_T$Turb_s*Both_rawMeansSDs$sdTurb + Both_rawMeansSDs$mnTurb,
+                                    pH = predBoth_T$pH_s*Both_rawMeansSDs$sdpH + Both_rawMeansSDs$mnpH)
 #
-ggarrange(Both_df %>% group_by(Year) %>% summarise(AveProp = mean(Prop, na.rm = T)) %>%
-    ggplot()+
-      geom_point(aes(Year, AveProp, color = "Mean"))+
-      geom_line(data = modelBothWQ, aes(Year, predW, color = "Predict", group = 1))+
-      geom_line(data = modelBothWQ, aes(Year, predW-se, color = "95% CI", group = 1), linetype = "dashed")+
-      geom_line(data = modelBothWQ, aes(Year, predW+se, color = "95% CI", group = 1), linetype = "dashed")+
-      basetheme + theme(legend.position = c(0.899, 0.91))+ 
-      ylab("Average proportion affected")+ 
-      scale_x_discrete(expand = c(0,0.1)) + 
-      scale_y_continuous(expand = c(0,0), limits = c(0,0.8)) +
-      geom_hline(yintercept = 0, linetype = "dotted")+
-      scale_color_manual(name = "",
-                         breaks = c("Mean", "Predict", "95% CI"),
-                         values = c("#000000", "#FF0000", "#999999"),
-                         labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
-                         guide = guide_legend(override.aes = list(
-                           linetype = c("blank", "solid", "dashed"),
-                           shape = c(19, NA, NA)))),
-    Both_df %>% group_by(Year) %>% summarise(AveSal = mean(Salinity, na.rm = T)) %>%
-      ggplot()+
-      geom_point(aes(Year, AveSal), color = "darkblue")+
-      geom_line(aes(Year, AveSal, group = 1))+
-      scale_y_continuous("Mean annual salinity", expand = c(0,0), limits = c(20, 35))+
-      basetheme,
-    nrow = 1, ncol = 2)
+# Make predictions to the pH data frame using the best-fitting model - "response" to be on same scale for proportions
+predicted_Both_T <- predict(fullBoth3, newdata = predBoth_T, type = "response", se.fit = T)
+preds_Both_3_T <- data.frame(predBoth_T, fit = predicted_Both_T$fit, se.fit = predicted_Both_T$se.fit)
+
+# Exponentiate predictions to go from log to real scale. It's not valid to assume normality of the variable after exponentiating, so we calculate lower and upper 95% CLs at the same time.
+preds_Both_3_T <- preds_Both_3_T %>% mutate(mean = exp(preds_Both_3_T$fit), 
+                                        lwr = exp(preds_Both_3_T$fit - 1.96*preds_Both_3_T$se.fit), 
+                                        upr = exp(preds_Both_3_T$fit + 1.96*preds_Both_3_T$se.fit)) 
+#
+min(Both_df$pH); mean(Both_df$pH); max(Both_df$pH) #7.4, 8.1, 8.5
+preds_Both_3_T$pH_s <- factor(preds_Both_3_T$pH_s, labels = c("pH min: 7.4", "pH mean: 8.1", "pH max: 8.5"))
+#
+#Plot annual predicted based on turbidity
+preds_Both_3_T %>% group_by(Year, Season, pH_s, Turb) %>% summarise(fit = mean(fit)) %>%
+  ggplot(aes(Turb, fit, color = Year))+
+  geom_line(linewidth = 1.5)+ 
+  scale_y_continuous("Mean proportion", expand = c(0,0), limits = c(0,1), breaks = seq(0, 1, by = 0.2))+
+  lemon::facet_rep_grid(pH_s~Season) + 
+  basetheme + FacetTheme + theme(panel.border = element_rect(color = "black", fill = NA))
+#
+##pH
+#Create dataframe of all Years, pH varied over observed range, and Turb extremes
+predBoth_H <- expand.grid(Year = unique(Both_df$Year), Season = unique(Both_df$Season),
+                        Turb_s = c(min(Both_df$Turb_s), 0, max(Both_df$Turb_s)),
+                        pH_s = seq(min(Both_df$pH_s), max(Both_df$pH_s), length.out = 80), Station = unique(Both_df$Station))
+#
+## Back-transform the standardized means for plotting
+predBoth_H <- predBoth_H %>% mutate(Turb = predBoth_H$Turb_s*Both_rawMeansSDs$sdTurb + Both_rawMeansSDs$mnTurb,
+                                pH = predBoth_H$pH_s*Both_rawMeansSDs$sdpH + Both_rawMeansSDs$mnpH)
+#
+# Make predictions to the pH data frame using the best-fitting model - "response" to be on same scale for proportions
+predicted_Both_H <- predict(fullBoth3, newdata = predBoth_H, type = "response", se.fit = T)
+preds_Both_3_H <- data.frame(predBoth_H, fit = predicted_Both_H$fit, se.fit = predicted_Both_H$se.fit)
+
+# Exponentiate predictions to go from log to real scale. It's not valid to assume normality of the variable after exponentiating, so we calculate lower and upper 95% CLs at the same time.
+preds_Both_3_H <- preds_Both_3_H %>% mutate(mean = exp(preds_Both_3_H$fit), 
+                                        lwr = exp(preds_Both_3_H$fit - 1.96*preds_Both_3_H$se.fit), 
+                                        upr = exp(preds_Both_3_H$fit + 1.96*preds_Both_3_H$se.fit)) 
+#
+min(Both_df$Turbidity); mean(Both_df$Turbidity); max(Both_df$Turbidity) #0.7, 2.7, 10.0
+preds_Both_3_H$Turb_s <- factor(preds_Both_3_H$Turb_s, labels = c("Turb min: 0.7", "Turb mean: 2.7", "Turb max: 10.0"))
+#
+#Plot annual predicted based on pH - average of Station to access all of TB as a whole
+preds_Both_3_H %>% group_by(Year, Season, Turb_s, pH) %>% summarise(fit = mean(fit)) %>% 
+  ggplot(aes(pH, fit, color = Year))+
+  geom_line(linewidth = 1.5)+ 
+  scale_y_continuous("Mean proportion", expand = c(0,0), limits = c(0,1), breaks = seq(0, 1, by = 0.2))+
+  lemon::facet_rep_grid(Turb_s~Season) + 
+  basetheme + FacetTheme + theme(panel.border = element_rect(color = "black", fill = NA))
+#
+#
+summary(fullBoth3)
+emmip(fullBoth3, Year ~ Season, type = "response") + basetheme + scale_y_continuous(limits = c(0,0.6), expand = c(0, 0))
+(emmeans(fullBoth3, pairwise ~ Season|Year, type = "response"))$emmeans %>% data.frame() %>% dplyr::select(-df)
+(emmeans(fullBoth3, pairwise ~ Year|Season, type = "response"))$contrast %>% data.frame() %>% dplyr::select(-c(df, null))
 #
 #
 #
