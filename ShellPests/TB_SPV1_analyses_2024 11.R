@@ -359,7 +359,7 @@ basetheme <- theme_bw()+
 #
 FacetTheme <- theme(strip.text.y = element_text(face = "bold", size = 12),
                  strip.background = element_rect(fill = "#CCCCCC"),
-                 panel.spacing = unit(0.75, "lines"),
+                 panel.spacing.x = unit(0.5, "lines"), panel.spacing.y = unit(-0.5, "lines"),
                  strip.text.x = element_text(face = "bold", size = 12))
 #
 #
@@ -1280,20 +1280,19 @@ Both_int_means %>%
 #
 #
 ##Q12: #Which WQ parameters best explain the trend observed in Polydora or Cliona? (glm)
-#Remove station since it's a confounding factor - want to look at each WQ param on its own
-#Grouping months by season according to clustering analyses of 2002-2023 data.
+#Use station as random since we want to look at each WQ param on its own
+#Grouping months by Season 
 (Trends_WQ <- full_join(Trends2 %>% dplyr::select(-Site), 
-                        ungroup(TB_WQ_df) %>% dplyr::select(Year, Season_c, Month, Station, DO_mgl, Salinity, Temperature, Turbidity, pH)) %>%
-    mutate(Season_c = as.factor(Season_c),
-           MonthYear = interaction(Month, Year), MonthSta = interaction(Month, Station)) %>% droplevels(.)) #continuous Month for covariate
+                        ungroup(TB_WQ_df) %>% dplyr::select(Year, Season, Month, Station, DO_mgl, Salinity, Temperature, Turbidity, pH)) %>%
+    mutate(Season = factor(Season, levels = c("Spring", "Summer", "Fall", "Winter")),
+           MonthYear = droplevels(interaction(Month, Year)), 
+           MonthSta = droplevels(interaction(Month, Station)))) #continuous Month for covariate
 #
 ##Polydora
-#
-#initial MLR
-(Poly_df <- Trends_WQ[complete.cases(Trends_WQ),] %>% filter(Type == "Polydora") %>% dplyr::select(-Type)) 
+(Poly_df <- Trends_WQ[complete.cases(Trends_WQ),] %>% filter(Type == "Polydora") %>% dplyr::select(-Type) %>% droplevels(.)) 
 Poly_df %>% ggplot(aes(x = Prop))+ geom_histogram(aes(y = ..count..)) #skewed/proportional needs transformation
 mean(Poly_df$Prop == 0) #Proportion of 0s = 0.563981
-cor(Poly_df[,c(8:12)]) #Temp and DO
+cor(Poly_df[,c(8:12)]) #Temp and DO correlated so remove DO
 #Scale continuous variables
 Poly_df$Sal_s <- scale(Poly_df$Salinity)[,1]
 Poly_df$Temp_s <- scale(Poly_df$Temperature)[,1]
@@ -1301,138 +1300,57 @@ Poly_df$Turb_s <- scale(Poly_df$Turbidity)[,1]
 Poly_df$pH_s <- scale(Poly_df$pH)[,1]
 head(Poly_df)
 #
-#
+#Initial model
 set.seed(4321)
-fullPoly <- glmer(cbind(Count, Total-Count) ~ Year + Season_c + Sal_s + Temp_s + Turb_s + pH_s + (1|MonthSta), 
-                  data = Poly_df, family = binomial, glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=10000)))
+fullPoly <- glmer(cbind(Count, Total-Count) ~ Year + Season + Sal_s + Temp_s + Turb_s + pH_s + (1|Station), data = Poly_df, family = binomial, glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=10000)))
 summary(fullPoly)
 testDispersion(simulateResiduals(fullPoly, n = 5000, plot = T)) #mild
 testZeroInflation(simulateResiduals(fullPoly, n = 5000, plot = T))
-performance::check_collinearity(fullPoly) #Check model 
+performance::check_collinearity(fullPoly) #Check model. Season VIF > 3 so consider removing.
 #
 (Polystep <- drop1(fullPoly, test = "Chisq")) #Test for significant factors
-#Try model without Season (VIF > 3) and model based on ChiSq test
+#Try model without Season (VIF > 3) and model based on ChiSq test (include Season and pH)
 set.seed(4321)
-fullPoly2 <- glmer(cbind(Count, Total-Count) ~ Year + Sal_s + Temp_s + Turb_s + pH_s + (1|MonthSta), 
-                   data = Poly_df, family = binomial, glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=10000)))
+fullPoly2 <- glmer(cbind(Count, Total-Count) ~ Year + Sal_s + Temp_s + Turb_s + pH_s + (1|Station), data = Poly_df, family = binomial, glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=10000)))
 set.seed(4321)
-fullPoly3 <- glmer(cbind(Count, Total-Count) ~ Year + pH_s + (1|MonthSta), 
-                   data = Poly_df, family = binomial, glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=10000)))
+fullPoly3 <- glmer(cbind(Count, Total-Count) ~ Year + Season + pH_s + (1|Station), data = Poly_df, family = binomial, glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=10000)))
 #
-model.sel(fullPoly, fullPoly2, fullPoly3) #Full model better since lower AICc
+model.sel(fullPoly, fullPoly2, fullPoly3) #model 3 better since lower AICc
 #
-Poly_rawMeansSDs <- Poly_df %>% summarise(mnTemp = mean(Temperature), sdTemp = sd(Temperature), 
-                                          mnSal = mean(Salinity), sdSal = sd(Salinity), mnpH = mean(pH), sdpH = sd(pH))
+##Get means and sd of raw data. Just pH since that was the only significant variable
+Poly_rawMeansSDs <- Poly_df %>% summarise(mnpH = mean(pH), sdpH = sd(pH))
 #
-predPoly <- expand.grid(Year = unique(Poly_df$Year), pH_s = seq(min(Poly_df$pH_s), max(Poly_df$pH_s), length.out = 80), 
-                        Temp_s = c(min(Poly_df$Temp_s), 0, max(Poly_df$Temp_s)), Sal_s = c(min(Poly_df$Sal_s), 0, max(Poly_df$Sal_s)), MonthSta = unique(Poly_df$MonthSta))
+#Create dataframe of all Years, pH varied over observed range, and Temp/Sal extremes
+predPoly <- expand.grid(Year = unique(Poly_df$Year), Season = unique(Poly_df$Season),
+                        pH_s = seq(min(Poly_df$pH_s), max(Poly_df$pH_s), length.out = 80), Station = unique(Poly_df$Station))
+#
 ## Back-transform the standardized means for plotting
-predPoly$pH <- predPoly$pH_s*Poly_rawMeansSDs$sdpH + Poly_rawMeansSDs$mnpH
-predPoly$Temp <- predPoly$Temp_s*Poly_rawMeansSDs$sdTemp + Poly_rawMeansSDs$mnTemp
-predPoly$Sal <- predPoly$Sal_s*Poly_rawMeansSDs$sdSal + Poly_rawMeansSDs$mnSal
+predPoly <- predPoly %>% mutate(pH = predPoly$pH_s*Poly_rawMeansSDs$sdpH + Poly_rawMeansSDs$mnpH)
 #
-# Make predictions to the pH data frame using the best-fitting model
-predicted_Poly <- predict(fullPoly3, newdata = predPoly, type = "link", se.fit = T)
-preddsT <- data.frame(predPoly, fit = predicted_Poly$fit, se.fit = predicted_Poly$se.fit)
+# Make predictions to the pH data frame using the best-fitting model - "response" to be on same scale for proportions
+predicted_Poly <- predict(fullPoly3, newdata = predPoly, type = "response", se.fit = T)
+preds_Poly_3 <- data.frame(predPoly, fit = predicted_Poly$fit, se.fit = predicted_Poly$se.fit)
 
 # Exponentiate predictions to go from log to real scale. It's not valid to assume normality of the variable after exponentiating, so we calculate lower and upper 95% CLs at the same time.
-preddsT$mean <- exp(preddsT$fit)
-preddsT$lwr <- exp(preddsT$fit - 1.96*preddsT$se.fit)
-preddsT$upr <- exp(preddsT$fit + 1.96*preddsT$se.fit)
+preds_Poly_3 <- preds_Poly_3 %>% mutate(mean = exp(preds_Poly_3$fit), 
+                                        lwr = exp(preds_Poly_3$fit - 1.96*preds_Poly_3$se.fit), 
+                                        upr = exp(preds_Poly_3$fit + 1.96*preds_Poly_3$se.fit)) 
+#Plot annual predicted based on pH - average of Station to access all of TB as a whole
+preds_Poly_3 %>% 
+  ggplot(aes(pH, fit, color = Year))+
+  geom_line(linewidth = 1.5)+ 
+  scale_y_continuous("Mean proportion", expand = c(0,0), limits = c(0,1), breaks = seq(0, 1, by = 0.2))+
+  lemon::facet_rep_grid(Station~Season) + 
+  basetheme + FacetTheme + theme(panel.border = element_rect(color = "black", fill = NA))
 #
-min(preddsT$Temp); mean(preddsT$Temp); max(preddsT$Temp)
-min(preddsT$Sal); mean(preddsT$Sal); max(preddsT$Sal)
-# Convert Temp and Sal to factors to make labeling easier in the plot 
-preddsT$Temp <- factor(preddsT$Temp, labels = c("min: 13.1", "mean: 23.3", "max: 31.9"))
-preddsT$Sal <- factor(preddsT$Sal, labels = c("min: 14.8", "mean: 26.2", "max: 35.06"))
-#
-#Plot annual predicted based on pH and min/mean/max Temps and Salinity
-preddsT %>% group_by(Year, pH_s, Temp_s, Sal_s, pH, Temp, Sal) %>% 
-  summarise(fit = mean(fit), se.fit = mean(se.fit), mean = mean(mean), lwr = mean(lwr), upr = mean(upr)) %>%
-  ggplot(aes(pH, mean, color = Year))+
-  geom_point()+
-  lemon::facet_rep_grid(Sal~Temp)
-#
-predicted_Poly <- data.frame(predW = predict(fullPoly, Poly_df, type = "response"), Year = Poly_df$Year) #%>%
-#mutate(predW_bt = predW.fit*(pi/2), predW_sefit_bt = predW.se.fit*(pi/2)) %>% unique(.)
-(modelPolyWQ <- predicted_Poly %>% dplyr::select(Year, predW.fit) %>% 
-    group_by(Year) %>% dplyr::summarise(predW = mean(predW.fit, na.rm = T), se = mean(predW.se.fit)))#, 
-#predW_bt = mean(predW_bt), se_bt = mean(predW_sefit_bt)))
-#https://campus.datacamp.com/courses/hierarchical-and-mixed-effects-models-in-r/linear-mixed-effect-models?ex=5
-#
-summary(fullPoly)
-confint(fullPoly)
-#
-fullPoly_tab <- tidy(fullPoly)
-names(fullPoly_tab) <- c("term", "Est.", "SE", "t", "p-value")
-fullPoly_tab
-#
-summary(fullPoly)
-#
-#Updated model - keep lcose variables to double check
-fullPoly2 <- update(fullPoly, .~. -Season -Salinity -Turbidity, data = Poly_df)
-summary(fullPoly2) #DO and Temp still not significant so remove from model
-fullPoly3 <- update(fullPoly2, .~. -DO_mgl -Temperature, data = Poly_df)
-###Reporting final model
-fullPoly3
-fullPoly3_sum <- summary(fullPoly3)
-#MLR table with test values
-fullPoly3_tab <- tidy(fullPoly3)
-names(fullPoly3_tab) <- c("term", "Est.", "SE", "t", "p-value")
-fullPoly3_sum_tab <- glance(fullPoly3) 
-names(fullPoly3_sum_tab) <- c("Null_Dev", "df_null", "LL", "AIC", "BIC", "Deviance", "df_redis", "n")
-fullPoly3_tab
-#McFadden's R2:1-deviance/null.deviance)
 summary(fullPoly3)
-1-(72.234/76.719) #0.05846009
+emmip(fullPoly3, Year ~ Season, type = "response") + basetheme + scale_y_continuous(limits = c(0,0.25), expand = c(0, 0))
+(emmeans(fullPoly3, pairwise ~ Season|Year, type = "response"))$emmeans %>% data.frame() %>% dplyr::select(-df)
+(emmeans(fullPoly3, pairwise ~ Season|Year, type = "response"))$contrast %>% data.frame() %>% dplyr::select(-c(df, null))
 #
-predicted_Poly <- data.frame(predW = predict(fullPoly3, Poly_df, type = "response", se.fit = TRUE), Year = Poly_df$Year) #%>%
-  #mutate(predW_bt = predW.fit*(pi/2), predW_sefit_bt = predW.se.fit*(pi/2)) %>% unique(.)
-(modelPolyWQ <- predicted_Poly %>% dplyr::select(Year, predW.fit, everything()) %>% dplyr::select(-predW.residual.scale) %>%
-    group_by(Year) %>% dplyr::summarise(predW = mean(predW.fit, na.rm = T), se = mean(predW.se.fit)))#, 
-                                        #predW_bt = mean(predW_bt), se_bt = mean(predW_sefit_bt)))
 #
-Poly_df %>% group_by(Year) %>% summarise(AveProp = mean(Prop, na.rm = T)) %>%
-  ggplot()+
-  geom_point(aes(Year, AveProp, color = "Mean"))+
-  geom_line(data = modelPolyWQ, aes(Year, predW, color = "Predict", group = 1))+
-  geom_line(data = modelPolyWQ, aes(Year, predW-se, color = "95% CI", group = 1), linetype = "dashed")+
-  geom_line(data = modelPolyWQ, aes(Year, predW+se, color = "95% CI", group = 1), linetype = "dashed")+
-  basetheme + theme(legend.position = c(0.899, 0.91))+ 
-  ylab("Average proportion affected")+ 
-  scale_x_discrete(expand = c(0.02,0.1)) + 
-  scale_y_continuous(expand = c(0,0), limits = c(0,0.4)) +
-  geom_hline(yintercept = 0, linetype = "dotted")+
-  scale_color_manual(name = "",
-                     breaks = c("Mean", "Predict", "95% CI"),
-                     values = c("#000000", "#FF0000", "#999999"),
-                     labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
-                     guide = guide_legend(override.aes = list(
-                       linetype = c("blank", "solid", "dashed"),
-                       shape = c(19, NA, NA))))
 #
-Poly_df %>% group_by(Year) %>% summarise(AvepH = mean(pH, na.rm = T)) %>%
-  ggplot()+
-  geom_point(aes(Year, AvepH), color = "darkblue")+
-  geom_line(aes(Year, AvepH, group = 1))+
-  scale_y_continuous("Mean annual pH", expand = c(0,0), limits = c(7, 9))+
-  basetheme
 #
-####MLogisticR 
-head(Poly_df)
-levels(Poly_df$Year); levels(Poly_df$Month); levels(Poly_df$Season)
-#
-Poly_model <- glm(Prop ~ Year + Season + DO_mgl + Salinity + Temperature + Turbidity + pH, data = Poly_df, family = binomial, weights = Total)
-(Polystep_2 <- drop1(Poly_model, test = "F"))
-Poly_model2 <- update(Poly_model, .~. -Season -Salinity -Turbidity -Temperature -DO_mgl, data = Poly_df)
-exp(cbind(OR = coef(Poly_model2), confint(Poly_model2))) #OR results and CIs
-#
-blorr::blr_model_fit_stats(Poly_model2) # Gives various fit statistics
-blorr::blr_test_hosmer_lemeshow(Poly_model2) # Hosmer Lemeshow gof test
-blorr::blr_roc_curve(blorr::blr_gains_table(Poly_model2)) # ROC curve
-DescTools::Cstat(Poly_model2) # C-Statistic (concordance statistic)) # Gives various fit statistics (model  performance)
-DescTools::VIF(Poly_model2) #3 or below is okay
-sjPlot::tab_model(Poly_mod2)
 #
 #
 #
@@ -1442,74 +1360,6 @@ sjPlot::tab_model(Poly_mod2)
 (Clio_df <- Trends_WQ[complete.cases(Trends_WQ),] %>% filter(Type == "Cliona") %>% dplyr::select(-Type, -Station)) 
 Clio_df %>% ggplot(aes(x = Prop))+ geom_histogram(aes(y = ..count..)) #skewed/proportional needs transformation
 #
-set.seed(4321)
-fullClio <- glm(Prop ~ Year + Season + DO_mgl + Salinity + Temperature + Turbidity + pH, data = Clio_df, family = quasibinomial)
-summary(fullClio)
-fullClio_tab <- tidy(fullClio)
-names(fullClio_tab) <- c("term", "Est.", "SE", "t", "p-value")
-fullClio_tab
-#
-summary(fullClio)
-(Cliostep <- drop1(fullClio, test = "F"))
-#
-#Updated model
-fullClio2 <- update(fullClio, .~. -Season -DO_mgl -Turbidity - Temperature, data = Clio_df)
-#
-###Reporting final model
-fullClio2
-fullClio2_sum <- summary(fullClio2)
-#MLR table with test values
-fullClio2_tab <- tidy(fullClio2)
-names(fullClio2_tab) <- c("term", "Est.", "SE", "t", "p-value")
-fullClio2_sum_tab <- glance(fullClio2) 
-names(fullClio2_sum_tab) <- c("Null_Dev", "df_null", "LL", "AIC", "BIC", "Deviance", "df_redis", "n")
-fullClio2_tab
-#McFadden's R2:1-deviance/null.deviance)
-summary(fullClio2)
-1-(59.138/83.060) #0.2880087
-#
-predicted_Clio <- data.frame(predW = predict(fullClio2, Clio_df, type = "response", se.fit = TRUE), Year = Clio_df$Year)
-(modelClioWQ <- predicted_Clio %>% dplyr::select(Year, predW.fit, everything()) %>% dplyr::select(-predW.residual.scale) %>%
-    group_by(Year) %>% dplyr::summarise(predW = mean(predW.fit, na.rm = T), se = mean(predW.se.fit)))
-#
-Clio_df %>% group_by(Year) %>% summarise(AveProp = mean(Prop, na.rm = T)) %>%
-  ggplot()+
-  geom_point(aes(Year, AveProp, color = "Mean"))+
-  geom_line(data = modelClioWQ, aes(Year, predW, color = "Predict", group = 1))+
-  geom_line(data = modelClioWQ, aes(Year, predW-se, color = "95% CI", group = 1), linetype = "dashed")+
-  geom_line(data = modelClioWQ, aes(Year, predW+se, color = "95% CI", group = 1), linetype = "dashed")+
-  basetheme + theme(legend.position = c(0.899, 0.91))+ 
-  ylab("Average proportion affected")+ 
-  scale_x_discrete(expand = c(0,0.1)) + 
-  scale_y_continuous(expand = c(0,0), limits = c(-0.025,0.4)) +
-  geom_hline(yintercept = 0, linetype = "dotted")+
-  scale_color_manual(name = "",
-                     breaks = c("Mean", "Predict", "95% CI"),
-                     values = c("#000000", "#FF0000", "#999999"),
-                     labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
-                     guide = guide_legend(override.aes = list(
-                       linetype = c("blank", "solid", "dashed"),
-                       shape = c(19, NA, NA))))
-#
-ggarrange(Clio_df %>% group_by(Year) %>% summarise(AveSal = mean(Salinity, na.rm = T)) %>%
-            ggplot()+
-            geom_point(aes(Year, AveSal), color = "darkblue")+
-            geom_line(aes(Year, AveSal, group = 1))+
-            scale_y_continuous("Mean annual salinity", expand = c(0,0), limits = c(20, 35))+
-            basetheme,
-          Clio_df %>% group_by(Year) %>% summarise(AveTemp = mean(Temperature, na.rm = T)) %>%
-            ggplot()+
-            geom_point(aes(Year, AveTemp), color = "darkblue")+
-            geom_line(aes(Year, AveTemp, group = 1))+
-            scale_y_continuous("Mean annual temperaure", expand = c(0,0), limits = c(20, 30))+
-            basetheme,
-          Clio_df %>% group_by(Year) %>% summarise(AvepH = mean(pH, na.rm = T)) %>%
-            ggplot()+
-            geom_point(aes(Year, AvepH), color = "darkblue")+
-            geom_line(aes(Year, AvepH, group = 1))+
-            scale_y_continuous("Mean annual pH", expand = c(0,0), limits = c(7, 9))+
-            basetheme,
-          nrow = 2, ncol = 2)
 #
 #
 #
