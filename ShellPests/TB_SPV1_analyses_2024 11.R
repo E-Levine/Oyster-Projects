@@ -1358,7 +1358,7 @@ emmip(fullPoly3, Year ~ Season, type = "response") + basetheme + scale_y_continu
 #
 (Clio_df <- Trends_WQ[complete.cases(Trends_WQ),] %>% filter(Type == "Cliona") %>% dplyr::select(-Type) %>% droplevels(.)) 
 Clio_df %>% ggplot(aes(x = Prop))+ geom_histogram(aes(y = ..count..)) #skewed/proportional needs transformation
-mean(Clio_df$Prop == 0) #Proportion of 0s = 0.563981
+mean(Clio_df$Prop == 0) #Proportion of 0s = 0.7203791
 cor(Clio_df[,c(8:12)]) #Temp and DO correlated so remove DO
 #Scale continuous variables
 Clio_df$Sal_s <- scale(Clio_df$Salinity)[,1]
@@ -1416,7 +1416,6 @@ summary(fullClio4)
 emmip(fullClio4, Year ~ Season, type = "response") + basetheme + scale_y_continuous(limits = c(0,0.25), expand = c(0, 0))
 (emmeans(fullClio4, pairwise ~ Season|Year, type = "response"))$emmeans %>% data.frame() %>% dplyr::select(-df)
 (emmeans(fullClio4, pairwise ~ Year|Season, type = "response"))$contrast %>% data.frame() %>% dplyr::select(-c(df, null))
-#
 #
 #
 #
