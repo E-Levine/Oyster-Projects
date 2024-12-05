@@ -25,8 +25,8 @@ pacman::p_load(odbc, DBI, dbplyr,
   tidyverse, dplyr,  stringr, #DF manipulation
   DT, openxlsx,         #Excel
   lubridate, zoo,         #Dates
-  knitr, kableExtra, scales, gt, gtExtras, ggpubr, ggpattern, magick, 
-  flextable,
+  knitr, scales, gt, gtExtras, ggpubr, ggpattern, magick, 
+  flextable, lmPerm, broom, rstatix, biostat,
   install = TRUE)
 
 ```
