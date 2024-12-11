@@ -162,7 +162,7 @@ Sedi_OrgWt <- Month_sedi %>% ungroup() %>% dplyr::select(Estuary, Station, RetDa
 #
 ```
 
-```{r Sediment trap summary tables, include=FALSE}
+```{r Sediment trap summary tables and analyses, include=FALSE}
 #
 SedimentSumm_overall <- rbind(Sediment %>% 
   group_by(Estuary) %>%
@@ -208,6 +208,30 @@ MinMax_stations <- rbind(rbind(Month_sedi %>% group_by(Estuary, Station) %>% sli
                                Month_sedi %>% group_by(Estuary, Station) %>% slice_max(order_by = MeanOrgWt, na_rm = T) %>% dplyr::select(Year, Month, Estuary, Station, MeanOrgWt) %>% mutate(Type = "Max Daily Org Wt", Measure = "Organic Weight") %>% rename(Value = MeanOrgWt))) %>%
   dplyr::select(Measure, Estuary, Station, Type, Year, Month, Value) %>% arrange(Measure, Estuary, Station)
 #
+#Permuatation ANOVA and post-hoc
+#
+#Visualize
+ggboxplot(Month_sedi, x = "Estuary", y = "MeanRate", color = "Station")
+Month_sedi %>% ggplot(aes(x = MeanRate))+ geom_histogram(aes(y = ..count..)) #right-skewed + zeros - log(x+1)
+Month_sedi %>% ggplot(aes(x = log10(MeanRate+1)))+ geom_histogram(aes(y = ..count..))
+Month_sedi2 <- Month_sedi %>% mutate(logRate = log10(MeanRate + 1),
+                                     Estuary = as.factor(Estuary),
+                                     Station_code = factor(paste0(Estuary, Station))) %>% ungroup()
+#
+##Permutation 2 factor Anova
+set.seed(402)
+Sedi_aov <- aovp(logRate ~ Estuary + Station_code, data = Month_sedi2, perm = "",  nperm = 10000)
+summary(Sedi_aov)
+Sedi_aov_tidy <- tidy(Sedi_aov)
+names(Sedi_aov_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
+#
+Sedi_est_tab <- pairwisePermutationTest(logRate ~ Estuary, data = Month_sedi2, method = "fdr", alternative = "two.sided") 
+Sedi_estuary <- merge(Month_sedi2 %>% group_by(Estuary) %>% get_summary_stats(MeanRate, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                      cldList(comparison = Sedi_est_tab$Comparison, p.value = Sedi_est_tab$p.adjust, threshold = 0.05) %>% select(-c("MonoLetter")) %>% rename(Estuary = Group, Letters = Letter))
+Sedi_sta_tab <- pairwisePermutationTest(logRate ~ Station_code, data = Month_sedi2, method = "fdr", alternative = "two.sided") 
+Sedi_station <- merge(Month_sedi2 %>% group_by(Station_code) %>% get_summary_stats(MeanRate, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                      cldList(comparison = Sedi_sta_tab$Comparison, p.value = Sedi_sta_tab$p.adjust, threshold = 0.05) %>% select(-c("MonoLetter")) %>% rename(Station_code = Group, Letters = Letter))
+#
 ```
 
 This report provides summary tables and figures for the sediment trap data collected at Caloosahatchee River estuary and Tampa Bay estuary stations from `r format(as.Date(Report_start), "%B %Y")` through `r format(as.Date(Report_end), "%B %Y")`. Monthly data is standardized to a 28-day month unless otherwise noted. When possible, data is extrapolated to the entire sample collected based on crucible sub-sample information.  
@@ -216,13 +240,16 @@ This report provides summary tables and figures for the sediment trap data colle
 
 Oyster reefs in the Caloosahatchee River estuary averaged sedimentation rates of `r round((SedimentSumm_overall %>% filter(Estuary == "CR" & is.na(Station)))$MeanRate, 1)` g/month (Table 1, Figure 1). The lowest sedimentation rate occurred at station `r (SedimentSumm_overall %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$Station` (mean: `r round((SedimentSumm_overall  %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$MeanRate,1)` g/month) and the highest occurred at station `r (SedimentSumm_overall %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$Station` (mean: `r round((SedimentSumm_overall  %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$MeanRate,1)` g/month). Overall, the lowest single month sedimentation rate (`r round((Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$MeanRate,1)` g/month) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$Station ` while the highest (`r round((Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$MeanRate,1)` g/month) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$Station` (Table 2). 
 \
+\
 Oyster reefs in the Tampa Bay estuary had an average sedimentation rate of `r round((SedimentSumm_overall %>% filter(Estuary == "TB" & is.na(Station)))$MeanRate, 1)` g/month (Table 1, Figure 1). The lowest sedimentation rate occurred at station `r (SedimentSumm_overall %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station` (mean: `r round((SedimentSumm_overall  %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$MeanRate,1)` g/month) and the highest occurred at station `r (SedimentSumm_overall %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station` (mean: `r round((SedimentSumm_overall  %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$MeanRate,1)` g/month). The lowest single station sedimentation rate (`r round((Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$MeanRate,1)` g/month) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station ` while the highest (`r round((Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$MeanRate,1)` g/month) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station` (Table 2). 
 \
-`r SedimentSumm_overall  %>% mutate(across(where(is.numeric), round, digits = 2)) %>% as_grouped_data(groups = "Estuary") %>% flextable() %>% align(align = "center") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 1. Sedimentation rates (g/month) by station and overall during the project. Rates are standardized to 28-day months.")`
+\
+`r if(Sedi_aov_tidy[1,6] < 0.05 & Sedi_aov_tidy[2,6] >= 0.05){paste0("Sedimentation rates were significantly different between estuaries (F(", Sedi_aov_tidy[1,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[1,5],2), ", p = ", round(Sedi_aov_tidy[1,6], 3), ") (Figure 2, Table 3).")} else if(Sedi_aov_tidy[1,6] >= 0.05 & Sedi_aov_tidy[2,6] < 0.05){paste0("Sedimentation rates were significantly different among stations (F(", Sedi_aov_tidy[2,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[2,5],2), ", p = ", round(Sedi_aov_tidy[2,6], 3), ") (Figure 2, Table 3).")} else if (Sedi_aov_tidy[1,6] < 0.05 & Sedi_aov_tidy[2,6] < 0.05){paste0("Sedimentation rates were significantly different between estuaries (F(", Sedi_aov_tidy[1,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[1,5],2), ", p = ", round(Sedi_aov_tidy[1,6], 3), ") and among stations (F(", Sedi_aov_tidy[2,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[2,5],2), ", p = ", round(Sedi_aov_tidy[2,6], 3), ") (Figure 2, Table 3).")} else {paste0("Neither factor was significant. Review coding.")}`
+\
+\
+{Include text about between estuaries and among stations. Tables 4 & 5 and Tables 6 & 7.}
 
-`r MinMax_stations %>% mutate(across(where(is.numeric), round, digits = 2)) %>% filter(Measure == "Sedimentation") %>% flextable() %>% merge_v(j = c("Measure", "Estuary", "Station")) %>% hline(part = "body") %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.65) %>% width(width = 1.2, j = c(1, 4)) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 2. Minimum and maximum sedimentation rates per station and the Month and Year in which the minimum or maximum occurred.")`
-
-```{r Sedimentation rate Figure, fig.cap = "**Figure 1.**  Mean monthly sedimentation rate (± S.D.) at stations in Tampa Bay and Caloosahatchee River. Asterisks indicate when no samples were collected from a station. Please note differences in magnitude between the y-axes.", fig.height = 9.5, fig.width = 8, fig.fullwidth=TRUE}
+```{r Sedimentation rate Figure, fig.cap = "**Figure 1.**  Mean monthly sedimentation rate (± S.D.) at stations in Tampa Bay and Caloosahatchee River. Please note differences in magnitude between the y-axes.", fig.height = 9.5, fig.width = 8, fig.fullwidth=TRUE}
 #
 ###Monthly sedimentation rate
 Sedi_list <- list()
@@ -252,53 +279,32 @@ Sedi_rate_fig <- ggarrange(
 annotate_figure(Sedi_rate_fig, left = text_grob("Sedimentation Rate (g/month)", rot = 90, vjust = 0.4, family = "serif", size = 18, color = "black"))
 ```
 
-```{r Sedimentation comparisons - estuary and station, include=FALSE}
-#
-#Visualize
-ggboxplot(Month_sedi, x = "Estuary", y = "MeanRate", color = "Station")
-Month_sedi %>% ggplot(aes(x = MeanRate))+ geom_histogram(aes(y = ..count..)) #right-skewed + zeros - log(x+1)
-Month_sedi %>% ggplot(aes(x = log10(MeanRate+1)))+ geom_histogram(aes(y = ..count..))
-Month_sedi2 <- Month_sedi %>% mutate(logRate = log10(MeanRate + 1),
-                                     Estuary = as.factor(Estuary),
-                                     Station_code = factor(paste0(Estuary, Station))) %>% ungroup()
-#
-##Permutation 2 factor Anova
-set.seed(402)
-Sedi_aov <- aovp(logRate ~ Estuary + Station_code, data = Month_sedi2, perm = "",  nperm = 10000)
-summary(Sedi_aov)
-Sedi_aov_tidy <- tidy(Sedi_aov)
-names(Sedi_aov_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
-#
-Sedi_est_tab <- pairwisePermutationTest(logRate ~ Estuary, data = Month_sedi2, method = "fdr", alternative = "two.sided") 
-Sedi_estuary <- merge(Month_sedi2 %>% group_by(Estuary) %>% get_summary_stats(MeanRate, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
-                      cldList(comparison = Sedi_est_tab$Comparison, p.value = Sedi_est_tab$p.adjust, threshold = 0.05) %>% select(-c("MonoLetter")) %>% rename(Estuary = Group, Letters = Letter))
-Sedi_sta_tab <- pairwisePermutationTest(logRate ~ Station_code, data = Month_sedi2, method = "fdr", alternative = "two.sided") 
-Sedi_station <- merge(Month_sedi2 %>% group_by(Station_code) %>% get_summary_stats(MeanRate, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
-                      cldList(comparison = Sedi_sta_tab$Comparison, p.value = Sedi_sta_tab$p.adjust, threshold = 0.05) %>% select(-c("MonoLetter")) %>% rename(Station_code = Group, Letters = Letter))
-#
-#
-```
-\
-`r Sedi_aov_tidy %>% mutate_at(vars(SS, MS, F), round, digits = 2) %>% mutate_at(vars(Pr), round, digits = 3) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1, j = 1.1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ Pr < 0.05, j = "Pr", color = "red") %>% set_caption("Table 5. Analysis of sedimentation rates (g/month) by estuary and station. Permutation ANOVA using 10,000 permutations.")`
-\
-`r Sedi_estuary  %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 6. Mean sedimentation rates (g/month) per estuary. Letters are determined based on pairwise permutation two-sample independence analysis.")`
-\
-`r Sedi_est_tab %>% mutate_at(vars(p.value, p.adjust), as.numeric) %>% mutate(across(where(is.numeric), round, digits = 3)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ p.adjust < 0.05, j = "p.adjust", color = "red") %>% set_caption("Table 7. Pairwise two-sample permutation post-hoc comparisons of sedimentation rates (g/month) per estuary.")`
-\
-`r Sedi_station %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 8. Mean sedimentation rates (g/month) per station. Letters are determined based on pairwise permutation two-sample independence analysis.")`
-\
-`r Sedi_sta_tab %>% mutate_at(vars(p.value, p.adjust), as.numeric) %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ p.adjust < 0.05, j = "p.adjust", color = "red") %>% set_caption("Table 9. Pairwise two-sample permutation post-hoc comparisons of sedimentation rates (g/month) per station.")`
-\
-```{r Monthly sedimentation rate figure, fig.cap = "**Figure 3.**  Mean monthly sedimentation rates at stations in Tampa Bay and Caloosahatchee River. Colors indicate significant groupings (alpha = 0.05). Rates are standarized to a 28-day month.", fig.height = 9.5, fig.width = 8, fig.fullwidth=TRUE}
+```{r Monthly sedimentation rate figure, fig.cap = "**Figure 2.**  Mean monthly sedimentation rates at stations in Tampa Bay and Caloosahatchee River. Colors indicate significant groupings (alpha = 0.05). Rates are standarized to a 28-day month.", fig.height = 4.5, fig.width = 8, fig.fullwidth=TRUE}
 
 Month_sedi2 %>% group_by(Estuary, Station_code) %>% left_join(Sedi_station[c(1,7)]) %>% 
   ggplot(aes(Station, MeanRate, fill = Letters)) + geom_boxplot() +
   lemon::facet_rep_grid(.~Estuary, scales = "free_x") +
   scale_y_continuous("Mean monthly sedimentation rate (g/month)", expand = c(0,0), limits = c(0, 1000))+
-  BaseForm + theme_f
+  BaseForm + theme_f + theme(axis.title.y = element_text(size = 14))
 
 ```
 
+\
+`r SedimentSumm_overall  %>% mutate(across(where(is.numeric), round, digits = 2)) %>% as_grouped_data(groups = "Estuary") %>% flextable() %>% align(align = "center") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 1. Sedimentation rates (g/month) by station and overall during the project. Rates are standardized to 28-day months.")`
+\
+`r MinMax_stations %>% mutate(across(where(is.numeric), round, digits = 2)) %>% filter(Measure == "Sedimentation") %>% flextable() %>% merge_v(j = c("Measure", "Estuary", "Station")) %>% hline(part = "body") %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.65) %>% width(width = 1.2, j = c(1, 4)) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 2. Minimum and maximum sedimentation rates per station and the Month and Year in which the minimum or maximum occurred.")`
+\
+`r Sedi_aov_tidy %>% mutate_at(vars(SS, MS, F), round, digits = 2) %>% mutate_at(vars(Pr), round, digits = 3) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1, j = 1.1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ Pr < 0.05, j = "Pr", color = "red") %>% set_caption("Table 3. Analysis of sedimentation rates (g/month) by estuary and station. Permutation ANOVA using 10,000 permutations.")`
+\
+`r Sedi_estuary  %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 4. Mean sedimentation rates (g/month) per estuary. Letters are determined based on pairwise permutation two-sample independence analysis.")`
+\
+`r Sedi_est_tab %>% mutate_at(vars(p.value, p.adjust), as.numeric) %>% mutate(across(where(is.numeric), round, digits = 3)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ p.adjust < 0.05, j = "p.adjust", color = "red") %>% set_caption("Table 5. Pairwise two-sample permutation post-hoc comparisons of sedimentation rates (g/month) per estuary.")`
+\
+`r Sedi_station %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 6. Mean sedimentation rates (g/month) per station. Letters are determined based on pairwise permutation two-sample independence analysis.")`
+\
+`r Sedi_sta_tab %>% mutate_at(vars(p.value, p.adjust), as.numeric) %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ p.adjust < 0.05, j = "p.adjust", color = "red") %>% set_caption("Table 7. Pairwise two-sample permutation post-hoc comparisons of sedimentation rates (g/month) per station.")`
+\
+\
 ## Percent organic content
 
 `r PctOrgSumm_overall %>% mutate(across(where(is.numeric), round, digits = 2)) %>% as_grouped_data(groups = "Estuary") %>% flextable() %>% align(align = "center") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.55) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 2. Percent organic content (%) by station and overall during the project.")`
