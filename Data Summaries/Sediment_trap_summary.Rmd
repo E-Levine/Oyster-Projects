@@ -54,7 +54,7 @@ DBI::dbDisconnect(con)
 
 ```{r FigureFormatting, include=FALSE}
 #
-Sites <- c("TB", "CR")
+Sites <- c("CR", "TB")
 #Shared formatting for figure consistency
 BaseForm <- theme_classic() +
   theme(panel.border = element_rect(color = "black", fill = NA), #Add border
@@ -157,10 +157,19 @@ Month_vol <- Volumes %>% mutate(Station = as.factor(Station)) %>% group_by(Analy
 Sedi_rate <- Month_sedi %>% ungroup() %>% dplyr::select(Estuary, Station, RetDate, contains("Rate")) %>% mutate(Helper = case_when(is.na(MeanRate) ~ "*", TRUE ~ NA))
 #
 Sedi_PctOrg <- Month_sedi %>% ungroup() %>% dplyr::select(Estuary, Station, RetDate, contains("Pct")) %>% mutate(SampleHelper = case_when(is.na(MeanPctOrg) ~ "*", TRUE ~ NA), Helper = case_when(is.na(MeanPctOrg) ~ "*", TRUE ~ NA))
+Type_PctOrg <- Month_sedi %>% ungroup() %>% dplyr::select(Estuary, Type, Station, RetDate, contains("Pct")) %>% mutate(Helper = case_when(is.na(MeanPctOrg) ~ "*", TRUE ~ NA), Type = recode_factor(Type, levels = c("Estimated", "Calculated")))
 #
 Sedi_OrgWt <- Month_sedi %>% ungroup() %>% dplyr::select(Estuary, Station, RetDate, contains("Wt")) %>% mutate(SampleHelper = case_when(is.na(SampleMeanOrgWt) ~ "*", TRUE ~ NA), Helper = case_when(is.na(MeanOrgWt) ~ "*", TRUE ~ NA))
+Type_OrgWt <- Month_sedi %>% ungroup() %>% dplyr::select(Estuary, Type, Station, RetDate, contains("Wt")) %>% mutate(SampleHelper = case_when(is.na(SampleMeanOrgWt) ~ "*", TRUE ~ NA), Helper = case_when(is.na(MeanOrgWt) ~ "*", TRUE ~ NA), Type = recode_factor(Type, levels = c("Estimated", "Calculated")))
 #
 ```
+
+This report provides summary tables and figures for the sediment trap data collected at Caloosahatchee River estuary and Tampa Bay estuary stations from `r format(as.Date(Report_start), "%B %Y")` through `r format(as.Date(Report_end), "%B %Y")`. Monthly data is standardized to a 28-day month unless otherwise noted. When possible, data is extrapolated to the entire sample collected based on crucible sub-sample information.  
+\
+\
+From March 2023 through April 2024 for Tampa Bay samples and March 2023 through May 2024 for Caloosahatchee samples, the portion of samples used for ash weight processing was estimated. Beginning in May (Tampa Bay) and June (Caloosahatchee) 2024, the portion of samples used for ash weight processing were calculated by dividing the crucible sample dry weight (g) by the total sample dry weight (g). Due to this difference, analyses for percent organic content and organic weight were performed on the "estimated" data and on the "calculated" data separately. 
+
+## Sedimentation rate
 
 ```{r Sediment trap summary tables and analyses, include=FALSE}
 #
@@ -172,20 +181,6 @@ SedimentSumm_overall <- rbind(Sediment %>%
     group_by(Estuary, Station) %>%
     summarise(MeanRate = mean(TotalDW/(NumDays/28), na.rm = T),  sdRate = sd(TotalDW/(NumDays/28), na.rm = T),
               MinRate = min(TotalDW/(NumDays/28), na.rm = T), MaxRate = max(TotalDW/(NumDays/28), na.rm = T))) %>%
-  arrange(Estuary, Station) %>% dplyr::select(Estuary, Station, everything()) 
-#
-OrgWtSumm_overall <- rbind(Sediment %>% 
-  group_by(Estuary) %>%
-  summarise(MeanWt = mean(TotalOrgWt/(NumDays/28), na.rm = T), sdWt = sd(TotalOrgWt/(NumDays/28), na.rm = T),
-            MinWt = min(TotalOrgWt/(NumDays/28), na.rm = T), MaxWt = max(TotalOrgWt/(NumDays/28), na.rm = T),
-            MeanSample = mean(SampleOrgWt/(NumDays/28), na.rm = T), sdSample = sd(SampleOrgWt/(NumDays/28), na.rm = T),
-            MinSample = min(SampleOrgWt/(NumDays/28), na.rm = T), MaxSample = max(SampleOrgWt/(NumDays/28), na.rm = T)) %>% mutate(Station = NA),
-  Sediment %>% 
-    group_by(Estuary, Station) %>%
-    summarise(MeanWt = mean(TotalOrgWt/(NumDays/28), na.rm = T), sdWt = sd(TotalOrgWt/(NumDays/28), na.rm = T),
-            MinWt = min(TotalOrgWt/(NumDays/28), na.rm = T), MaxWt = max(TotalOrgWt/(NumDays/28), na.rm = T),
-            MeanSample = mean(SampleOrgWt/(NumDays/28), na.rm = T), sdSample = sd(SampleOrgWt/(NumDays/28), na.rm = T),
-            MinSample = min(SampleOrgWt/(NumDays/28), na.rm = T), MaxSample = max(SampleOrgWt/(NumDays/28), na.rm = T))) %>%
   arrange(Estuary, Station) %>% dplyr::select(Estuary, Station, everything()) 
 #
 
@@ -224,22 +219,18 @@ Sedi_station <- merge(Month_sedi2 %>% group_by(Station_code) %>% get_summary_sta
 #
 ```
 
-This report provides summary tables and figures for the sediment trap data collected at Caloosahatchee River estuary and Tampa Bay estuary stations from `r format(as.Date(Report_start), "%B %Y")` through `r format(as.Date(Report_end), "%B %Y")`. Monthly data is standardized to a 28-day month unless otherwise noted. When possible, data is extrapolated to the entire sample collected based on crucible sub-sample information.  
-
-## Sedimentation rates
-
-Oyster reefs in the Caloosahatchee River estuary averaged sedimentation rates of `r round((SedimentSumm_overall %>% filter(Estuary == "CR" & is.na(Station)))$MeanRate, 1)` g/month (Table 1, Figure 1). The lowest sedimentation rate occurred at station `r (SedimentSumm_overall %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$Station` (mean: `r round((SedimentSumm_overall  %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$MeanRate,1)` g/month) and the highest occurred at station `r (SedimentSumm_overall %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$Station` (mean: `r round((SedimentSumm_overall  %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$MeanRate,1)` g/month). Overall, the lowest single month sedimentation rate (`r round((Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$MeanRate,1)` g/month) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$Station ` while the highest (`r round((Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$MeanRate,1)` g/month) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$Station` (Table 2). 
+Oyster reefs in the Caloosahatchee River estuary averaged sedimentation rates of `r round((SedimentSumm_overall %>% filter(Estuary == "CR" & is.na(Station)))$MeanRate, 1)` g/month (Table 1, Figure 1-2). The lowest sedimentation rate occurred at station `r (SedimentSumm_overall %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$Station` (mean: `r round((SedimentSumm_overall  %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$MeanRate,1)` g/month) and the highest occurred at station `r (SedimentSumm_overall %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$Station` (mean: `r round((SedimentSumm_overall  %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$MeanRate,1)` g/month). Overall, the lowest single month sedimentation rate (`r round((Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$MeanRate,1)` g/month) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$Station ` while the highest (`r round((Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$MeanRate,1)` g/month) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$Station` (Table 2). 
 \
 \
-Oyster reefs in the Tampa Bay estuary had an average sedimentation rate of `r round((SedimentSumm_overall %>% filter(Estuary == "TB" & is.na(Station)))$MeanRate, 1)` g/month (Table 1, Figure 1). The lowest sedimentation rate occurred at station `r (SedimentSumm_overall %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station` (mean: `r round((SedimentSumm_overall  %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$MeanRate,1)` g/month) and the highest occurred at station `r (SedimentSumm_overall %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station` (mean: `r round((SedimentSumm_overall  %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$MeanRate,1)` g/month). The lowest single station sedimentation rate (`r round((Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$MeanRate,1)` g/month) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station ` while the highest (`r round((Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$MeanRate,1)` g/month) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station` (Table 2). 
+Oyster reefs in the Tampa Bay estuary had an average sedimentation rate of `r round((SedimentSumm_overall %>% filter(Estuary == "TB" & is.na(Station)))$MeanRate, 1)` g/month (Table 1, Figure 1-2). The lowest sedimentation rate occurred at station `r (SedimentSumm_overall %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station` (mean: `r round((SedimentSumm_overall  %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$MeanRate,1)` g/month) and the highest occurred at station `r (SedimentSumm_overall %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station` (mean: `r round((SedimentSumm_overall  %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$MeanRate,1)` g/month). The lowest single station sedimentation rate (`r round((Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$MeanRate,1)` g/month) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station ` while the highest (`r round((Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$MeanRate,1)` g/month) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station` (Table 2). 
 \
 \
-`r if(Sedi_aov_tidy[1,6] < 0.05 & Sedi_aov_tidy[2,6] >= 0.05){paste0("Sedimentation rates were significantly different between estuaries (F(", Sedi_aov_tidy[1,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[1,5],2), ", p = ", round(Sedi_aov_tidy[1,6], 3), ") (Figure 2, Table 3).")} else if(Sedi_aov_tidy[1,6] >= 0.05 & Sedi_aov_tidy[2,6] < 0.05){paste0("Sedimentation rates were significantly different among stations (F(", Sedi_aov_tidy[2,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[2,5],2), ", p = ", round(Sedi_aov_tidy[2,6], 3), ") (Figure 2, Table 3).")} else if (Sedi_aov_tidy[1,6] < 0.05 & Sedi_aov_tidy[2,6] < 0.05){paste0("Sedimentation rates were significantly different between estuaries (F(", Sedi_aov_tidy[1,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[1,5],2), ", p = ", round(Sedi_aov_tidy[1,6], 3), ") and among stations (F(", Sedi_aov_tidy[2,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[2,5],2), ", p = ", round(Sedi_aov_tidy[2,6], 3), ") (Figure 2, Table 3).")} else {paste0("Neither factor was significant. Review coding.")}`
+`r if(Sedi_aov_tidy[1,6] < 0.05 & Sedi_aov_tidy[2,6] >= 0.05){paste0("Sedimentation rates were significantly different between estuaries (F(", Sedi_aov_tidy[1,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[1,5],2), ", p = ", round(Sedi_aov_tidy[1,6], 3), ") but not among stations (F(", Sedi_aov_tidy[2,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[2,5],2), ", p = ", round(Sedi_aov_tidy[2,6], 3), ") (Figure 3, Table 3).")} else if(Sedi_aov_tidy[1,6] >= 0.05 & Sedi_aov_tidy[2,6] < 0.05){paste0("Sedimentation rates were significantly different among stations (F(", Sedi_aov_tidy[2,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[2,5],2), ", p = ", round(Sedi_aov_tidy[2,6], 3), ") but not between estuaries (F(", Sedi_aov_tidy[1,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[1,5],2), ", p = ", round(Sedi_aov_tidy[1,6], 3), ") (Figure 3, Table 3).")} else if (Sedi_aov_tidy[1,6] < 0.05 & Sedi_aov_tidy[2,6] < 0.05){paste0("Sedimentation rates were significantly different between estuaries (F(", Sedi_aov_tidy[1,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[1,5],2), ", p = ", round(Sedi_aov_tidy[1,6], 3), ") and among stations (F(", Sedi_aov_tidy[2,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[2,5],2), ", p = ", round(Sedi_aov_tidy[2,6], 3), ") (Figure 3, Table 3).")} else {paste0("Neither factor was significant. Review coding.")}`
 \
 \
 {Include text about between estuaries and among stations. Tables 4 & 5 and Tables 6 & 7.}
 
-```{r Sedimentation rate Figure, fig.cap = "**Figure 1.**  Mean monthly sedimentation rate (± S.D.) at stations in Tampa Bay and Caloosahatchee River. Please note differences in magnitude between the y-axes.", fig.height = 9.5, fig.width = 8, fig.fullwidth=TRUE}
+```{r Sedimentation rate figure, fig.cap = "**Figure 1.**  Mean monthly sedimentation rate (± S.D.) at stations in Caloosahatchee River and Tampa Bay. Please note differences in magnitude between the y-axes.", fig.height = 9.5, fig.width = 8, fig.fullwidth=TRUE}
 #
 ###Monthly sedimentation rate
 Sedi_list <- list()
@@ -269,7 +260,36 @@ Sedi_rate_fig <- ggarrange(
 annotate_figure(Sedi_rate_fig, left = text_grob("Sedimentation Rate (g/month)", rot = 90, vjust = 0.4, family = "serif", size = 18, color = "black"))
 ```
 
-```{r Monthly sedimentation rate figure, fig.cap = "**Figure 2.**  Mean monthly sedimentation rates at stations in Tampa Bay and Caloosahatchee River. Colors indicate significant groupings (alpha = 0.05). Rates are standarized to a 28-day month.", fig.height = 4.5, fig.width = 8, fig.fullwidth=TRUE}
+```{r Sedimentation rate line figure, fig.cap = "**Figure 2.**  Mean monthly sedimentation rate at stations in Caloosahatchee River and Tampa Bay. Please note differences in magnitude between the y-axes.", fig.height = 5.5, fig.width = 8, fig.fullwidth=TRUE}
+#
+###Monthly sedimentation rate
+Sedi_line_list <- list()
+for(i in seq_along(Sites)){
+  #
+  Working_site <- paste(Sites[i])
+  df_temp <- Sedi_rate %>% filter(grepl(Working_site, Estuary)) %>% rowwise() %>% mutate(Upper = sum(MeanRate, na.rm = TRUE))
+  df_temp$HelperLocation <- (ceiling(max(df_temp$Upper, na.rm = T)*1.05)/5)
+  max_upper <- ceiling(max(df_temp$Upper, na.rm = T)*1.05) #*1.05 adds 5% buffer to top if needed
+  #
+  Sedi_line_list[[i]] <- df_temp %>% ggplot(aes(RetDate, MeanRate, color = Station))+ 
+    #geom_errorbar(aes(ymin = MeanRate, ymax = MeanRate + RateSD), color = "black", position = position_dodge(12, preserve = "single"), width = 9) +
+    geom_line(linewidth = 1.25) +
+    scale_x_date("Date", expand= c(0.005,0), date_breaks = "2 months", date_labels = "%b %Y", limits = c(floor_date(min(TripInfo$TripDate), "month") %m+% months(2), ceiling_date(max(TripInfo$TripDate), "month") %m-% days(1)))+
+    scale_y_continuous("Sedimentation rate (g/month)", expand = c(0,0), limits = c(0, max(pretty(0:ceiling(max_upper*10)/10))), breaks = pretty(0:ceiling(max_upper*10)/10))+
+    ggtitle(paste0(case_when(grepl("TB", Working_site) ~ "Tampa Bay", grepl("CR", Working_site) ~ "Caloosahatchee River", TRUE ~ "WRONG"))) +
+    Station_color + BaseForm + PlotTitle + Angle_x
+}
+
+Sedi_line_rate_fig <- ggarrange(
+  Sedi_line_list[[1]] + rremove("x.text") + rremove("x.title") + rremove("y.title") + theme(legend.position = "bottom",  legend.margin = margin(-1, 0, -1, 0)) + guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+  Sedi_line_list[[2]] + rremove("x.title") + rremove("y.title") + theme(legend.position = "bottom") + guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+  nrow = 2, heights = c(1, 1.3), align = "v"  
+)
+
+annotate_figure(Sedi_line_rate_fig, left = text_grob("Sedimentation Rate (g/month)", rot = 90, vjust = 0.4, family = "serif", size = 18, color = "black"))
+```
+
+```{r Monthly sedimentation rate figure, fig.cap = "**Figure 3.**  Mean monthly sedimentation rates at stations in Caloosahatchee River and Tampa Bay. Colors indicate significant groupings (alpha = 0.05). Rates are standarized to a 28-day month.", fig.height = 4.5, fig.width = 8, fig.fullwidth=TRUE}
 
 Month_sedi2 %>% group_by(Estuary, Station_code) %>% left_join(Sedi_station[c(1,7)]) %>% 
   ggplot(aes(Station, MeanRate, fill = Letters)) + geom_boxplot() +
@@ -293,11 +313,14 @@ Month_sedi2 %>% group_by(Estuary, Station_code) %>% left_join(Sedi_station[c(1,7
 `r Sedi_station %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 6. Mean sedimentation rates (g/month) per station. Letters are determined based on pairwise permutation two-sample independence analysis.")`
 \
 `r Sedi_sta_tab %>% mutate_at(vars(p.value, p.adjust), as.numeric) %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ p.adjust < 0.05, j = "p.adjust", color = "red") %>% set_caption("Table 7. Pairwise two-sample permutation post-hoc comparisons of sedimentation rates (g/month) per station. Red text indicates signifcance alpha < 0.05.")`
-\
+
+\newpage
 
 ## Percent organic content
 
-```{r Percent organic sumamry and comparisons - estuary and station, include=FALSE}
+Percentage organic content of samples was assessed by determining how much of the collected sample was organic or inorganic material by estimation of sample proportion or calculated sample proportion (Figure 4).
+
+```{r Percent organic summary and comparisons - estuary and station, include=FALSE}
 #
 PctOrgSumm_overall <- rbind(Sediment %>% 
   group_by(Estuary) %>%
@@ -308,167 +331,469 @@ PctOrgSumm_overall <- rbind(Sediment %>%
     summarise(MeanPct = mean(PctOrganic, na.rm = T),  sdPct = sd(PctOrganic, na.rm = T),
               MinPct = min(PctOrganic, na.rm = T), MaxPct = max(PctOrganic, na.rm = T))) %>%
   arrange(Estuary, Station) %>% dplyr::select(Estuary, Station, everything()) 
-
-#Visualize
-ggboxplot(Month_sedi, x = "Estuary", y = "MeanPctOrg", color = "Station")
-Month_sedi %>% ggplot(aes(x = MeanPctOrg))+ geom_histogram(aes(y = ..count..)) #left-skewed-percentages
 #
-##Permutation 2 factor Anova
-set.seed(402)
-Org_aov <- aovp(MeanPctOrg ~ Estuary + Station_code, data = Month_sedi2, perm = "",  nperm = 10000)
-summary(Org_aov)
-Org_aov_tidy <- tidy(Org_aov)
-names(Org_aov_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
+PctOrgSumm <- rbind(Sediment %>% 
+  group_by(Estuary, Type) %>%
+  summarise(MeanPct = mean(PctOrganic, na.rm = T), sdPct = sd(PctOrganic, na.rm = T),
+            MinPct = min(PctOrganic, na.rm = T), MaxPct = max(PctOrganic, na.rm = T)) %>% mutate(Station = NA),
+  Sediment %>% 
+    group_by(Estuary, Type, Station) %>%
+    summarise(MeanPct = mean(PctOrganic, na.rm = T),  sdPct = sd(PctOrganic, na.rm = T),
+              MinPct = min(PctOrganic, na.rm = T), MaxPct = max(PctOrganic, na.rm = T))) %>%
+  arrange(Estuary, desc(Type), Station) %>% dplyr::select(Estuary, Station, everything())
 #
-##Estuary not significantly different so skip pairwise
-#Org_est_tab <- pairwisePermutationTest(MeanPctOrg ~ Estuary, data = Month_sedi2, method = "fdr", alternative = "two.sided") 
-#Org_estuary <- merge(Month_sedi2 %>% group_by(Estuary) %>% get_summary_stats(MeanPctOrg, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), cldList(comparison = Org_est_tab$Comparison, p.value = Org_est_tab$p.adjust, threshold = 0.05) %>% #select(-c("MonoLetter")) %>% rename(Estuary = Group, Letters = Letter))
-Org_sta_tab <- pairwisePermutationTest(MeanPctOrg ~ Station_code, data = Month_sedi2, method = "fdr", alternative = "two.sided") 
-Org_station <- merge(Month_sedi2 %>% group_by(Station_code) %>% get_summary_stats(MeanPctOrg, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
-                      cldList(comparison = Org_sta_tab$Comparison, p.value = Org_sta_tab$p.adjust, threshold = 0.05) %>% select(-c("MonoLetter")) %>% rename(Station_code = Group, Letters = Letter))
+EstWt <- Month_sedi2 %>% filter(Type == "Estimated")
+CalWt <- Month_sedi2 %>% filter(Type == "Calculated")
 #
-#
+MinMaxPctOrg <- rbind(Month_sedi %>% group_by(Type, Estuary, Station) %>% slice_min(order_by = MeanPctOrg, na_rm = T) %>% dplyr::select(Year, Month, Estuary, Station, MeanPctOrg) %>% mutate(Extreme = "Min Daily Org Wt", Measure = "Organic Weight") %>% rename(Value = MeanPctOrg),
+                     Month_sedi %>% group_by(Type, Estuary, Station) %>% slice_max(order_by = MeanPctOrg, na_rm = T) %>% dplyr::select(Year, Month, Estuary, Station, MeanPctOrg) %>% mutate(Extreme = "Max Daily Org Wt", Measure = "Organic Weight") %>% rename(Value = MeanPctOrg)) %>%
+  dplyr::select(Measure, Type, Estuary, Station, Extreme, Year, Month, Value) %>% arrange(Measure, desc(Type), Estuary, Station)
 ```
 
-Sediment on oyster reefs in the Caloosahatchee River estuary averaged `r round((PctOrgSumm_overall %>% filter(Estuary == "CR" & is.na(Station)))$MeanPct, 1)`% organic content (Table 8, Figure 3). The lowest percent organic content occurred at station `r (PctOrgSumm_overall %>% group_by(Estuary) %>% slice_min(order_by = MeanPct, na_rm = T) %>% filter(Estuary == "CR"))$Station` (mean: `r round((PctOrgSumm_overall  %>% group_by(Estuary) %>% slice_min(order_by = MeanPct, na_rm = T) %>% filter(Estuary == "CR"))$MeanPct,1)`%) and the highest occurred at station `r (PctOrgSumm_overall %>% group_by(Estuary) %>% slice_max(order_by = MeanPct, na_rm = T) %>% filter(Estuary == "CR"))$Station` (mean: `r round((PctOrgSumm_overall  %>% group_by(Estuary) %>% slice_max(order_by = MeanPct, na_rm = T) %>% filter(Estuary == "CR"))$MeanPct,1)`%). Overall, the lowest single month percent organic content (`r round((Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "CR"))$MeanPctOrg,1)`%) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "CR"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "CR"))$Station ` while the highest (`r round((Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "CR"))$MeanPctOrg,1)` g/month) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "CR"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "CR"))$Station` (Table 2). 
-\
-\
-Oyster reefs in the Tampa Bay estuary had an average sedimentation rate of `r round((SedimentSumm_overall %>% filter(Estuary == "TB" & is.na(Station)))$MeanRate, 1)` g/month (Table 1, Figure 1). The lowest sedimentation rate occurred at station `r (SedimentSumm_overall %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station` (mean: `r round((SedimentSumm_overall  %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$MeanRate,1)` g/month) and the highest occurred at station `r (SedimentSumm_overall %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station` (mean: `r round((SedimentSumm_overall  %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "CR"))$MeanRate,1)` g/month). The lowest single station sedimentation rate (`r round((Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$MeanRate,1)` g/month) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_min(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station ` while the highest (`r round((Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$MeanRate,1)` g/month) occurred in `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$RetDate %>% format("%B %Y")` at station `r (Month_sedi %>% group_by(Estuary) %>% slice_max(order_by = MeanRate, na_rm = T) %>% filter(Estuary == "TB"))$Station` (Table 2). 
-\
-\
-`r if(Sedi_aov_tidy[1,6] < 0.05 & Sedi_aov_tidy[2,6] >= 0.05){paste0("Sedimentation rates were significantly different between estuaries (F(", Sedi_aov_tidy[1,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[1,5],2), ", p = ", round(Sedi_aov_tidy[1,6], 3), ") (Figure 2, Table 3).")} else if(Sedi_aov_tidy[1,6] >= 0.05 & Sedi_aov_tidy[2,6] < 0.05){paste0("Sedimentation rates were significantly different among stations (F(", Sedi_aov_tidy[2,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[2,5],2), ", p = ", round(Sedi_aov_tidy[2,6], 3), ") (Figure 2, Table 3).")} else if (Sedi_aov_tidy[1,6] < 0.05 & Sedi_aov_tidy[2,6] < 0.05){paste0("Sedimentation rates were significantly different between estuaries (F(", Sedi_aov_tidy[1,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[1,5],2), ", p = ", round(Sedi_aov_tidy[1,6], 3), ") and among stations (F(", Sedi_aov_tidy[2,2], ",", Sedi_aov_tidy[3,2], ") = ", round(Sedi_aov_tidy[2,5],2), ", p = ", round(Sedi_aov_tidy[2,6], 3), ") (Figure 2, Table 3).")} else {paste0("Neither factor was significant. Review coding.")}`
-\
-\
-{Include text about between estuaries and among stations. Tables 4 & 5 and Tables 6 & 7.}
-
-
-`r PctOrgSumm_overall %>% mutate(across(where(is.numeric), round, digits = 2)) %>% as_grouped_data(groups = "Estuary") %>% flextable() %>% align(align = "center") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.55) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 2. Percent organic content (%) by station and overall during the project.")`
-\
-`r OrgWtSumm_overall %>% mutate(across(where(is.numeric), round, digits = 2)) %>% as_grouped_data(groups = "Estuary") %>% flextable() %>% align(align = "center") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.6) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 3. Organic weight (g/day) of sediment by station and overall during the project. Sample columns use crucible level data while other columns extrapolate measurements to the entire sample based on estimated or calculated proportions. Values are standardized to 28-day months.")`
-\
-`r MinMax_stations %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% merge_v(j = c("Measure", "Estuary", "Station")) %>% hline(part = "body") %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.65) %>% width(width = 1.2, j = c(1, 4)) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 4. Minimum and maximum sedimentation rates, percent organic content, and organic weight per station and the Month and Year in which the minimum or maximum occurred.")`
-\
-```{r Percent organic per total sample, fig.cap = "**Figure 2.**  Monthly organic content (%) of sediment at stations in Tampa Bay and Caloosahatchee River. Values are extrapolated to the entire samples. Asterisks indicate when no samples were collected from a station.", fig.height = 9.5, fig.width = 8, fig.fullwidth=TRUE}
+```{r All percent organic figure, fig.cap = "**Figure 4.**  Mean monthly percent organic of sediment samples (± S.D.) at stations in Caloosahatchee River and Tampa Bay. The dashed vertical lines note when sample proportions change from 'estimated' to 'calculated. Please note differences in magnitude between the y-axes.", fig.height = 8, fig.width = 8, fig.fullwidth=TRUE}
 #
-Sedi_org_list <- list()
+###All monthly organic weight 
+PctOrg_list <- list()
 for(i in seq_along(Sites)){
   #
   Working_site <- paste(Sites[i])
-  df_temp <- Sedi_PctOrg %>% filter(grepl(Working_site, Estuary))
-  max_upper <- ceiling(max((df_temp %>% rowwise() %>% mutate(Upper = sum(MeanPctOrg, SDPctOrg, na.rm = TRUE)))$Upper, na.rm = T)*1.05) #*1.05 adds 5% buffer to top if needed
-  df_temp$HelperLocation <- (ceiling(max((df_temp %>% rowwise() %>% mutate(Upper = sum(MeanPctOrg, SDPctOrg, na.rm = TRUE)))$Upper, na.rm = T)*1.05))/5
+  df_temp <- Sedi_PctOrg %>% filter(grepl(Working_site, Estuary)) %>% rowwise() %>% mutate(Upper = sum(MeanPctOrg, SDPctOrg, na.rm = TRUE))
+  df_temp$HelperLocation <- (ceiling(max(df_temp$Upper, na.rm = T)*1.05)/5)
+  max_upper <- ceiling(max(df_temp$Upper, na.rm = T)*1.05) #*1.05 adds 5% buffer to top if needed
   #
-  Sedi_org_list[[i]] <- df_temp %>% ggplot(aes(RetDate, MeanPctOrg, fill = Station, color = Station))+ 
-    geom_errorbar(aes(ymin = MeanPctOrg, ymax = MeanPctOrg + SDPctOrg), color = "black", position = position_dodge(13, preserve = "single"), width = 12) +
-    geom_col(position = position_dodge(13, preserve = "single"), width = 10, color = "black") +
-    geom_text(aes(y = HelperLocation, label = Helper, color = Station), position = position_dodge(13, preserve = "single"), size = 8) +
-    scale_x_date("Date", expand= c(0,0), date_breaks = "2 months", date_labels = "%b %Y", limits = c(as.Date("2023-04-05"), ceiling_date(max(TripInfo$TripDate), "month") %m-% days(1)))+
-    scale_y_continuous("Organic Content (%)", expand = c(0,0), limits = c(0, max(pretty(0:ceiling(max_upper*10)/10))), breaks = pretty(0:ceiling(max_upper*10)/10))+
+  PctOrg_list[[i]] <- df_temp %>% ggplot(aes(RetDate, MeanPctOrg, fill = Station, color = Station))+ 
+    geom_errorbar(aes(ymin = MeanPctOrg, ymax = MeanPctOrg + SDPctOrg), color = "black", position = position_dodge(12, preserve = "single"), width = 9) +
+    geom_col(position = position_dodge(12, preserve = "single"), width = 9) +
+    geom_text(aes(y = HelperLocation, label = Helper, color = Station), position = position_dodge(12, preserve = "single"), size = 8) +
+    geom_vline(xintercept = case_when(grepl("TB", Working_site) ~ as.Date("2024-05-01"), grepl("CR", Working_site) ~ as.Date("2024-05-30"), TRUE ~ NA), linetype = "dashed")+
+    scale_x_date("Date", expand= c(0.005,0), date_breaks = "2 months", date_labels = "%b %Y", limits = c(floor_date(min(TripInfo$TripDate), "month") %m+% months(3), ceiling_date(max(TripInfo$TripDate), "month") %m-% days(1)))+
+    scale_y_continuous("Organic weight (g/month)", expand = c(0,0), limits = c(0, max(pretty(0:ceiling(max_upper*10)/10))), breaks = pretty(0:ceiling(max_upper*10)/10))+
     ggtitle(paste0(case_when(grepl("TB", Working_site) ~ "Tampa Bay", grepl("CR", Working_site) ~ "Caloosahatchee River", TRUE ~ "WRONG"))) +
     Station_fill + Station_color + BaseForm + PlotTitle + Angle_x
 }
 
-Sedi_org_fig <- ggarrange(
-  Sedi_org_list[[1]] + rremove("x.text") + rremove("x.title") + rremove("y.title") + guides(color = guide_legend(override.aes = list(size=2))),
-  Sedi_org_list[[2]] + rremove("x.title") + rremove("y.title") + guides(color = guide_legend(override.aes = list(size=2))),
+PctOrgfig <- ggarrange(
+  PctOrg_list[[1]] + rremove("x.text") + rremove("x.title") + rremove("y.title") + theme(legend.position = "bottom") + guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+  PctOrg_list[[2]] + rremove("x.title") + rremove("y.title") + theme(legend.position = "bottom") + guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
   nrow = 2, heights = c(1, 1.1), align = "v"  
-  )
+)
 
-annotate_figure(Sedi_org_fig, left = text_grob("Organic Content (%)", rot = 90, vjust = 0.4, family = "serif", size = 18, color = "black"))
-
+annotate_figure(PctOrgfig, left = text_grob("Mean organic content (%)", rot = 90, vjust = 0.4, family = "serif", size = 18, color = "black"))
 ```
 
+### Estimated percent organic content
 
-\
-`r Org_aov_tidy %>% mutate_at(vars(SS, MS, F), round, digits = 2) %>% mutate_at(vars(Pr), round, digits = 3) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1.1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ Pr < 0.05, j = "Pr", color = "red") %>% set_caption("Table 10. Analysis of organic content (%) by estuary and station. Permutation ANOVA using 10,000 permutations.")`
-\
-`r Org_station %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 13. Mean organic content (%) per station. Letters are determined based on pairwise permutation two-sample independence analysis.")`
-\
-`r Org_sta_tab %>% mutate_at(vars(p.value, p.adjust), as.numeric) %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ p.adjust < 0.05, j = "p.adjust", color = "red") %>% set_caption("Table 14. Pairwise two-sample permutation post-hoc comparisons of organic content (%) per station.")`
-\
-```{r Monthly percent organic figure, fig.cap = "**Figure 4.**  Mean monthly percent organic content in crucible samples from stations in Tampa Bay and Caloosahatchee River. Colors indicate significant groupings (alpha = 0.05). Rates are standarized to a 28-day month.", fig.height = 9.5, fig.width = 8, fig.fullwidth=TRUE}
-#
-Month_sedi2 %>% group_by(Estuary, Station_code) %>% left_join(Org_station[c(1,7)]) %>% 
-  ggplot(aes(Station, MeanPctOrg, fill = Letters)) + geom_boxplot() +
-  lemon::facet_rep_grid(.~Estuary, scales = "free_x") +
-  scale_y_continuous("Mean monthly organic content (%)", expand = c(0,0), limits = c(0, 100))+
-  BaseForm + theme_f
-#
-```
-
-```{r Oragnic content comparisons - estuary and station, include=FALSE}
+```{r Estimated percent organic content comparisons - estuary and station, include=FALSE}
 #
 #Visualize
-ggboxplot(Month_sedi, x = "Estuary", y = "MeanOrgWt", color = "Station")
-Month_sedi %>% ggplot(aes(x = MeanOrgWt))+ geom_histogram(aes(y = ..count..)) #left-skewed
-Month_sedi %>% ggplot(aes(x = log10(MeanOrgWt+1)))+ geom_histogram(aes(y = ..count..)) #better
-Month_sedi2 <- Month_sedi2 %>% mutate(logOrgWt = log10(MeanOrgWt + 1)) 
+ggboxplot(EstWt, x = "Estuary", y = "MeanPctOrg", color = "Station")
+EstWt %>% ggplot(aes(x = MeanPctOrg))+ geom_histogram(aes(y = ..count..)) #Slightly left-skewed-percentages
 #
 ##Permutation 2 factor Anova
 set.seed(402)
-OrgWt_aov <- aovp(logOrgWt ~ Estuary + Station_code, data = Month_sedi2, perm = "",  nperm = 10000)
-summary(OrgWt_aov)
-OrgWt_aov_tidy <- tidy(OrgWt_aov)
-names(OrgWt_aov_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
+EstOrg_aov <- aovp(MeanPctOrg ~ Estuary + Station_code, data = EstWt, perm = "",  nperm = 10000)
+summary(EstOrg_aov)
+EstOrg_aov_tidy <- tidy(EstOrg_aov)
+names(EstOrg_aov_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
 #
 ##Estuary not significantly different so skip pairwise
-#OrgWt_est_tab <- pairwisePermutationTest(MeanOrgWt ~ Estuary, data = Month_sedi2, method = "fdr", alternative = "two.sided") 
-#OrgWt_estuary <- merge(Month_sedi2 %>% group_by(Estuary) %>% get_summary_stats(MeanOrgWt, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), cldList(comparison = OrgWt_est_tab$Comparison, p.value = OrgWt_est_tab$p.adjust, threshold = 0.05) %>% #select(-c("MonoLetter")) %>% rename(Estuary = Group, Letters = Letter))
-OrgWt_sta_tab <- pairwisePermutationTest(MeanOrgWt ~ Station_code, data = Month_sedi2, method = "fdr", alternative = "two.sided")
-OrgWt_station <- merge(Month_sedi2 %>% group_by(Station_code) %>% get_summary_stats(MeanOrgWt, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
-                      cldList(comparison = OrgWt_sta_tab$Comparison, p.value = OrgWt_sta_tab$p.adjust, threshold = 0.05) %>% select(-c("MonoLetter")) %>% rename(Station_code = Group, Letters = Letter))
+#EstOrg_est_tab <- pairwisePermutationTest(MeanPctOrg ~ Estuary, data = EstWt, method = "fdr", alternative = "two.sided") 
+#EstOrg_estuary <- merge(EstWt %>% group_by(Estuary) %>% get_summary_stats(MeanPctOrg, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), cldList(comparison = EstOrg_est_tab$Comparison, p.value = EstOrg_est_tab$p.adjust, threshold = 0.05) %>% #select(-c("MonoLetter")) %>% rename(Estuary = Group, Letters = Letter))
+EstOrg_sta_tab <- pairwisePermutationTest(MeanPctOrg ~ Station_code, data = EstWt, method = "fdr", alternative = "two.sided") 
+EstOrg_station <- merge(EstWt %>% group_by(Station_code) %>% get_summary_stats(MeanPctOrg, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                      cldList(comparison = EstOrg_sta_tab$Comparison, p.value = EstOrg_sta_tab$p.adjust, threshold = 0.05) %>% select(-c("MonoLetter")) %>% rename(Station_code = Group, Letters = Letter))
 #
 #
 ```
+
+Sediment on oyster reefs in the Caloosahatchee River estuary averaged `r round((PctOrgSumm %>% filter(Estuary == "CR" & is.na(Station)& Type == "Estimated"))$MeanPct, 1)`% estimated organic content (Table 8, Figures 5-6). The lowest estimated percent organic content occurred at station `r (PctOrgSumm %>% filter(Type == "Estimated") %>% group_by(Estuary) %>% slice_min(order_by = MeanPct, na_rm = T) %>% filter(Estuary == "CR"))$Station` (mean: `r round((PctOrgSumm %>% filter(Type == "Estimated") %>% group_by(Estuary) %>% slice_min(order_by = MeanPct, na_rm = T) %>% filter(Estuary == "CR"))$MeanPct,1)`%) and the highest estimated occurred at station `r (PctOrgSumm %>% filter(Type == "Estimated") %>% group_by(Estuary) %>% slice_max(order_by = MeanPct, na_rm = T) %>% filter(Estuary == "CR"))$Station` (mean: `r round((PctOrgSumm %>% filter(Type == "Estimated") %>% group_by(Estuary) %>% slice_max(order_by = MeanPct, na_rm = T) %>% filter(Estuary == "CR"))$MeanPct,1)`%). Overall, the lowest single month estimated percent organic content (`r round((EstWt %>% group_by(Estuary) %>% slice_min(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "CR"))$MeanPctOrg,1)`%) occurred in `r (EstWt %>% group_by(Estuary) %>% slice_min(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "CR"))$RetDate %>% format("%B %Y")` at station `r (EstWt %>% group_by(Estuary) %>% slice_min(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "CR"))$Station ` while the highest (`r round((EstWt %>% group_by(Estuary) %>% slice_max(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "CR"))$MeanPctOrg,1)`%) occurred in `r (EstWt %>% group_by(Estuary) %>% slice_max(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "CR"))$RetDate %>% format("%B %Y")` at station `r (EstWt %>% group_by(Estuary) %>% slice_max(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "CR"))$Station` (Table 9). 
 \
-`r OrgWt_aov_tidy %>% mutate_at(vars(SS, MS, F), round, digits = 2) %>% mutate_at(vars(Pr), round, digits = 3) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1.1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ Pr < 0.05, j = "Pr", color = "red") %>% set_caption("Table 10. Analysis of organic content (g/day) by estuary and station. Permutation ANOVA using 10,000 permutations.")`
 \
-`r OrgWt_station %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 13. Mean organic content (g/day) per station. Letters are determined based on pairwise permutation two-sample independence analysis.")`
+Sediment on oyster reefs in the Caloosahatchee River estuary averaged `r round((PctOrgSumm %>% filter(Estuary == "TB" & is.na(Station)& Type == "Estimated"))$MeanPct, 1)`% estimated organic content (Table 8, Figures 5-6). The lowest estimated percent organic content occurred at station `r (PctOrgSumm %>% filter(Type == "Estimated") %>% group_by(Estuary) %>% slice_min(order_by = MeanPct, na_rm = T) %>% filter(Estuary == "TB"))$Station` (mean: `r round((PctOrgSumm %>% filter(Type == "Estimated") %>% group_by(Estuary) %>% slice_min(order_by = MeanPct, na_rm = T) %>% filter(Estuary == "TB"))$MeanPct,1)`%) and the highest estimated occurred at station `r (PctOrgSumm %>% filter(Type == "Estimated") %>% group_by(Estuary) %>% slice_max(order_by = MeanPct, na_rm = T) %>% filter(Estuary == "TB"))$Station` (mean: `r round((PctOrgSumm %>% filter(Type == "Estimated") %>% group_by(Estuary) %>% slice_max(order_by = MeanPct, na_rm = T) %>% filter(Estuary == "TB"))$MeanPct,1)`%). Overall, the lowest single month estimated percent organic content (`r round((EstWt %>% group_by(Estuary) %>% slice_min(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "TB"))$MeanPctOrg,1)`%) occurred in `r (EstWt %>% group_by(Estuary) %>% slice_min(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "TB"))$RetDate %>% format("%B %Y")` at station `r (EstWt %>% group_by(Estuary) %>% slice_min(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "TB"))$Station ` while the highest (`r round((EstWt %>% group_by(Estuary) %>% slice_max(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "TB"))$MeanPctOrg,1)`%) occurred in `r (EstWt %>% group_by(Estuary) %>% slice_max(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "TB"))$RetDate %>% format("%B %Y")` at station `r (EstWt %>% group_by(Estuary) %>% slice_max(order_by = MeanPctOrg, na_rm = T) %>% filter(Estuary == "TB"))$Station` (Table 9). 
 \
-`r OrgWt_sta_tab %>% mutate_at(vars(p.value, p.adjust), as.numeric) %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ p.adjust < 0.05, j = "p.adjust", color = "red") %>% set_caption("Table 14. Pairwise two-sample permutation post-hoc comparisons of organic content (g/day) per station.")`
 \
-```{r Monthly organic content figure, fig.cap = "**Figure 5.**  Mean monthly organic content (g/day) from stations in Tampa Bay and Caloosahatchee River. Colors indicate significant groupings (alpha = 0.05).", fig.height = 9.5, fig.width = 8, fig.fullwidth=TRUE}
+`r if(EstOrg_aov_tidy[1,6] < 0.05 & EstOrg_aov_tidy[2,6] >= 0.05){paste0("The percentages of organic content in samples were significantly different between estuaries (F(", EstOrg_aov_tidy[1,2], ",", EstOrg_aov_tidy[3,2], ") = ", round(EstOrg_aov_tidy[1,5],2), ", p = ", round(EstOrg_aov_tidy[1,6], 3), ") but not among stations (F(", EstOrg_aov_tidy[2,2], ",", EstOrg_aov_tidy[3,2], ") = ", round(EstOrg_aov_tidy[2,5],2), ", p = ", round(EstOrg_aov_tidy[2,6], 3), ") (Figure 7, Table 10).")} else if(EstOrg_aov_tidy[1,6] >= 0.05 & EstOrg_aov_tidy[2,6] < 0.05){paste0("The percentages of organic content in samples were significantly different among stations (F(", EstOrg_aov_tidy[2,2], ",", EstOrg_aov_tidy[3,2], ") = ", round(EstOrg_aov_tidy[2,5],2), ", p = ", round(EstOrg_aov_tidy[2,6], 3), ") but not between estuaries (F(", EstOrg_aov_tidy[1,2], ",", EstOrg_aov_tidy[3,2], ") = ", round(EstOrg_aov_tidy[1,5],2), ", p = ", round(EstOrg_aov_tidy[1,6], 3), ") (Figure 7, Table 10).")} else if (EstOrg_aov_tidy[1,6] < 0.05 & EstOrg_aov_tidy[2,6] < 0.05){paste0("The percentages of organic content in samples were significantly different between estuaries (F(", EstOrg_aov_tidy[1,2], ",", EstOrg_aov_tidy[3,2], ") = ", round(EstOrg_aov_tidy[1,5],2), ", p = ", round(EstOrg_aov_tidy[1,6], 3), ") and among stations (F(", EstOrg_aov_tidy[2,2], ",", EstOrg_aov_tidy[3,2], ") = ", round(EstOrg_aov_tidy[2,5],2), ", p = ", round(EstOrg_aov_tidy[2,6], 3), ") (Figure 7, Table 10).")} else {paste0("Neither factor was significant. Review coding.")}`
+\
+\
+{Include text about among stations. Tables 11 & 12.}
+
+```{r Percent organic per total sample, fig.cap = "**Figure 5.**  Mean monthly estimated (left) and calculated (right) organic content (%) of sediment at stations in Caloosahatchee River (top) and Tampa Bay (bottom).", fig.height = 9.5, fig.width = 8, fig.fullwidth=TRUE}
 #
-Month_sedi2 %>% group_by(Estuary, Station_code) %>% left_join(OrgWt_station[c(1,7)]) %>%
-  ggplot(aes(Station, MeanOrgWt, fill = Letters)) + geom_boxplot() +
+Type_Org_list <- list()
+for(i in seq_along(Sites)){
+  Type_Org_temp <- list()
+  for(t in seq_along(Working_Type)){
+    #
+    Type_w <- paste(Working_Type[t])
+    Working_site <- paste(Sites[i])
+    df_temp <- Type_PctOrg %>% filter(grepl(Type_w, Type)) %>% filter(grepl(Working_site, Estuary)) %>% rowwise() %>% mutate(Upper = sum(MeanPctOrg, SDPctOrg, na.rm = TRUE))
+    df_temp$HelperLocation <-  (ceiling(max(df_temp$Upper, na.rm = T)*1.05)/5)
+    max_upper <- ceiling(max(df_temp$Upper, na.rm = T)*1.05) #*1.05 adds 5% buffer to top if needed
+    #
+    Type_Org_temp[[t]] <- df_temp %>% ggplot(aes(RetDate, MeanPctOrg, fill = Station, color = Station))+ 
+      geom_errorbar(aes(ymin = MeanPctOrg, ymax = MeanPctOrg + SDPctOrg), color = "black", position = position_dodge(13, preserve = "single"), width = 12) +
+      geom_col(position = position_dodge(13, preserve = "single"), width = 10) +
+      geom_text(aes(y = HelperLocation, label = Helper, color = Station), position = position_dodge(13, preserve = "single"), size = 8) +
+      scale_x_date("Date", expand= c(0,0), date_breaks = "2 months", date_labels = "%b %Y", limits = c(floor_date(min(df_temp$RetDate), "month") %m-% days(10), ceiling_date(max(df_temp$RetDate), "month") %m+% days(10)))+
+      scale_y_continuous("Organic content (%)", expand = c(0,0), limits = c(0, max(pretty(0:ceiling(max_upper*10)/10))), breaks = pretty(0:ceiling(max_upper*10)/10))+
+      ggtitle(paste0(case_when(grepl("TB", Working_site) ~ "Tampa Bay", grepl("CR", Working_site) ~ "Caloosahatchee River", TRUE ~ "WRONG"), " - ", case_when(grepl("Estimated", Type_w) ~ "Estimated", grepl("Calculated", Type_w) ~ "Calculated", TRUE ~ "OTHER"))) +
+      Station_fill + Station_color + BaseForm + PlotTitle + Angle_x
+  }
+  Type_Org_list[[i]] <- Type_Org_temp
+}
+#[[1]][[-]] - CRE plots
+#[[2]][[-]] - TB plots
+Type_org_fig <- ggarrange(
+  ggarrange(
+    Type_Org_list[[1]][[1]] + rremove("x.title") + rremove("y.title") + theme(legend.margin = margin(-1, 0, -1, 0)) + guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+    Type_Org_list[[1]][[2]] + rremove("x.title") + rremove("y.title") +  guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+    ncol = 2, align = "h", common.legend = TRUE, legend = "bottom"  
+  ),
+  ggarrange(
+    Type_Org_list[[2]][[1]] + rremove("x.title") + rremove("y.title") + theme(legend.margin = margin(-1, 0, -1, 0)) + guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+    Type_Org_list[[2]][[2]] + rremove("x.title") + rremove("y.title") +  guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+    ncol = 2, align = "h", common.legend = TRUE, legend = "bottom"  
+  ), nrow = 2, align = "v"
+)
+
+annotate_figure(Type_org_fig, left = text_grob("Organic content (%)", rot = 90, vjust = 0.4, family = "serif", size = 18, color = "black"))
+
+```
+
+```{r Percent organic per total sample - line, fig.cap = "**Figure 6.**  Mean monthly estimated (left) and calculated (right) organic content (%) of sediment at stations in Caloosahatchee River (top) and Tampa Bay (bottom).", fig.height = 9.5, fig.width = 8, fig.fullwidth=TRUE}
+#
+Type_Org_line_list <- list()
+for(i in seq_along(Sites)){
+  Type_Org_line_temp <- list()
+  for(t in seq_along(Working_Type)){
+    #
+    Type_w <- paste(Working_Type[t])
+    Working_site <- paste(Sites[i])
+    df_temp <- Type_PctOrg %>% filter(grepl(Type_w, Type)) %>% filter(grepl(Working_site, Estuary)) %>% rowwise() %>% mutate(Upper = sum(MeanPctOrg, na.rm = TRUE))
+    df_temp$HelperLocation <-  (ceiling(max(df_temp$Upper, na.rm = T)*1.05)/5)
+    max_upper <- ceiling(max(df_temp$Upper, na.rm = T)*1.05) #*1.05 adds 5% buffer to top if needed
+    #
+    Type_Org_line_temp[[t]] <- df_temp %>% ggplot(aes(RetDate, MeanPctOrg, fill = Station, color = Station))+ 
+      geom_line(linewidth = 1.25) +
+      scale_x_date("Date", expand= c(0,0), date_breaks = "2 months", date_labels = "%b %Y", limits = c(floor_date(min(df_temp$RetDate), "month") %m-% days(10), ceiling_date(max(df_temp$RetDate), "month") %m+% days(10)))+
+      scale_y_continuous("Organic content (%)", expand = c(0,0), limits = c(0, max(pretty(0:ceiling(max_upper*10)/10))), breaks = pretty(0:ceiling(max_upper*10)/10))+
+      ggtitle(paste0(case_when(grepl("TB", Working_site) ~ "Tampa Bay", grepl("CR", Working_site) ~ "Caloosahatchee River", TRUE ~ "WRONG"), " - ", case_when(grepl("Estimated", Type_w) ~ "Estimated", grepl("Calculated", Type_w) ~ "Calculated", TRUE ~ "OTHER"))) +
+      Station_fill + Station_color + BaseForm + PlotTitle + Angle_x
+  }
+  Type_Org_line_list[[i]] <- Type_Org_line_temp
+}
+#[[1]][[-]] - CRE plots
+#[[2]][[-]] - TB plots
+Type_org_line_fig <- ggarrange(
+  ggarrange(
+    Type_Org_line_list[[1]][[1]] + rremove("x.title") + rremove("y.title") + theme(legend.margin = margin(-1, 0, -1, 0)) + guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+    Type_Org_line_list[[1]][[2]] + rremove("x.title") + rremove("y.title") +  guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+    ncol = 2, align = "h", common.legend = TRUE, legend = "bottom"  
+  ),
+  ggarrange(
+    Type_Org_line_list[[2]][[1]] + rremove("x.title") + rremove("y.title") + theme(legend.margin = margin(-1, 0, -1, 0)) + guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+    Type_Org_line_list[[2]][[2]] + rremove("x.title") + rremove("y.title") +  guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+    ncol = 2, align = "h", common.legend = TRUE, legend = "bottom"  
+  ), nrow = 2, align = "v"
+)
+
+annotate_figure(Type_org_line_fig, left = text_grob("Organic content (%)", rot = 90, vjust = 0.4, family = "serif", size = 18, color = "black"))
+
+```
+
+```{r Estimated monthly percent organic figure, fig.cap = "**Figure 7.**  Mean estimated monthly percent organic content from stations in Caloosahatchee River and Tampa Bay. Colors indicate significant groupings (alpha = 0.05). Rates are standarized to a 28-day month.", fig.height = 4.5, fig.width = 8, fig.fullwidth=TRUE}
+#
+EstWt %>% group_by(Estuary, Station_code) %>% left_join(EstOrg_station[c(1,7)]) %>% 
+  ggplot(aes(Station, MeanPctOrg, fill = Letters)) + geom_boxplot() +
   lemon::facet_rep_grid(.~Estuary, scales = "free_x") +
-  scale_y_continuous("Mean organic content (g/day)", expand = c(0,0), limits = c(0, 100))+
+  scale_y_continuous("Mean estimated monthly organic content (%)", expand = c(0,0), limits = c(0, 100))+
   BaseForm + theme_f
 #
 ```
 
-```{r Organic content in crucibles comparisons - estuary and station, include=FALSE}
+\
+`r PctOrgSumm_overall %>% mutate(across(where(is.numeric), round, digits = 2)) %>% as_grouped_data(groups = "Estuary") %>% flextable() %>% align(align = "center") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.55) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 8. Percent organic content (%) by station and overall during the project.")`
+\
+`r MinMax_stations %>% mutate(across(where(is.numeric), round, digits = 2)) %>% filter(Measure == "Percent Organic") %>% flextable() %>% merge_v(j = c("Measure", "Estuary", "Station")) %>% hline(part = "body") %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.65) %>% width(width = 1.2, j = c(1, 4)) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 9. Minimum and maximum percent organic content per station and the Month and Year in which the minimum or maximum occurred.")`
+\
+`r Org_aov_tidy %>% mutate_at(vars(SS, MS, F), round, digits = 2) %>% mutate_at(vars(Pr), round, digits = 3) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1.1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ Pr < 0.05, j = "Pr", color = "red") %>% set_caption("Table 10. Analysis of organic content (%) by estuary and station. Permutation ANOVA using 10,000 permutations. Red text indicates signifcance alpha < 0.05.")`
+\
+`r Org_station %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 11. Mean organic content (%) per station. Letters are determined based on pairwise permutation two-sample independence analysis.")`
+\
+`r Org_sta_tab %>% mutate_at(vars(p.value, p.adjust), as.numeric) %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ p.adjust < 0.05, j = "p.adjust", color = "red") %>% set_caption("Table 12. Pairwise two-sample permutation post-hoc comparisons of organic content (%) per station. Red text indicates signifcance alpha < 0.05.")`
+
+\newpage
+
+## Organic weight
+Organic weights were assessed by determining how much of the collected sample was organic or inorganic material by estimation of sample proportion or calculated sample proportion (Figure 7).
+
+```{r Organic weights summary, include=FALSE}
+#
+OrgWtSumm_overall <- rbind(Sediment %>% 
+  group_by(Estuary) %>%
+  summarise(MeanWt = mean(TotalOrgWt/(NumDays/28), na.rm = T), sdWt = sd(TotalOrgWt/(NumDays/28), na.rm = T),
+            MinWt = min(TotalOrgWt/(NumDays/28), na.rm = T), MaxWt = max(TotalOrgWt/(NumDays/28), na.rm = T),
+            MeanSample = mean(SampleOrgWt/(NumDays/28), na.rm = T), sdSample = sd(SampleOrgWt/(NumDays/28), na.rm = T),
+            MinSample = min(SampleOrgWt/(NumDays/28), na.rm = T), MaxSample = max(SampleOrgWt/(NumDays/28), na.rm = T)) %>% mutate(Station = NA),
+  Sediment %>% 
+    group_by(Estuary, Station) %>%
+    summarise(MeanWt = mean(TotalOrgWt/(NumDays/28), na.rm = T), sdWt = sd(TotalOrgWt/(NumDays/28), na.rm = T),
+            MinWt = min(TotalOrgWt/(NumDays/28), na.rm = T), MaxWt = max(TotalOrgWt/(NumDays/28), na.rm = T),
+            MeanSample = mean(SampleOrgWt/(NumDays/28), na.rm = T), sdSample = sd(SampleOrgWt/(NumDays/28), na.rm = T),
+            MinSample = min(SampleOrgWt/(NumDays/28), na.rm = T), MaxSample = max(SampleOrgWt/(NumDays/28), na.rm = T))) %>%
+  arrange(Estuary, Station) %>% dplyr::select(Estuary, Station, everything()) 
+#
+OrgWtSumm <- rbind(Sediment %>% 
+  group_by(Estuary, Type) %>%
+  summarise(MeanWt = mean(TotalOrgWt/(NumDays/28), na.rm = T), sdWt = sd(TotalOrgWt/(NumDays/28), na.rm = T),
+            MinWt = min(TotalOrgWt/(NumDays/28), na.rm = T), MaxWt = max(TotalOrgWt/(NumDays/28), na.rm = T),
+            MeanSample = mean(SampleOrgWt/(NumDays/28), na.rm = T), sdSample = sd(SampleOrgWt/(NumDays/28), na.rm = T),
+            MinSample = min(SampleOrgWt/(NumDays/28), na.rm = T), MaxSample = max(SampleOrgWt/(NumDays/28), na.rm = T)) %>% mutate(Station = NA),
+  Sediment %>% 
+    group_by(Estuary, Type, Station) %>%
+    summarise(MeanWt = mean(TotalOrgWt/(NumDays/28), na.rm = T), sdWt = sd(TotalOrgWt/(NumDays/28), na.rm = T),
+            MinWt = min(TotalOrgWt/(NumDays/28), na.rm = T), MaxWt = max(TotalOrgWt/(NumDays/28), na.rm = T),
+            MeanSample = mean(SampleOrgWt/(NumDays/28), na.rm = T), sdSample = sd(SampleOrgWt/(NumDays/28), na.rm = T),
+            MinSample = min(SampleOrgWt/(NumDays/28), na.rm = T), MaxSample = max(SampleOrgWt/(NumDays/28), na.rm = T))) %>%
+  arrange(Estuary, Station) %>% dplyr::select(Estuary, Station, everything()) 
+#
+EstWt <- Month_sedi2 %>% filter(Type == "Estimated")
+CalWt <- Month_sedi2 %>% filter(Type == "Calculated")
+#
+MinMaxOrgWt <- rbind(Month_sedi %>% group_by(Type, Estuary, Station) %>% slice_min(order_by = MeanOrgWt, na_rm = T) %>% dplyr::select(Year, Month, Estuary, Station, MeanOrgWt) %>% mutate(Extreme = "Min Daily Org Wt", Measure = "Organic Weight") %>% rename(Value = MeanOrgWt),
+      Month_sedi %>% group_by(Type, Estuary, Station) %>% slice_max(order_by = MeanOrgWt, na_rm = T) %>% dplyr::select(Year, Month, Estuary, Station, MeanOrgWt) %>% mutate(Extreme = "Max Daily Org Wt", Measure = "Organic Weight") %>% rename(Value = MeanOrgWt)) %>%
+  dplyr::select(Measure, Type, Estuary, Station, Extreme, Year, Month, Value) %>% arrange(Measure, desc(Type), Estuary, Station)
+#
+```
+
+```{r All organic weights figure, fig.cap = "**Figure 7.**  Mean monthly organic weight of sediment (± S.D.) at stations in Caloosahatchee River and Tampa Bay. The dashed vertical lines note when sample proportions change from 'estimated' to 'calculated. Please note differences in magnitude between the y-axes.", fig.height = 8, fig.width = 8, fig.fullwidth=TRUE}
+#
+###All monthly organic weight 
+OrgWt_list <- list()
+for(i in seq_along(Sites)){
+  #
+  Working_site <- paste(Sites[i])
+  df_temp <- Sedi_OrgWt %>% filter(grepl(Working_site, Estuary)) %>% rowwise() %>% mutate(Upper = sum(MeanOrgWt, SDOrgWt, na.rm = TRUE))
+  df_temp$HelperLocation <- (ceiling(max(df_temp$Upper, na.rm = T)*1.05)/5)
+  max_upper <- ceiling(max(df_temp$Upper, na.rm = T)*1.05) #*1.05 adds 5% buffer to top if needed
+  #
+  OrgWt_list[[i]] <- df_temp %>% ggplot(aes(RetDate, MeanOrgWt, fill = Station, color = Station))+ 
+    geom_errorbar(aes(ymin = MeanOrgWt, ymax = MeanOrgWt + SDOrgWt), color = "black", position = position_dodge(12, preserve = "single"), width = 9) +
+    geom_col(position = position_dodge(12, preserve = "single"), width = 9) +
+    geom_text(aes(y = HelperLocation, label = Helper, color = Station), position = position_dodge(12, preserve = "single"), size = 8) +
+    geom_vline(xintercept = case_when(grepl("TB", Working_site) ~ as.Date("2024-05-01"), grepl("CR", Working_site) ~ as.Date("2024-05-30"), TRUE ~ NA), linetype = "dashed")+
+    scale_x_date("Date", expand= c(0.005,0), date_breaks = "2 months", date_labels = "%b %Y", limits = c(floor_date(min(TripInfo$TripDate), "month") %m+% months(3), ceiling_date(max(TripInfo$TripDate), "month") %m-% days(1)))+
+    scale_y_continuous("Organic weight (g/month)", expand = c(0,0), limits = c(0, max(pretty(0:ceiling(max_upper*10)/10))), breaks = pretty(0:ceiling(max_upper*10)/10))+
+    ggtitle(paste0(case_when(grepl("TB", Working_site) ~ "Tampa Bay", grepl("CR", Working_site) ~ "Caloosahatchee River", TRUE ~ "WRONG"))) +
+    Station_fill + Station_color + BaseForm + PlotTitle + Angle_x
+}
+
+OrgWt_fig <- ggarrange(
+  OrgWt_list[[1]] + rremove("x.text") + rremove("x.title") + rremove("y.title") + theme(legend.position = "bottom") + guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+  OrgWt_list[[2]] + rremove("x.title") + rremove("y.title") + theme(legend.position = "bottom") + guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+  nrow = 2, heights = c(1, 1.1), align = "v"  
+)
+
+annotate_figure(OrgWt_fig, left = text_grob("Organic weight (g/month)", rot = 90, vjust = 0.4, family = "serif", size = 18, color = "black"))
+```
+
+### Estimated organic weights
+
+```{r Estimated organic weight comparisons - estuary and station, include=FALSE}
+#
+Working_Type <- c("Estimated", "Calculated")
 #
 #Visualize
-ggboxplot(Month_sedi, x = "Estuary", y = "SampleMeanOrgWt", color = "Station")
-Month_sedi %>% ggplot(aes(x = SampleMeanOrgWt))+ geom_histogram(aes(y = ..count..)) #left-skewed
-Month_sedi %>% ggplot(aes(x = log10(SampleMeanOrgWt+1)))+ geom_histogram(aes(y = ..count..)) #better
-Month_sedi2 <- Month_sedi2 %>% mutate(logSampleOrgWt = log10(SampleMeanOrgWt + 1))
+ggboxplot(EstWt, x = "Estuary", y = "MeanOrgWt", color = "Station")
+EstWt %>% ggplot(aes(x = MeanOrgWt))+ geom_histogram(aes(y = ..count..)) #left-skewed
+EstWt %>% ggplot(aes(x = log10(MeanOrgWt+1)))+ geom_histogram(aes(y = ..count..)) #better
+EstWt2 <- EstWt %>% mutate(logOrgWt = log10(MeanOrgWt + 1)) 
 #
 ##Permutation 2 factor Anova
 set.seed(402)
-SampleOrgWt_aov <- aovp(logSampleOrgWt ~ Estuary + Station_code, data = Month_sedi2, perm = "",  nperm = 10000)
-summary(SampleOrgWt_aov)
-SampleOrgWt_aov_tidy <- tidy(SampleOrgWt_aov)
-names(SampleOrgWt_aov_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
+EstOrgWt_aov <- aovp(logOrgWt ~ Estuary + Station_code, data = EstWt2, perm = "",  nperm = 10000)
+summary(EstOrgWt_aov)
+EstOrgWt_aov_tidy <- tidy(EstOrgWt_aov)
+names(EstOrgWt_aov_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
 #
-##Estuary ans station not significantly different so skip pairwise comparisons
-#SampleOrgWt_est_tab <- pairwisePermutationTest(SampleMeanOrgWt ~ Estuary, data = Month_sedi2, method = "fdr", alternative = "two.sided") 
-#SampleOrgWt_estuary <- merge(Month_sedi2 %>% group_by(Estuary) %>% get_summary_stats(SampleMeanOrgWt, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), cldList(comparison = SampleOrgWt_est_tab$Comparison, p.value = SampleOrgWt_est_tab$p.adjust, threshold = 0.05) %>% #select(-c("MonoLetter")) %>% rename(Estuary = Group, Letters = Letter))
-SampleOrgWt_sta_tab <- pairwisePermutationTest(SampleMeanOrgWt ~ Station_code, data = Month_sedi2, method = "fdr", alternative = "two.sided")
-SampleOrgWt_station <- merge(Month_sedi2 %>% group_by(Station_code) %>% get_summary_stats(SampleMeanOrgWt, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), cldList(comparison = SampleOrgWt_sta_tab$Comparison, p.value = SampleOrgWt_sta_tab$p.adjust, threshold = 0.05) %>% select(-c("MonoLetter")) %>% rename(Station_code = Group, Letters = Letter))
+##Estuary not significantly different so skip pairwise
+#EstOrgWt_est_tab <- pairwisePermutationTest(logOrgWt ~ Estuary, data = EstWt2, method = "fdr", alternative = "two.sided") 
+#EstOrgWt_estuary <- merge(EstWt2 %>% group_by(Estuary) %>% get_summary_stats(MeanOrgWt, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), cldList(comparison = EstOrgWt_est_tab$Comparison, p.value = EstOrgWt_est_tab$p.adjust, threshold = 0.05) %>% #select(-c("MonoLetter")) %>% rename(Estuary = Group, Letters = Letter))
+EstOrgWt_sta_tab <- pairwisePermutationTest(logOrgWt ~ Station_code, data = EstWt2, method = "fdr", alternative = "two.sided")
+EstOrgWt_station <- merge(EstWt2 %>% group_by(Station_code) %>% get_summary_stats(MeanOrgWt, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                      cldList(comparison = EstOrgWt_sta_tab$Comparison, p.value = EstOrgWt_sta_tab$p.adjust, threshold = 0.05) %>% select(-c("MonoLetter")) %>% rename(Station_code = Group, Letters = Letter))
 #
 #
 ```
+
+Sediment on oyster reefs in the Caloosahatchee River estuary averaged estimated organic weights of `r round((OrgWtSumm %>% filter(Estuary == "CR" & is.na(Station) & Type == "Estimated"))$MeanWt, 1)` g/month (Table 13, Figure 8-9). The lowest estimated organic weight occurred at station `r (OrgWtSumm %>% filter(Type == "Estimated") %>% group_by(Estuary) %>% slice_min(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "CR"))$Station` (mean: `r round((OrgWtSumm %>% filter(Type == "Estimated") %>% group_by(Estuary) %>% slice_min(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "CR"))$MeanWt,1)` g/month) and the highest occurred at station `r (OrgWtSumm %>% filter(Type == "Estimated") %>% group_by(Estuary) %>% slice_max(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "CR"))$Station` (mean: `r round((OrgWtSumm %>% filter(Type == "Estimated")  %>% group_by(Estuary) %>% slice_max(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "CR"))$MeanWt,1)` g/month). Overall, the lowest single month organic weight (`r round((EstWt %>% group_by(Estuary) %>% slice_min(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "CR"))$MeanOrgWt,1)` g/month) occurred in `r (EstWt %>% group_by(Estuary) %>% slice_min(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "CR"))$RetDate %>% format("%B %Y")` at station `r (EstWt %>% group_by(Estuary) %>% slice_min(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "CR"))$Station ` while the highest (`r round((EstWt %>% group_by(Estuary) %>% slice_max(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "CR"))$MeanOrgWt,1)` g/month) occurred in `r (EstWt %>% group_by(Estuary) %>% slice_max(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "CR"))$RetDate %>% format("%B %Y")` at station `r (EstWt %>% group_by(Estuary) %>% slice_max(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "CR"))$Station` (Table 14). 
 \
-`r OrgWt_aov_tidy %>% mutate_at(vars(SS, MS, F), round, digits = 2) %>% mutate_at(vars(Pr), round, digits = 3) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1.1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ Pr < 0.05, j = "Pr", color = "red") %>% set_caption("Table 10. Analysis of organic content (g/day) in crucible samples by estuary and station. Permutation ANOVA using 10,000 permutations.")`
 \
-```{r Monthly organic content in cruibles figure, fig.cap = "**Figure 6.**  Mean monthly organic content (g/day) in cruicible samples from stations in Tampa Bay and Caloosahatchee River. Colors indicate significant groupings (alpha = 0.05).", fig.height = 9.5, fig.width = 8, fig.fullwidth=TRUE}
+Sediment on oyster reefs in the Tampa Bay estuary averaged estimated organic weights of `r round((OrgWtSumm %>% filter(Estuary == "TB" & is.na(Station) & Type == "Estimated"))$MeanWt, 1)` g/month (Table 13, Figure 8-9). The lowest estimated sedimentation rate occurred at station `r (OrgWtSumm %>% filter(Type == "Estimated") %>% group_by(Estuary) %>% slice_min(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "TB"))$Station` (mean: `r round((OrgWtSumm %>% filter(Type == "Estimated")  %>% group_by(Estuary) %>% slice_min(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "TB"))$MeanWt,1)` g/month) and the highest occurred at station `r (OrgWtSumm %>% filter(Type == "Estimated") %>% group_by(Estuary) %>% slice_max(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "TB"))$Station` (mean: `r round((OrgWtSumm %>% filter(Type == "Estimated")  %>% group_by(Estuary) %>% slice_max(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "TB"))$MeanWt,1)` g/month). The lowest single station sedimentation rate (`r round((EstWt %>% group_by(Estuary) %>% slice_min(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "TB"))$MeanOrgWt,1)` g/month) occurred in `r (EstWt %>% group_by(Estuary) %>% slice_min(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "TB"))$RetDate %>% format("%B %Y")` at station `r (EstWt %>% group_by(Estuary) %>% slice_min(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "TB"))$Station ` while the highest (`r round((EstWt %>% group_by(Estuary) %>% slice_max(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "TB"))$MeanOrgWt,1)` g/month) occurred in `r (EstWt %>% group_by(Estuary) %>% slice_max(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "TB"))$RetDate %>% format("%B %Y")` at station `r (EstWt %>% group_by(Estuary) %>% slice_max(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "TB"))$Station` (Table 14). 
+\
+\
+`r if(EstOrgWt_aov_tidy[1,6] < 0.05 & EstOrgWt_aov_tidy[2,6] >= 0.05){paste0("Estimated organic weights were significantly different between estuaries (F(", EstOrgWt_aov_tidy[1,2], ",", EstOrgWt_aov_tidy[3,2], ") = ", round(EstOrgWt_aov_tidy[1,5],2), ", p = ", round(EstOrgWt_aov_tidy[1,6], 3), ") but not among stations (F(", EstOrgWt_aov_tidy[2,2], ",", EstOrgWt_aov_tidy[3,2], ") = ", round(EstOrgWt_aov_tidy[2,5],2), ", p = ", round(EstOrgWt_aov_tidy[2,6], 3), ") (Figure 9, Table 15).")} else if(EstOrgWt_aov_tidy[1,6] >= 0.05 & EstOrgWt_aov_tidy[2,6] < 0.05){paste0("Estimated organic weights were significantly different among stations (F(", EstOrgWt_aov_tidy[2,2], ",", EstOrgWt_aov_tidy[3,2], ") = ", round(EstOrgWt_aov_tidy[2,5],2), ", p = ", round(EstOrgWt_aov_tidy[2,6], 3), ") but not between estuaries (F(", EstOrgWt_aov_tidy[1,2], ",", EstOrgWt_aov_tidy[3,2], ") = ", round(EstOrgWt_aov_tidy[1,5],2), ", p = ", round(EstOrgWt_aov_tidy[1,6], 3), ") (Figure 9, Table 15).")} else if (EstOrgWt_aov_tidy[1,6] < 0.05 & EstOrgWt_aov_tidy[2,6] < 0.05){paste0("Estimated organic weights were significantly different between estuaries (F(", EstOrgWt_aov_tidy[1,2], ",", EstOrgWt_aov_tidy[3,2], ") = ", round(EstOrgWt_aov_tidy[1,5],2), ", p = ", round(EstOrgWt_aov_tidy[1,6], 3), ") and among stations (F(", EstOrgWt_aov_tidy[2,2], ",", EstOrgWt_aov_tidy[3,2], ") = ", round(EstOrgWt_aov_tidy[2,5],2), ", p = ", round(EstOrgWt_aov_tidy[2,6], 3), ") (Figure 9, Table 15).")} else {paste0("Neither factor was significant. Review coding.")}`
+\
+\
+{Include text about among stations. Tables 16 & 17.}
+
+```{r Organic weight figure, fig.cap = "**Figure 8.**  Mean monthly estimated (left) and calculated (right) organic weight of sediment at stations in Caloosahatchee River (top) and Tampa Bay (bottom). Please note differences in magnitude between the y-axes.", fig.height = 9.5, fig.width = 8, fig.fullwidth=TRUE}
 #
-Month_sedi2 %>% group_by(Estuary, Station_code) %>% #left_join(SampleOrgWt_station[c(1,7)]) %>% 
-  ggplot(aes(Station, SampleMeanOrgWt)) + geom_boxplot(fill = "darkgray") +
+###Monthly organic weight 
+Type_OrgWt_list <- list()
+for(i in seq_along(Sites)){
+  Type_OrgWt_temp <- list()
+  for(t in seq_along(Working_Type)){
+    #
+    Type_w <- paste(Working_Type[t])
+    Working_site <- paste(Sites[i])
+    df_temp <- Type_OrgWt %>% filter(grepl(Type_w, Type)) %>% filter(grepl(Working_site, Estuary)) %>% rowwise() %>% mutate(Upper = sum(MeanOrgWt, SDOrgWt, na.rm = TRUE))
+    df_temp$HelperLocation <- (ceiling(max(df_temp$Upper, na.rm = T)*1.05)/5)
+    max_upper <- ceiling(max(df_temp$Upper, na.rm = T)*1.05) #*1.05 adds 5% buffer to top if needed
+    #
+    #
+    Type_OrgWt_temp[[t]] <- df_temp %>% ggplot(aes(RetDate, MeanOrgWt, fill = Station, color = Station))+ 
+      geom_errorbar(aes(ymin = MeanOrgWt, ymax = MeanOrgWt + SDOrgWt), color = "black", position = position_dodge(12, preserve = "single"), width = 9) +
+      geom_col(position = position_dodge(12, preserve = "single"), width = 9) +
+      geom_text(aes(y = HelperLocation, label = Helper, color = Station), position = position_dodge(12, preserve = "single"), size = 8) +
+      scale_x_date("Date", expand= c(0.005,0), date_breaks = "2 months", date_labels = "%b %Y", limits = c(floor_date(min(df_temp$RetDate), "month") %m-% days(10), ceiling_date(max(df_temp$RetDate), "month") %m+% days(10)))+
+      scale_y_continuous("Organic weight (g/month)", expand = c(0,0), limits = c(0, max(pretty(0:ceiling(max_upper*10)/10))), breaks = pretty(0:ceiling(max_upper*10)/10))+
+    ggtitle(paste0(case_when(grepl("TB", Working_site) ~ "Tampa Bay", grepl("CR", Working_site) ~ "Caloosahatchee River", TRUE ~ "WRONG"), " - ", case_when(grepl("Estimated", Type_w) ~ "Estimated", grepl("Calculated", Type_w) ~ "Calculated", TRUE ~ "OTHER"))) +
+      Station_fill + Station_color + BaseForm + PlotTitle + Angle_x
+  }
+  Type_OrgWt_list[[i]] <- Type_OrgWt_temp
+  }
+#[[1]][[-]] - CRE plots
+#[[2]][[-]] - TB plots
+Type_OrgWt_fig <- ggarrange(
+  ggarrange(
+  Type_OrgWt_list[[1]][[1]] + rremove("x.title") + rremove("y.title") + theme(legend.margin = margin(-1, 0, -1, 0)) + guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+  Type_OrgWt_list[[1]][[2]] + rremove("x.title") + rremove("y.title") +  guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+  ncol = 2, align = "h", common.legend = TRUE, legend = "bottom"  
+),
+  ggarrange(
+  Type_OrgWt_list[[2]][[1]] + rremove("x.title") + rremove("y.title") + theme(legend.margin = margin(-1, 0, -1, 0)) + guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+  Type_OrgWt_list[[2]][[2]] + rremove("x.title") + rremove("y.title") +  guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+  ncol = 2, align = "h", common.legend = TRUE, legend = "bottom"  
+), nrow = 2, align = "v"
+)
+annotate_figure(Type_OrgWt_fig, left = text_grob("Organic weight (g/month)", rot = 90, vjust = 0.4, family = "serif", size = 18, color = "black"))
+```
+
+```{r Organic weight line figure, fig.cap = "**Figure 9.**  Mean monthly estimated (left) and calculated (right) organic weight of sediment at stations in Caloosahatchee River (top) and Tampa Bay (bottom). Please note differences in magnitude between the y-axes.", fig.height = 9.5, fig.width = 8, fig.fullwidth=TRUE}
+#
+###Monthly organic weight 
+Type_OrgWt_line_list <- list()
+for(i in seq_along(Sites)){
+  Type_OrgWt_line_temp <- list()
+  for(t in seq_along(Working_Type)){
+    #
+    Type_w <- paste(Working_Type[t])
+    Working_site <- paste(Sites[i])
+    df_temp <- Type_OrgWt %>% filter(grepl(Type_w, Type)) %>% filter(grepl(Working_site, Estuary)) %>% rowwise() %>% mutate(Upper = sum(MeanOrgWt, na.rm = TRUE))
+    df_temp$HelperLocation <- (ceiling(max(df_temp$Upper, na.rm = T)*1.05)/5)
+    max_upper <- ceiling(max(df_temp$Upper, na.rm = T)*1.05) #*1.05 adds 5% buffer to top if needed
+    #
+    #
+    Type_OrgWt_line_temp[[t]] <- df_temp %>% ggplot(aes(RetDate, MeanOrgWt, color = Station))+ 
+      geom_line(linewidth = 1.25) +
+      scale_x_date("Date", expand= c(0.005,0), date_breaks = "2 months", date_labels = "%b %Y", limits = c(floor_date(min(df_temp$RetDate), "month") %m-% days(10), ceiling_date(max(df_temp$RetDate), "month") %m+% days(10)))+
+      scale_y_continuous("Organic weight (g/month)", expand = c(0,0), limits = c(0, max(pretty(0:ceiling(max_upper*10)/10))), breaks = pretty(0:ceiling(max_upper*10)/10))+
+    ggtitle(paste0(case_when(grepl("TB", Working_site) ~ "Tampa Bay", grepl("CR", Working_site) ~ "Caloosahatchee River", TRUE ~ "WRONG"), " - ", case_when(grepl("Estimated", Type_w) ~ "Estimated", grepl("Calculated", Type_w) ~ "Calculated", TRUE ~ "OTHER"))) +
+      Station_color + BaseForm + PlotTitle + Angle_x
+  }
+  Type_OrgWt_line_list[[i]] <- Type_OrgWt_line_temp
+  }
+#[[1]][[-]] - CRE plots
+#[[2]][[-]] - TB plots
+Type_OrgWt_line_fig <- ggarrange(
+  ggarrange(
+  Type_OrgWt_line_list[[1]][[1]] + rremove("x.title") + rremove("y.title") + theme(legend.margin = margin(-1, 0, -1, 0)) + guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+  Type_OrgWt_line_list[[1]][[2]] + rremove("x.title") + rremove("y.title") +  guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+  ncol = 2, align = "h", common.legend = TRUE, legend = "bottom"  
+),
+  ggarrange(
+  Type_OrgWt_line_list[[2]][[1]] + rremove("x.title") + rremove("y.title") + theme(legend.margin = margin(-1, 0, -1, 0)) + guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+  Type_OrgWt_line_list[[2]][[2]] + rremove("x.title") + rremove("y.title") +  guides(color = guide_legend(override.aes = list(size=2), nrow = 1), fill = guide_legend(nrow = 1)),
+  ncol = 2, align = "h", common.legend = TRUE, legend = "bottom"  
+), nrow = 2, align = "v"
+)
+annotate_figure(Type_OrgWt_line_fig, left = text_grob("Organic weight (g/month)", rot = 90, vjust = 0.4, family = "serif", size = 18, color = "black"))
+```
+
+```{r Estimated monthly organic weight figure, fig.cap = "**Figure 10.**  Mean estimated monthly organic content (g/month) of samples from stations in Caloosahatchee River and Tampa Bay. Colors indicate significant groupings (alpha = 0.05).", fig.height = 4.5, fig.width = 8.5, fig.fullwidth=TRUE}
+#
+EstWt2 %>% group_by(Estuary, Station_code) %>% left_join(EstOrgWt_station[c(1,7)]) %>%
+  ggplot(aes(Station, MeanOrgWt, fill = Letters)) + geom_boxplot() +
   lemon::facet_rep_grid(.~Estuary, scales = "free_x") +
-  scale_y_continuous("Mean organic content in crucibles (g/day)", expand = c(0,0), limits = c(0, 80))+
+  scale_y_continuous("Mean estimated organic content (g/day)", expand = c(0,0), limits = c(0, 100))+
   BaseForm + theme_f
 #
 ```
+
+`r OrgWtSumm %>% mutate(across(where(is.numeric), round, digits = 2)) %>% arrange(desc(Type), Estuary, Station) %>% as_grouped_data(groups = "Type") %>% flextable() %>% merge_v(j = 2) %>% align(align = "center") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.6) %>% padding(padding = 1.2, part = "all") %>% hline(i = c(6, 13, 19)) %>% set_caption("Table 13. Estimated and calculated organic weight (g/month) of sediment by station and overall during the project. Values are standardized to 28-day months.")`
+\
+`r MinMaxOrgWt %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% merge_v(j = c("Measure", "Type", "Estuary", "Station")) %>% hline(part = "body") %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.65) %>% width(width = 1.2, j = c(1, 5)) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 14. Minimum and maximum estaimted and calculated organic weights of samples per station and the Month and Year in which the minimum or maximum occurred.")`
+\
+`r EstOrgWt_aov_tidy %>% mutate_at(vars(SS, MS, F), round, digits = 2) %>% mutate_at(vars(Pr), round, digits = 3) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1.1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ Pr < 0.05, j = "Pr", color = "red") %>% set_caption("Table 15. Analysis of estimated organic content (g/month) by estuary and station. Permutation ANOVA using 10,000 permutations. Red text indicates signifcance alpha < 0.05.")`
+\
+`r EstOrgWt_station %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 16. Mean estimated organic content (g/month) per station. Letters are determined based on pairwise permutation two-sample independence analysis.")`
+\
+`r EstOrgWt_sta_tab %>% mutate_at(vars(p.value, p.adjust), as.numeric) %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ p.adjust < 0.05, j = "p.adjust", color = "red") %>% set_caption("Table 17. Pairwise two-sample permutation post-hoc comparisons of estimated organic content (g/month) per station. Red text indicates signifcance alpha < 0.05.")`
+\
+\
+\
+
+### Calculated organic weights
+
+```{r Calculated organic weight comparisons - estuary and station, include=FALSE}
+#
+#Visualize
+ggboxplot(CalWt, x = "Estuary", y = "MeanOrgWt", color = "Station")
+CalWt %>% ggplot(aes(x = MeanOrgWt))+ geom_histogram(aes(y = ..count..)) #left-skewed
+CalWt %>% ggplot(aes(x = log10(MeanOrgWt+1)))+ geom_histogram(aes(y = ..count..)) #better
+CalWt2 <- CalWt %>% mutate(logOrgWt = log10(MeanOrgWt + 1)) 
+#
+##Permutation 2 factor Anova
+set.seed(402)
+CalOrgWt_aov <- aovp(logOrgWt ~ Estuary + Station_code, data = CalWt2, perm = "",  nperm = 10000)
+summary(CalOrgWt_aov)
+CalOrgWt_aov_tidy <- tidy(CalOrgWt_aov)
+names(CalOrgWt_aov_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
+#
+##Estuary and stations not significantly different so skip pairwise
+#CalOrgWt_est_tab <- pairwisePermutationTest(logOrgWt ~ Estuary, data = CalWt2, method = "fdr", alternative = "two.sided") 
+#CalOrgWt_estuary <- merge(CalWt2 %>% group_by(Estuary) %>% get_summary_stats(MeanOrgWt, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), cldList(comparison = CalOrgWt_est_tab$Comparison, p.value = CalOrgWt_est_tab$p.adjust, threshold = 0.05) %>% #select(-c("MonoLetter")) %>% rename(Estuary = Group, Letters = Letter))
+CalOrgWt_sta_tab <- pairwisePermutationTest(logOrgWt ~ Station_code, data = CalWt2, method = "fdr", alternative = "two.sided")
+CalOrgWt_station <- merge(CalWt2 %>% group_by(Station_code) %>% get_summary_stats(MeanOrgWt, type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                      cldList(comparison = CalOrgWt_sta_tab$Comparison, p.value = CalOrgWt_sta_tab$p.adjust, threshold = 0.05) %>% select(-c("MonoLetter")) %>% rename(Station_code = Group, Letters = Letter))
+#
+#
+```
+
+Sediment on oyster reefs in the Caloosahatchee River estuary averaged calculated organic weights of `r round((OrgWtSumm %>% filter(Estuary == "CR" & is.na(Station) & Type == "Calculated"))$MeanWt, 1)` g/month (Table 13, Figure 8-9). The lowest calculated organic weight occurred at station `r (OrgWtSumm %>% filter(Type == "Calculated") %>% group_by(Estuary) %>% slice_min(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "CR"))$Station` (mean: `r round((OrgWtSumm %>% filter(Type == "Calculated") %>% group_by(Estuary) %>% slice_min(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "CR"))$MeanWt,1)` g/month) and the highest occurred at station `r (OrgWtSumm %>% filter(Type == "Calculated") %>% group_by(Estuary) %>% slice_max(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "CR"))$Station` (mean: `r round((OrgWtSumm %>% filter(Type == "Calculated")  %>% group_by(Estuary) %>% slice_max(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "CR"))$MeanWt,1)` g/month). Overall, the lowest single month calculated organic weight (`r round((CalWt %>% group_by(Estuary) %>% slice_min(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "CR"))$MeanOrgWt,1)` g/month) occurred in `r (CalWt %>% group_by(Estuary) %>% slice_min(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "CR"))$RetDate %>% format("%B %Y")` at station `r (CalWt %>% group_by(Estuary) %>% slice_min(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "CR"))$Station ` while the highest (`r round((CalWt %>% group_by(Estuary) %>% slice_max(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "CR"))$MeanOrgWt,1)` g/month) occurred in `r (CalWt %>% group_by(Estuary) %>% slice_max(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "CR"))$RetDate %>% format("%B %Y")` at station `r (CalWt %>% group_by(Estuary) %>% slice_max(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "CR"))$Station` (Table 14). 
+\
+\
+Sediment on oyster reefs in the Tampa Bay estuary averaged estimated organic weights of `r round((OrgWtSumm %>% filter(Estuary == "TB" & is.na(Station) & Type == "Calculated"))$MeanWt, 1)` g/month (Table 13, Figure 8-9). The lowest estimated sedimentation rate occurred at station `r (OrgWtSumm %>% filter(Type == "Calculated") %>% group_by(Estuary) %>% slice_min(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "TB"))$Station` (mean: `r round((OrgWtSumm %>% filter(Type == "Calculated")  %>% group_by(Estuary) %>% slice_min(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "TB"))$MeanWt,1)` g/month) and the highest occurred at station `r (OrgWtSumm %>% filter(Type == "Calculated") %>% group_by(Estuary) %>% slice_max(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "TB"))$Station` (mean: `r round((OrgWtSumm %>% filter(Type == "Calculated")  %>% group_by(Estuary) %>% slice_max(order_by = MeanWt, na_rm = T) %>% filter(Estuary == "TB"))$MeanWt,1)` g/month). The lowest single station sedimentation rate (`r round((CalWt %>% group_by(Estuary) %>% slice_min(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "TB"))$MeanOrgWt,1)` g/month) occurred in `r (CalWt %>% group_by(Estuary) %>% slice_min(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "TB"))$RetDate %>% format("%B %Y")` at station `r (CalWt %>% group_by(Estuary) %>% slice_min(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "TB"))$Station ` while the highest (`r round((CalWt %>% group_by(Estuary) %>% slice_max(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "TB"))$MeanOrgWt,1)` g/month) occurred in `r (CalWt %>% group_by(Estuary) %>% slice_max(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "TB"))$RetDate %>% format("%B %Y")` at station `r (CalWt %>% group_by(Estuary) %>% slice_max(order_by = MeanOrgWt, na_rm = T) %>% filter(Estuary == "TB"))$Station` (Table 14). 
+\
+\
+`r if(CalOrgWt_aov_tidy[1,6] < 0.05 & CalOrgWt_aov_tidy[2,6] >= 0.05){paste0("Estimated organic weights were significantly different between estuaries (F(", CalOrgWt_aov_tidy[1,2], ",", CalOrgWt_aov_tidy[3,2], ") = ", round(CalOrgWt_aov_tidy[1,5],2), ", p = ", round(CalOrgWt_aov_tidy[1,6], 3), ") but not among stations (F(", CalOrgWt_aov_tidy[2,2], ",", CalOrgWt_aov_tidy[3,2], ") = ", round(CalOrgWt_aov_tidy[2,5],2), ", p = ", round(CalOrgWt_aov_tidy[2,6], 3), ") (Figure 11, Table 16).")} else if(CalOrgWt_aov_tidy[1,6] >= 0.05 & CalOrgWt_aov_tidy[2,6] < 0.05){paste0("Estimated organic weights were significantly different among stations (F(", CalOrgWt_aov_tidy[2,2], ",", CalOrgWt_aov_tidy[3,2], ") = ", round(CalOrgWt_aov_tidy[2,5],2), ", p = ", round(CalOrgWt_aov_tidy[2,6], 3), ") but not between estuaries (F(", CalOrgWt_aov_tidy[1,2], ",", CalOrgWt_aov_tidy[3,2], ") = ", round(CalOrgWt_aov_tidy[1,5],2), ", p = ", round(CalOrgWt_aov_tidy[1,6], 3), ") (Figure 11, Table 16).")} else if (CalOrgWt_aov_tidy[1,6] < 0.05 & CalOrgWt_aov_tidy[2,6] < 0.05){paste0("Estimated organic weights were significantly different between estuaries (F(", CalOrgWt_aov_tidy[1,2], ",", CalOrgWt_aov_tidy[3,2], ") = ", round(CalOrgWt_aov_tidy[1,5],2), ", p = ", round(CalOrgWt_aov_tidy[1,6], 3), ") and among stations (F(", CalOrgWt_aov_tidy[2,2], ",", CalOrgWt_aov_tidy[3,2], ") = ", round(CalOrgWt_aov_tidy[2,5],2), ", p = ", round(CalOrgWt_aov_tidy[2,6], 3), ") (Figure 11, Table 18).")} else {paste0("Neither factor was significant. Review coding.")}`
+\
+\
+{Include text about among stations. Tables 19 & 20.}
+
+```{r Calculated monthly organic weight figure, fig.cap = "**Figure 10.**  Mean calculated monthly organic content (g/month) of samples from stations in Caloosahatchee River and Tampa Bay. Colors indicate significant groupings (alpha = 0.05).", fig.height = 4.5, fig.width = 8.5, fig.fullwidth=TRUE}
+#
+CalWt2 %>% group_by(Estuary, Station_code) %>% left_join(CalOrgWt_station[c(1,7)]) %>%
+  ggplot(aes(Station, MeanOrgWt, fill = Letters)) + geom_boxplot() +
+  lemon::facet_rep_grid(.~Estuary, scales = "free_x") +
+  scale_y_continuous("Mean estimated organic content (g/day)", expand = c(0,0), limits = c(0, 30))+
+  BaseForm + theme_f
+#
+```
+
+`r CalOrgWt_aov_tidy %>% mutate_at(vars(SS, MS, F), round, digits = 2) %>% mutate_at(vars(Pr), round, digits = 3) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1.1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ Pr < 0.05, j = "Pr", color = "red") %>% set_caption("Table 18. Analysis of calculated organic content (g/month) by estuary and station. Permutation ANOVA using 10,000 permutations. Red text indicates signifcance alpha < 0.05.")`
+\
+`r CalOrgWt_station %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% padding(padding = 1.2, part = "all") %>% set_caption("Table 19. Mean calculated organic content (g/month) per station. Letters are determined based on pairwise permutation two-sample independence analysis.")`
+\
+`r CalOrgWt_sta_tab %>% mutate_at(vars(p.value, p.adjust), as.numeric) %>% mutate(across(where(is.numeric), round, digits = 2)) %>% flextable() %>% align(align = "center", part = "all") %>% font(fontname = "Arial", part = "all") %>% fontsize(size = 10, part = "all") %>% bold(bold = T, part = "header") %>% width(width = 0.7) %>% width(width = 1, j = 1) %>% padding(padding = 1.2, part = "all") %>% color(i = ~ p.adjust < 0.05, j = "p.adjust", color = "red") %>% set_caption("Table 20. Pairwise two-sample permutation post-hoc comparisons of calculated organic content (g/month) per station. Red text indicates signifcance alpha < 0.05.")`
