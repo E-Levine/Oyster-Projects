@@ -63,8 +63,8 @@ head(Cage_counts_raw)
                 dplyr::select(-Deployed)) %>%
     mutate(RetTotal = LiveCount + DeadCount,
            MissCount = DepCount - RetTotal,
-           DeadRate = 1-(LiveCount/DepCount),
-           DeadCountRate = (DeadCount/DepCount)) %>% left_join(Locations))
+           PctMort = 100-((LiveCount/DepCount)*100),
+           DeadPct = (DeadCount/DepCount)*100) %>% left_join(Locations))
 #
 ###Cage SHS
 Cage_SH_raw <- read_excel("Growth_database_2024_10_29.xlsx", sheet = "CageSH", #File name and sheet name
@@ -401,7 +401,8 @@ names(Annual_grow_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 #
 (Annual_grow_comps <- left_join(GrowthRates %>% group_by(Site, Year) %>% rstatix::get_summary_stats(Growth_rate , type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
                            rbind(make_cld(Annual_grow_tab %>% filter(Site == "LXN")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "LXN") %>% rename(Year = group, Letters = cld),
-                                 make_cld(Annual_grow_tab %>% filter(Site == "SLC")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "SLC") %>% rename(Year = group, Letters = cld))))
+                                 make_cld(Annual_grow_tab %>% filter(Site == "SLC")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "SLC") %>% rename(Year = group, Letters = cld))) %>% 
+    arrange(Site, Year))
 #
 Annual_grow_comps %>% 
   ggplot(aes(Year, mean, group = 1))+
@@ -410,7 +411,7 @@ Annual_grow_comps %>%
   geom_line()+
   lemon::facet_rep_grid(Site~.)+
   geom_text(aes(y = upper+0.1, label = Letters)) +
-  scale_y_continuous(expand = c(0,0), limits= c(-0.2, 0.6), breaks = seq(-0.2, 0.6, by = 0.2))+
+  scale_y_continuous("Mean growth rate (mm/day)", expand = c(0,0), limits= c(-0.2, 0.6), breaks = seq(-0.2, 0.6, by = 0.2))+
   geom_hline(yintercept = 0, linetype = "dotted")+
   basetheme + axistheme
 #
@@ -434,95 +435,85 @@ Annual_grow_tab %>% filter(Site == "SLC" & p.adjust < 0.06)
 #
 #
 #
+#END OF SECTION
+#
+#
 ####Comparison of pct mortality - minimal progress####
 #
-(Counts_cages <- Cage_counts %>%
-   mutate(Survivorship = LiveCount/DepCount) %>%  group_by(MonYr, Site, CageCountID, CageColor) %>% 
-   summarise(Survivor = mean(Survivorship, na.rm = T),
-             DeadCountRate = mean(DeadCountRate, na.rm = T)) %>%
-   mutate(Year = as.factor(format(MonYr, "%Y")), Month = as.factor(format(MonYr, "%m")),
-          MortRate = 1-Survivor,
-          Unknown = round(1-Survivor-DeadCountRate,3)))
+(Counts_cages <- Cage_counts %>% group_by(MonYr, Site, CageCountID, CageColor) %>% 
+   summarise(PctMort_ave = mean(PctMort, na.rm = T),
+             DeadPct_ave = mean(DeadPct, na.rm = T),
+             MissPct_ave = (MissCount/DepCount)*100) %>%
+   mutate(Year = as.factor(format(MonYr, "%Y")), Month = as.factor(format(MonYr, "%m"))))
 #
 #
 #
 ##Summary by site/station per MonYr and by Site overall
-(Dead_summ <- Counts_cages %>% group_by(MonYr, Site, CageCountID) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)) %>%
-    mutate(Year = as.factor(format(MonYr, "%Y"))))
+(Dead_summ <- Counts_cages %>% group_by(MonYr, Year, Site, CageCountID) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)))
 (Dead_Site_summ <- Counts_cages %>% group_by(Site) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)))
 #
-##Mean SH by Site
+##Mean percentages by Site
 ggarrange(
   Counts_cages %>% group_by(Site) %>%
-    ggplot(aes(Site, MortRate))+
+    ggplot(aes(Site, PctMort_ave))+
     geom_point()+
     geom_boxplot()+
-    scale_y_continuous(expand = c(0,0), limits = c(0,1))+
+    scale_y_continuous("Ret counts", expand = c(0,0), limits = c(0,100))+
     ggtitle("Cage data  Feb 2005 - Sept 2024")+
     basetheme + axistheme,
   Counts_cages %>% group_by(Site) %>%
-    ggplot(aes(Site, DeadCountRate))+
+    ggplot(aes(Site, DeadPct_ave))+
     geom_point()+
     geom_boxplot()+
-    scale_y_continuous(expand = c(0,0), limits = c(0,0.6))+
+    scale_y_continuous("Dead counts", expand = c(0,0), limits = c(0,60))+
     ggtitle("Cage data  Feb 2005 - Sept 2024")+
     basetheme + axistheme
   )
 #
 #
-#Compare mortality rate among Sites
+#Compare percent mortality among Sites
 set.seed(54321)
-Mort_mod <- aovp(MortRate_mean  ~ Site, data = Dead_summ, perm = "", nperm = 10000)
+Mort_mod <- aovp(PctMort_ave_mean  ~ Site, data = Dead_summ, perm = "", nperm = 10000)
 Mort_mod_tidy <- tidy(Mort_mod)
 names(Mort_mod_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
 Mort_mod_tidy
 #
 ##Pairwise comparisons - Sites deployed
-(Mort_mod_pair <- as.data.frame(Dead_summ) %>% pairwise_t_test(MortRate_mean ~ Site, p.adjust.method = "holm"))
+(Mort_mod_pair <- as.data.frame(Dead_summ) %>% pairwise_t_test(PctMort_ave_mean ~ Site, p.adjust.method = "holm"))
 Mort_mod_tab <- dplyr::select(Mort_mod_pair, c("group1", "group2", "p", "p.adj")) %>%
   mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
   dplyr::select("Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)    #Move 'Comparison' to front and drop grp1 & grp2
 Mort_mod_letters <- make_cld(Mort_mod_tab) %>% dplyr::select(-c("spaced_cld")) %>% rename(Site = group, Letters = cld)
-(Mort_mod_comps <- merge(Dead_summ %>% group_by(Site) %>% rstatix::get_summary_stats(MortRate_mean , type = "mean_sd") %>% 
-                           dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), Site_dep_letters, by = "Site"))
+(Mort_mod_comps <- merge(Dead_summ %>% group_by(Site) %>% rstatix::get_summary_stats(PctMort_ave_mean , type = "mean_sd") %>% 
+                           dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), Mort_mod_letters, by = "Site"))
 #
 Counts_cages %>% group_by(Site) %>%
-  ggplot(aes(Site, MortRate))+
+  ggplot(aes(Site, PctMort_ave))+
   geom_boxplot()+
   geom_jitter(width = 0.15)+
-  scale_y_continuous(expand = c(0,0), limits = c(0,1.25))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(1.15, 1.15, 1.15, 1.15), label = c("a", "b", "c", "d"), fontface = "bold")+
+  scale_y_continuous(expand = c(0,0), limits = c(0,125))+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(115, 115, 115, 115), label = c("a", "a", "a", "b"), fontface = "bold")+
   ggtitle("Cage data  Feb 2005 - Sept 2024")+
   basetheme + axistheme
 #
 ##Abstract
 ggarrange(
   Counts_cages %>% group_by(Site) %>%
-    ggplot(aes(Site, DeadCountRate, fill = Site))+
+    ggplot(aes(Site, PctMort_ave, fill = Site))+
     geom_boxplot(linewidth = 1)+
     geom_jitter(width = 0.15)+
-    scale_y_continuous("Mean mortality (dead count) rate", expand = c(0,0), limits = c(0,0.51))+
+    scale_y_continuous("Mean mortality (survivorship)", expand = c(0,0), limits = c(0,100))+
     #ggtitle("Cage data  Feb 2005 - Sept 2024")+
     preztheme + axistheme + facettheme + theme(legend.position = "none", axis.text.x = element_text(size = 12)),
 Counts_cages %>% group_by(Site) %>%
-  ggplot(aes(Site, MortRate, fill = Site))+
+  ggplot(aes(Site, DeadPct_ave, fill = Site))+
   geom_boxplot(linewidth = 1)+
   geom_jitter(width = 0.15)+
-  scale_y_continuous("Mean mortality (survivorship) rate", expand = c(0,0), limits = c(0,1.02))+
+  scale_y_continuous("Mean mortality (dead count)", expand = c(0,0), limits = c(0,50))+
   #ggtitle("Cage data  Feb 2005 - Sept 2024")+
   preztheme + axistheme + facettheme + theme(legend.position = "none", axis.text.x = element_text(size = 12))
 )
 #
-#Annual_grow_comps %>% 
-#  ggplot(aes(Year, mean, group = 1, color = Site))+
-  geom_point(size = 5)+
-#  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25, linewidth = 1)+
-  geom_line(linewidth = 1)+
-  lemon::facet_rep_grid(Site~.)+
-  scale_color_manual(values = SiteColor)+
-  scale_y_continuous("Mean growth rate (mm/day)", expand = c(0,0), limits= c(-0.2, 0.6), breaks = seq(-0.2, 0.6, by = 0.2))+
-  geom_hline(yintercept = 0, linetype = "dotted")+
-  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(1.25, "lines"))
 #
 #
 #
