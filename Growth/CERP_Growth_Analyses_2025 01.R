@@ -473,13 +473,16 @@ names(Annual_dep_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 #
 Annual_dep_comps %>% 
   ggplot(aes(Year, mean, group = 1))+
-  geom_point()+
-  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25)+
+  geom_point(aes(color = Site), size = 4)+
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25, size = 1)+
   geom_line()+
   lemon::facet_rep_grid(Site~.)+
-  geom_text(aes(y = upper+8, label = Letters)) +
-  scale_y_continuous(expand = c(0,0), limits= c(0, 90), breaks = seq(0, 90, by = 30))+
-  basetheme + axistheme
+  geom_text(aes(y = upper+10, label = Letters), size = 5) +
+  scale_y_continuous("Mean deployed shell height (mm)", expand = c(0,0), limits= c(0, 90), breaks = seq(0, 90, by = 30))+
+  scale_color_manual(values = SiteColor)+
+  preztheme + axistheme + theme(legend.position = "none") + facettheme
+#
+###Presentation fig: Site_dep_SH_annual -- 1000
 #
 #Abstract - saving at 700
 Annual_dep_comps %>% 
@@ -490,11 +493,57 @@ Annual_dep_comps %>%
   lemon::facet_rep_grid(Site~.)+
   scale_color_manual(values = SiteColor)+
   scale_y_continuous("Mean shell height (mm)", expand = c(0,0), limits= c(0, 90), breaks = seq(0, 90, by = 30))+
-  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(1.25, "lines"), axis.text.x = element_text(angle = 45))
+  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0, "lines"), axis.text.x = element_text(angle = 25))
 #
+Annual_dep_tab %>% filter(Site == "CRE" & p.adjust < 0.05)
+Annual_dep_tab %>% filter(Site == "CRW" & p.adjust < 0.05)
+Annual_dep_tab %>% filter(Site == "LXN" & p.adjust < 0.05)
 Annual_dep_tab %>% filter(Site == "SLC" & p.adjust < 0.05)
 #
 #
+#
+#
+#
+#END OF SECTION
+#
+#
+####Growth rates - Annual changes####
+#
+#mm/day growth by CageColor - "raw replicate data"
+(Cage_growth_raw <- left_join(ShellHeights %>% dplyr::select(MonYr:CageColor, Dep_MeanSH, Ret_MeanSH, Mean_growth),
+                              Cage_counts_raw %>% mutate(CageCountID = substr(CageCountID, 1, 22)) %>% 
+                                filter(DataType == "Retrieved") %>% dplyr::select(CageCountID, CageColor, TotalCount, DaysDeployed)) %>%
+   mutate(Year = as.factor(format(MonYr, "%Y")), Month = as.factor(format(MonYr, "%m")), 
+          Site = as.factor(Site), mm_day = Mean_growth/DaysDeployed))
+(Cage_growth <- Cage_growth_raw %>% group_by(MonYr, Year, Month, CageCountID, Site) %>%
+    summarise(MeanDep = mean(Dep_MeanSH, na.rm = T), MeanRet = mean(Ret_MeanSH, na.rm = T), 
+              MeanCount = mean(TotalCount, na.rm = T), MeanGrowth = mean(Mean_growth, na.rm = T), DaysDeployed = mean(DaysDeployed),
+              MeanDaily = MeanGrowth/DaysDeployed))
+#
+#Visualize 
+ggarrange(
+  Cage_growth %>% group_by(MonYr, Site) %>% summarise(Mean_growth = mean(MeanGrowth, na.rm = T)) %>%
+    ggplot(aes(MonYr, Mean_growth, group = 1))+
+    geom_line()+
+    geom_smooth()+
+    geom_hline(yintercept = 0, linetype = "dashed")+
+    lemon::facet_rep_grid(Site~.)+
+    basetheme + axistheme,
+  Cage_growth %>% group_by(Year, Site) %>% summarise(Mean_growth = mean(MeanGrowth, na.rm = T)) %>%
+    ggplot(aes(Year, Mean_growth, group = 1))+
+    geom_line()+
+    geom_hline(yintercept = 0, linetype = "dashed")+
+    geom_smooth()+
+    lemon::facet_rep_grid(Site~.)+
+    basetheme + axistheme,
+  Cage_growth %>% group_by(Month, Site) %>% summarise(Mean_growth = mean(MeanGrowth, na.rm = T)) %>%
+    ggplot(aes(Month, Mean_growth, group = 1))+
+    geom_line()+
+    geom_hline(yintercept = 0, linetype = "dashed")+
+    geom_smooth()+
+    lemon::facet_rep_grid(Site~.)+
+    basetheme + axistheme,
+  nrow = 1, ncol=3)
 #
 #
 #
@@ -562,52 +611,6 @@ Annual_grow_comps %>%
                                              axis.text.x = element_text(angle = 32), axis.text.y = element_text(size = 12))
 #
 Annual_grow_tab %>% filter(Site == "SLC" & p.adjust < 0.06)
-#
-#
-#
-#
-#
-#END OF SECTION
-#
-#
-####Growth rates - Annual changes####
-#
-#mm/day growth by CageColor - "raw replicate data"
-(Cage_growth_raw <- left_join(ShellHeights %>% dplyr::select(MonYr:CageColor, Dep_MeanSH, Ret_MeanSH, Mean_growth),
-                              Cage_counts_raw %>% mutate(CageCountID = substr(CageCountID, 1, 22)) %>% 
-                                filter(DataType == "Retrieved") %>% dplyr::select(CageCountID, CageColor, TotalCount, DaysDeployed)) %>%
-   mutate(Year = as.factor(format(MonYr, "%Y")), Month = as.factor(format(MonYr, "%m")), 
-          Site = as.factor(Site), mm_day = Mean_growth/DaysDeployed))
-(Cage_growth <- Cage_growth_raw %>% group_by(MonYr, Year, Month, CageCountID, Site) %>%
-    summarise(MeanDep = mean(Dep_MeanSH, na.rm = T), MeanRet = mean(Ret_MeanSH, na.rm = T), 
-              MeanCount = mean(TotalCount, na.rm = T), MeanGrowth = mean(Mean_growth, na.rm = T), DaysDeployed = mean(DaysDeployed),
-              MeanDaily = MeanGrowth/DaysDeployed))
-#
-#Visualize 
-ggarrange(
-  Cage_growth %>% group_by(MonYr, Site) %>% summarise(Mean_growth = mean(MeanGrowth, na.rm = T)) %>%
-    ggplot(aes(MonYr, Mean_growth, group = 1))+
-    geom_line()+
-    geom_smooth()+
-    geom_hline(yintercept = 0, linetype = "dashed")+
-    lemon::facet_rep_grid(Site~.)+
-    basetheme + axistheme,
-  Cage_growth %>% group_by(Year, Site) %>% summarise(Mean_growth = mean(MeanGrowth, na.rm = T)) %>%
-    ggplot(aes(Year, Mean_growth, group = 1))+
-    geom_line()+
-    geom_hline(yintercept = 0, linetype = "dashed")+
-    geom_smooth()+
-    lemon::facet_rep_grid(Site~.)+
-    basetheme + axistheme,
-  Cage_growth %>% group_by(Month, Site) %>% summarise(Mean_growth = mean(MeanGrowth, na.rm = T)) %>%
-    ggplot(aes(Month, Mean_growth, group = 1))+
-    geom_line()+
-    geom_hline(yintercept = 0, linetype = "dashed")+
-    geom_smooth()+
-    lemon::facet_rep_grid(Site~.)+
-    basetheme + axistheme,
-  nrow = 1, ncol=3)
-#
 #
 #
 #
