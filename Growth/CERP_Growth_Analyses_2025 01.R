@@ -587,15 +587,17 @@ names(Annual_grow_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 #
 Annual_grow_comps %>% 
   ggplot(aes(Year, mean, group = 1))+
-  geom_point()+
+  geom_point(aes(color = Site), size = 4)+
   geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25)+
   geom_line()+
   lemon::facet_rep_grid(Site~.)+
-  geom_text(aes(y = upper+0.1, label = Letters)) +
+  geom_text(aes(y = upper+0.1, label = Letters), size = 5) +
   scale_y_continuous("Mean growth rate (mm/day)", expand = c(0,0), limits= c(-0.2, 0.6), breaks = seq(-0.2, 0.6, by = 0.2))+
+  scale_color_manual(values = SiteColor)+
   geom_hline(yintercept = 0, linetype = "dotted")+
-  basetheme + axistheme
+  preztheme + axistheme + facettheme + theme(legend.position = "none")
 #
+###Presentation fig: Site_growth_mmday_annual -- 1000
 #
 #Abstract
 Annual_grow_comps %>% 
@@ -610,135 +612,25 @@ Annual_grow_comps %>%
   preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(1.25, "lines"), 
                                              axis.text.x = element_text(angle = 32), axis.text.y = element_text(size = 12))
 #
+Annual_grow_tab %>% filter(Site == "LXN" & p.adjust < 0.06)
 Annual_grow_tab %>% filter(Site == "SLC" & p.adjust < 0.06)
 #
 #
-#
-#
-####Comparison of growth####
-#
-#
-##Permutation based ANOVA - Year for each site mean growth
-set.seed(54321)
-Growth_LXN <- aovp(Growth_de1 ~ Year, data = Growth_final %>% filter(Site == "LXN"), perm = "",  nperm = 10000)
-Growth_SLC <- aovp(Growth_de1 ~ Year, data = Growth_final %>% filter(Site == "SLC"), perm = "",  nperm = 10000)
-Growth_CRE <- aovp(Growth_de1 ~ Year, data = Growth_final %>% filter(Site == "CRE"), perm = "",  nperm = 10000)
-Growth_CRW <- aovp(Growth_de1 ~ Year, data = Growth_final %>% filter(Site == "CRW"), perm = "",  nperm = 10000)
-
-(Growth_summ <- rbind(rbind(rbind(tidy(Growth_LXN) %>% mutate(Site = "LXN"), tidy(Growth_SLC) %>% mutate(Site = "SLC")),
-                            tidy(Growth_CRE) %>% mutate(Site = "CRE")), tidy(Growth_CRW) %>% mutate(Site = "CRW")) %>%
-    dplyr::select(Site, everything())) 
-names(Growth_summ) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr"); Growth_summ
-#Significant difference among Year in LXN and SLC
-#
-#P values for  pairwise comparisons
-(LXN_gro_p <- pairwise_t_test(Growth_de1 ~ Year, data = ungroup(Growth_final) %>% filter(Site == "LXN"), p.adjust.method = "BH") %>%
-    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
-    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj) %>% mutate(Site = "LXN", .before = "Comparison"))()
-
-###Not giving any results due to incomplete data - Proof all data, regather data then continue working. 
-SLC_gro_p <- pairwise.t.test(Growth_de1 ~ Year, data = ungroup(Growth_final) %>% filter(Site == "SLC"), p.adjust.method = "holm") %>%
-  dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
-  dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj) %>% mutate(Site = "SLC", .before = "Comparison"))
-
-(Growth_year_p <- rbind(
-  pairwise_t_test(Growth_de1 ~ Year, data = ungroup(Growth_final) %>% filter(Site == "SLC"), p.adjust.method = "BH") %>%
-    dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
-    dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj) %>% mutate(Site = "SLC", .before = "Comparison")))
-#Table of summary stats per Site each Year and Letters
-(Growth_year_tab <- rbind(rbind(rbind(merge(Growth_final %>% filter(Site == "LXN") %>% group_by(Year) %>% get_summary_stats(MeanGrowth, show = c("n", "mean", "sd", "min", "max")) %>% 
-                                              dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
-                                            biostat::make_cld(pairwise_t_test(Growth_de1 ~ Year, data = ungroup(Growth_final) %>% filter(Site == "LXN"), p.adjust.method = "BH") %>%
-                                                                dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
-                                                                dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj)) %>% dplyr::select(-c(spaced_cld)) %>% rename(Year = group, Letters = cld)) %>% 
-                                        mutate(Site = "LXN", .before = "Year"),
-                                      merge(Growth_final %>% filter(Site == "SLC") %>% group_by(Year) %>% get_summary_stats(MeanGrowth, show = c("n", "mean", "sd", "min", "max")) %>% 
-                                              dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
-                                            biostat::make_cld(pairwise_t_test(Growth_de1 ~ Year, data = ungroup(Growth_final) %>% filter(Site == "SLC"), p.adjust.method = "BH") %>%
-                                                                dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
-                                                                dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj)) %>% dplyr::select(-c(spaced_cld)) %>% rename(Year = group, Letters = cld)) %>% 
-                                        mutate(Site = "SLC", .before = "Year")),
-                                Growth_final %>% filter(Site == "CRE") %>% group_by(Year) %>% get_summary_stats(MeanGrowth, show = c("n", "mean", "sd", "se", "min", "max")) %>% 
-                                  mutate(Site = "CRE", .before = "Year") %>% mutate(lower = mean-se, upper = mean+se, Letters = NA) %>% dplyr::select(-variable, - se)),
-                          Growth_final %>% filter(Site == "CRW") %>% group_by(Year) %>% get_summary_stats(MeanGrowth, show = c("n", "mean", "sd", "se", "min", "max")) %>% 
-                            mutate(Site = "CRW", .before = "Year") %>% mutate(lower = mean-se, upper = mean+se, Letters = NA) %>% dplyr::select(-variable, -se)))
-#
-#Plot of mean Growth per year for each Site with pairwise letter differences.
-Growth_year_tab %>%
-  ggplot(aes(Year, mean))+
-  geom_point()+
-  geom_line(aes(group = 1))+
-  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25)+
-  geom_hline(aes(yintercept = 0), linetype = "dashed")+
-  geom_text(aes(y = upper+2, label = Letters))+
-  lemon::facet_rep_grid(Site~.)+
-  scale_y_continuous(expand = c(0,0), limits = c(-5, 20))+
-  basetheme + axistheme
+#END OF SECTION
 #
 #
 #
-#
-##Permutation based ANOVA - Year for each site mean daily growth
-set.seed(54321)
-Daily_LXN <- aovp(Growth_da ~ Year, data = Growth_final %>% filter(Site == "LXN"), perm = "",  nperm = 10000)
-Daily_SLC <- aovp(Growth_da ~ Year, data = Growth_final %>% filter(Site == "SLC"), perm = "",  nperm = 10000)
-Daily_CRE <- aovp(Growth_da ~ Year, data = Growth_final %>% filter(Site == "CRE"), perm = "",  nperm = 10000)
-Daily_CRW <- aovp(Growth_da ~ Year, data = Growth_final %>% filter(Site == "CRW"), perm = "",  nperm = 10000)
-
-(Daily_summ <- rbind(rbind(rbind(tidy(Daily_LXN) %>% mutate(Site = "LXN"), tidy(Daily_SLC) %>% mutate(Site = "SLC")),
-                           tidy(Daily_CRE) %>% mutate(Site = "CRE")), tidy(Daily_CRW) %>% mutate(Site = "CRW")) %>%
-    dplyr::select(Site, everything())) 
-names(Daily_summ) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr"); Daily_summ
-#Significant difference among Year in LXN and SLC
-#
-#P values for  pairwise comparisons
-(Daily_year_p <- rbind(pairwise_t_test(Growth_da ~ Year, data = ungroup(Growth_final) %>% filter(Site == "LXN"), p.adjust.method = "BH") %>%
-                         dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
-                         dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj) %>% mutate(Site = "LXN", .before = "Comparison"),
-                       pairwise_t_test(Growth_da ~ Year, data = ungroup(Growth_final) %>% filter(Site == "SLC"), p.adjust.method = "BH") %>%
-                         dplyr::select(group1, group2, p, p.adj) %>% mutate(Comparison = paste(group1, group2, sep = "-")) %>%   #Add new column of grp v grp
-                         dplyr::select(Comparison, everything(), -group1, -group2) %>% rename(p.value = p, p.adjust = p.adj) %>% mutate(Site = "SLC", .before = "Comparison")))
-#Table of summary stats per Site each Year and Letters
-(Daily_year_tab <- rbind(rbind(rbind(merge(Growth_final %>% filter(Site == "LXN") %>% group_by(Year) %>% get_summary_stats(Growth_da, show = c("n", "mean", "sd", "min", "max")) %>% 
-                                             dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
-                                           biostat::make_cld(LXN_year_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Year = group, Letters = cld)) %>% 
-                                       mutate(Site = "LXN", .before = "Year"),
-                                     merge(Growth_final %>% filter(Site == "SLC") %>% group_by(Year) %>% get_summary_stats(MeanGrowth, show = c("n", "mean", "sd", "min", "max")) %>% 
-                                             dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
-                                           biostat::make_cld(LXN_year_p) %>% dplyr::select(-c(spaced_cld)) %>% rename(Year = group, Letters = cld)) %>% 
-                                       mutate(Site = "SLC", .before = "Year")),
-                               Growth_final %>% filter(Site == "CRE") %>% group_by(Year) %>% get_summary_stats(MeanGrowth, show = c("n", "mean", "sd", "se", "min", "max")) %>% 
-                                 mutate(Site = "CRE", .before = "Year") %>% mutate(lower = mean-se, upper = mean+se, Letters = NA) %>% dplyr::select(-variable, - se)),
-                         Growth_final %>% filter(Site == "CRW") %>% group_by(Year) %>% get_summary_stats(MeanGrowth, show = c("n", "mean", "sd", "se", "min", "max")) %>% 
-                           mutate(Site = "CRW", .before = "Year") %>% mutate(lower = mean-se, upper = mean+se, Letters = NA) %>% dplyr::select(-variable, -se)))
-#
-#Plot of mean Growth per year for each Site with pairwise letter differences.
-Growth_year_tab %>%
-  ggplot(aes(Year, mean))+
-  geom_point()+
-  geom_line(aes(group = 1))+
-  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25)+
-  geom_hline(aes(yintercept = 0), linetype = "dashed")+
-  geom_text(aes(y = upper+2, label = Letters))+
-  lemon::facet_rep_grid(Site~.)+
-  scale_y_continuous(expand = c(0,0), limits = c(-5, 20))+
-  basetheme + axistheme
-
-#
-####Comparison of pct mortality####
-#
-#
+####Pct mortality - Annual changes####
 #
 ###Comparisons within Site among Years
-###Change in pct mortality over time?
 ggarrange(
   Counts_cages %>%
-    ggplot(aes(MonYr, PctMort_ave, group = 1))+
+    ggplot(aes(MonYr, DeadRate, group = 1))+
     geom_line()+
     lemon::facet_rep_grid(Site~.)+
     basetheme + axistheme,
-  Counts_cages %>% group_by(Site, Year) %>% summarise(meanPctMort = mean(PctMort_ave, na.rm = T)) %>%
-    ggplot(aes(Year, meanPctMort, group = 1))+
+  Counts_cages %>% group_by(Site, Year) %>% summarise(meanMort = mean(DeadRate, na.rm = T)) %>%
+    ggplot(aes(Year, meanMort, group = 1))+
     geom_line()+
     lemon::facet_rep_grid(Site~.)+
     basetheme +axistheme
@@ -746,30 +638,30 @@ ggarrange(
 #
 ##Permutation based ANOVA - Year for each site percent mortality
 set.seed(54321)
-PctMort_LXN <- aovp(PctMort_ave ~ Year, data = Counts_cages %>% filter(Site == "LXN"), perm = "",  nperm = 10000)
-PctMort_SLC <- aovp(PctMort_ave ~ Year, data = Counts_cages %>% filter(Site == "SLC"), perm = "",  nperm = 10000)
-PctMort_CRE <- aovp(PctMort_ave ~ Year, data = Counts_cages %>% filter(Site == "CRE" & Year != "2017" & Year != "2018"), perm = "",  nperm = 10000)
-PctMort_CRW <- aovp(PctMort_ave ~ Year, data = Counts_cages %>% filter(Site == "CRW" & Year != "2017"), perm = "",  nperm = 10000)
+PctMort_LXN <- aovp(DeadRate ~ Year, data = Counts_cages %>% filter(Site == "LXN"), perm = "",  nperm = 10000)
+PctMort_SLC <- aovp(DeadRate ~ Year, data = Counts_cages %>% filter(Site == "SLC"), perm = "",  nperm = 10000)
+PctMort_CRE <- aovp(DeadRate ~ Year, data = Counts_cages %>% filter(Site == "CRE" & Year != "2017" & Year != "2018"), perm = "",  nperm = 10000)
+PctMort_CRW <- aovp(DeadRate ~ Year, data = Counts_cages %>% filter(Site == "CRW" & Year != "2017"), perm = "",  nperm = 10000)
 #
 (Annual_PctMort_tidy <- rbind(rbind(tidy(PctMort_LXN) %>% mutate(Site = "LXN"), tidy(PctMort_SLC) %>% mutate(Site = "SLC")), 
                               rbind(tidy(PctMort_CRE) %>% mutate(Site = "CRE"), tidy(PctMort_CRW) %>% mutate(Site = "CRW"))) %>% dplyr::select(Site, everything()))
 names(Annual_PctMort_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 
-(Annual_PctMort_tab <- rbind(rbind(as.data.frame(Counts_cages) %>% filter(Site == "LXN") %>% pairwise_t_test(PctMort_ave ~ Year, p.adjust.method = "holm")%>% 
+(Annual_PctMort_tab <- rbind(rbind(as.data.frame(Counts_cages) %>% filter(Site == "LXN") %>% pairwise_t_test(DeadRate ~ Year, p.adjust.method = "holm")%>% 
                                      dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "LXN", Comparison = paste(group1, group2, sep = "-")) %>%
                                      dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj), 
-                                   as.data.frame(Counts_cages) %>% filter(Site == "SLC") %>% pairwise_t_test(PctMort_ave ~ Year, p.adjust.method = "holm")%>% 
+                                   as.data.frame(Counts_cages) %>% filter(Site == "SLC") %>% pairwise_t_test(DeadRate ~ Year, p.adjust.method = "holm")%>% 
                                      dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "SLC", Comparison = paste(group1, group2, sep = "-")) %>%
                                      dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)),
-                             rbind(as.data.frame(Counts_cages) %>% filter(Site == "CRE" & Year != "2017" & Year != "2018") %>% pairwise_t_test(PctMort_ave ~ Year, p.adjust.method = "holm")%>% 
+                             rbind(as.data.frame(Counts_cages) %>% filter(Site == "CRE" & Year != "2017" & Year != "2018") %>% pairwise_t_test(DeadRate ~ Year, p.adjust.method = "holm")%>% 
                                      dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "CRE", Comparison = paste(group1, group2, sep = "-")) %>%
                                      dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj), 
-                                   as.data.frame(Counts_cages) %>% filter(Site == "CRW" & Year != "2017") %>% pairwise_t_test(PctMort_ave ~ Year, p.adjust.method = "holm")%>% 
+                                   as.data.frame(Counts_cages) %>% filter(Site == "CRW" & Year != "2017") %>% pairwise_t_test(DeadRate ~ Year, p.adjust.method = "holm")%>% 
                                      dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "CRW", Comparison = paste(group1, group2, sep = "-")) %>%
                                      dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj))))
 #
 #
-(Annual_PctMort_comps <- left_join(Counts_cages %>% group_by(Site, Year) %>% rstatix::get_summary_stats(PctMort_ave , type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+(Annual_PctMort_comps <- left_join(Counts_cages %>% group_by(Site, Year) %>% rstatix::get_summary_stats(DeadRate , type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
                                    rbind(rbind(make_cld(Annual_PctMort_tab %>% filter(Site == "LXN")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "LXN") %>% rename(Year = group, Letters = cld),
                                                make_cld(Annual_PctMort_tab %>% filter(Site == "SLC")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "SLC") %>% rename(Year = group, Letters = cld)),
                                          rbind(make_cld(Annual_PctMort_tab %>% filter(Site == "CRE")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRE") %>% rename(Year = group, Letters = cld),
@@ -778,43 +670,45 @@ names(Annual_PctMort_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 #
 Annual_PctMort_comps %>% 
   ggplot(aes(Year, mean, group = 1))+
-  geom_point()+
-  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25)+
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25, linewidth = 0.75)+
   geom_line()+
+  geom_point(aes(color = Site), size = 4)+
   lemon::facet_rep_grid(Site~.)+
-  geom_text(aes(y = upper+8, label = Letters)) +
+  geom_text(aes(y = upper+0.2, label = Letters), size = 5) +
   geom_hline(yintercept = 0, linetype = "dashed")+
-  scale_y_continuous("Mean percent mortality (survivorship)", expand = c(0,0), limits= c(-5, 125))+
-  basetheme + axistheme
+  scale_y_continuous("Mean mortality (survivorship)", expand = c(0,0), limits= c(-0.1, 1.5))+
+  scale_color_manual(values = SiteColor)+
+  preztheme + axistheme + facettheme + theme(legend.position = "none")
+#
+###Presentation fig: Site_mortality_annual -- 1000
 #
 #
-#
-##Permutation based ANOVA - Year for each site percent dead
+##Permutation based ANOVA - Year for each site dead counts
 set.seed(54321)
-PctDead_LXN <- aovp(DeadPct_ave ~ Year, data = Counts_cages %>% filter(Site == "LXN"), perm = "",  nperm = 10000)
-PctDead_SLC <- aovp(DeadPct_ave ~ Year, data = Counts_cages %>% filter(Site == "SLC"), perm = "",  nperm = 10000)
-PctDead_CRE <- aovp(DeadPct_ave ~ Year, data = Counts_cages %>% filter(Site == "CRE" & Year != "2017" & Year != "2018"), perm = "",  nperm = 10000)
-PctDead_CRW <- aovp(DeadPct_ave ~ Year, data = Counts_cages %>% filter(Site == "CRW" & Year != "2017"), perm = "",  nperm = 10000)
+PctDead_LXN <- aovp(DeadCountRate ~ Year, data = Counts_cages %>% filter(Site == "LXN"), perm = "",  nperm = 10000)
+PctDead_SLC <- aovp(DeadCountRate ~ Year, data = Counts_cages %>% filter(Site == "SLC"), perm = "",  nperm = 10000)
+PctDead_CRE <- aovp(DeadCountRate ~ Year, data = Counts_cages %>% filter(Site == "CRE" & Year != "2017" & Year != "2018"), perm = "",  nperm = 10000)
+PctDead_CRW <- aovp(DeadCountRate ~ Year, data = Counts_cages %>% filter(Site == "CRW" & Year != "2017"), perm = "",  nperm = 10000)
 #
 (Annual_PctDead_tidy <- rbind(rbind(tidy(PctDead_LXN) %>% mutate(Site = "LXN"), tidy(PctDead_SLC) %>% mutate(Site = "SLC")), 
                               rbind(tidy(PctDead_CRE) %>% mutate(Site = "CRE"), tidy(PctDead_CRW) %>% mutate(Site = "CRW"))) %>% dplyr::select(Site, everything()))
 names(Annual_PctMort_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 
-(Annual_PctDead_tab <- rbind(rbind(as.data.frame(Counts_cages) %>% filter(Site == "LXN") %>% pairwise_t_test(DeadPct_ave ~ Year, p.adjust.method = "holm")%>% 
+(Annual_PctDead_tab <- rbind(rbind(as.data.frame(Counts_cages) %>% filter(Site == "LXN") %>% pairwise_t_test(DeadCountRate ~ Year, p.adjust.method = "holm")%>% 
                                      dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "LXN", Comparison = paste(group1, group2, sep = "-")) %>%
                                      dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj), 
-                                   as.data.frame(Counts_cages) %>% filter(Site == "SLC") %>% pairwise_t_test(DeadPct_ave ~ Year, p.adjust.method = "holm")%>% 
+                                   as.data.frame(Counts_cages) %>% filter(Site == "SLC") %>% pairwise_t_test(DeadCountRate ~ Year, p.adjust.method = "holm")%>% 
                                      dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "SLC", Comparison = paste(group1, group2, sep = "-")) %>%
                                      dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)),
-                             rbind(as.data.frame(Counts_cages) %>% filter(Site == "CRE" & Year != "2017" & Year != "2018") %>% pairwise_t_test(DeadPct_ave ~ Year, p.adjust.method = "holm")%>% 
+                             rbind(as.data.frame(Counts_cages) %>% filter(Site == "CRE" & Year != "2017" & Year != "2018") %>% pairwise_t_test(DeadCountRate ~ Year, p.adjust.method = "holm")%>% 
                                      dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "CRE", Comparison = paste(group1, group2, sep = "-")) %>%
                                      dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj), 
-                                   as.data.frame(Counts_cages) %>% filter(Site == "CRW" & Year != "2017") %>% pairwise_t_test(DeadPct_ave ~ Year, p.adjust.method = "holm")%>% 
+                                   as.data.frame(Counts_cages) %>% filter(Site == "CRW" & Year != "2017") %>% pairwise_t_test(DeadCountRate ~ Year, p.adjust.method = "holm")%>% 
                                      dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "CRW", Comparison = paste(group1, group2, sep = "-")) %>%
                                      dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj))))
 #
 #
-(Annual_PctDead_comps <- left_join(Counts_cages %>% group_by(Site, Year) %>% rstatix::get_summary_stats(DeadPct_ave , type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+(Annual_PctDead_comps <- left_join(Counts_cages %>% group_by(Site, Year) %>% rstatix::get_summary_stats(DeadCountRate , type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
                                    rbind(rbind(make_cld(Annual_PctDead_tab %>% filter(Site == "LXN")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "LXN") %>% rename(Year = group, Letters = cld),
                                                make_cld(Annual_PctDead_tab %>% filter(Site == "SLC")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "SLC") %>% rename(Year = group, Letters = cld)),
                                          rbind(make_cld(Annual_PctDead_tab %>% filter(Site == "CRE")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRE") %>% rename(Year = group, Letters = cld),
@@ -823,16 +717,17 @@ names(Annual_PctMort_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 #
 Annual_PctDead_comps %>% 
   ggplot(aes(Year, mean, group = 1))+
-  geom_point()+
-  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25)+
   geom_line()+
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25, linewidth = 0.75)+
+  geom_point(aes(color = Site), size = 4)+
   lemon::facet_rep_grid(Site~.)+
-  geom_text(aes(y = upper+8, label = Letters)) +
+  geom_text(aes(y = upper+0.1, label = Letters), size = 5) +
   geom_hline(yintercept = 0, linetype = "dashed")+
-  scale_y_continuous("Mean percent mortality (dead counts)", expand = c(0,0), limits= c(-10, 40))+
-  basetheme + axistheme
+  scale_y_continuous("Mean mortality (dead counts)", expand = c(0,0), limits= c(-0.1, 0.4))+
+  scale_color_manual(values = SiteColor)+
+  preztheme + axistheme + facettheme + theme(legend.position = "none")
 #
-#
+###Presentation fig: Site_mortality_dead_annual -- 1000
 #
 #
 #
