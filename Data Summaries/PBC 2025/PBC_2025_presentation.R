@@ -128,7 +128,9 @@ rm(hsdbSDTP, dboSDTP)
                       dboRCRT %>% mutate(TripDate = as.Date(substring(SampleEventID, 8, 15), format = "%Y%m%d"), FixedLocationID = substring(ShellID, 19, 22), NumDays = as.numeric(interval(DeployedDate, TripDate), "days")) %>%
                         filter(substring(SampleEventID,1,2) %in% Estuaries & TripDate >= Start_date & TripDate <= End_date)) %>%
     left_join(FixedLocations) %>% 
-    dplyr::select(TripDate, Estuary, SectionName, StationName, StationNumber, ShellID:NumBottom, Comments, FixedLocationID, EstuaryLongName))
+    mutate(DeployedDate = as.Date(DeployedDate, format = "%Y-%m-%d"), Year = format(TripDate, "%Y"), Month = format(TripDate, "%m"),
+           BottomCount = case_when(ShellPosition == 1|ShellPosition == 6|ShellPosition == 7|ShellPosition == 12 ~ NA, TRUE ~ NumBottom),  RcrtRate = BottomCount/(as.numeric(TripDate-DeployedDate)/28)) %>%
+    dplyr::select(TripDate, Estuary, SectionName, StationName, StationNumber, BottomCount, RcrtRate, ShellID:NumBottom, Comments, Year, Month, FixedLocationID, EstuaryLongName))
 rm(hsdbRCRT, dboRCRT, con)
 #
 #
@@ -219,7 +221,7 @@ Stage_counts %>% group_by(Year, Month, ReproStage) %>%
                          axis.text.y = element_text(size = 9, color = "black", family = "sans", margin = unit(c(0, 0.1, 0, 0.2), "cm")))+
   scale_x_discrete("", expand = c(0,0.5), labels = Month_abbs)+
   scale_y_continuous("Average proportion in the ripe phase", expand = c(0,0), limits = c(0,1.0), breaks = c(0, 0.5, 1.0))
-#
+#LW_Repro_Ripe phase @1400
 #
 #Data frames of Month*Years with 33%, 50%, or 66% developing samples
 (Dev_0.33 <- Stage_counts %>% group_by(Year, Month, ReproStage) %>%
@@ -257,3 +259,18 @@ Stage_counts %>% group_by(Year, Month, ReproStage) %>%
                axis.text.y = element_text(size = 9, color = "black", family = "sans", margin = unit(c(0, 0.1, 0, 0.2), "cm")))+
   scale_x_discrete("", expand = c(0,0.5), labels = Month_abbs)+
   scale_y_continuous("Average proportion in the developing phase", expand = c(0,0), limits = c(0,1.0), breaks = c(0, 0.5, 1.0))
+#LW_Repro_Developing phase @1400
+####Recruitment figure####
+#
+#
+head(Recruitment)
+(MeanRcrt <- Recruitment  %>% group_by(TripDate, Estuary, StationName) %>% summarise(MeanRcrt = mean(RcrtRate, na.rm = T)))
+(AnnualMeanRcrt  <- Recruitment %>% group_by(Year) %>% summarise(MeanRcrt = mean(RcrtRate, na.rm = T), SDRcrt = sd(RcrtRate, na.rm = T)))
+
+AnnualMeanRcrt %>%
+  ggplot(aes(Year, MeanRcrt))+
+  geom_col() +
+  geom_errorbar(aes(ymin = MeanRcrt, ymax = MeanRcrt + SDRcrt))+
+  scale_x_discrete(expand = c(0.05, 0))+
+  scale_y_continuous("Mean spat/shell", limits = c(0, 31), expand = c(0,0))+
+  Prez + theme(axis.title.x = element_blank(), axis.text.x = element_text(vjust = 0.8))
