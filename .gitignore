@@ -49,6 +49,6 @@ po/*~
 rsconnect/
 
 #Image outputs 
-.png
-.jpg
-.tif
+*.png
+*.jpg
+*.tif
