@@ -269,8 +269,25 @@ head(Recruitment)
 
 AnnualMeanRcrt %>%
   ggplot(aes(Year, MeanRcrt))+
-  geom_col() +
   geom_errorbar(aes(ymin = MeanRcrt, ymax = MeanRcrt + SDRcrt))+
+  geom_col() +
   scale_x_discrete(expand = c(0.05, 0))+
   scale_y_continuous("Mean spat/shell", limits = c(0, 31), expand = c(0,0))+
-  Prez + theme(axis.title.x = element_blank(), axis.text.x = element_text(vjust = 0.8))
+  Prez + theme(axis.title.x = element_blank(), axis.text.x = element_text(vjust = 0.8, size = 17, angle = 20))
+#PBC_Rcrt_Annual
+Recruitment %>% group_by(Year, SectionName) %>% 
+  summarise(MeanRcrt = mean(RcrtRate, na.rm = T), SDRcrt = sd(RcrtRate, na.rm = T)) %>%
+  ggplot(aes(Year, MeanRcrt, fill = SectionName))+
+  geom_errorbar(aes(ymin = MeanRcrt, ymax = MeanRcrt + SDRcrt), position = position_dodge())+
+  geom_col(position = position_dodge()) +
+  scale_x_discrete(expand = c(0.05, 0))+
+  scale_y_continuous("Mean spat/shell", limits = c(0, 31), expand = c(0,0))+
+  Prez + theme(axis.title.x = element_blank(), axis.text.x = element_text(vjust = 0.8, size = 17, angle = 20))
+#PBT_Rcrt_Annual_Site
+Recruitment %>% group_by(Year, Month) %>% 
+  summarise(MeanRcrt = mean(RcrtRate, na.rm = T), SDRcrt = sd(RcrtRate, na.rm = T)) %>%
+  ggplot(aes(Month, MeanRcrt))+
+  geom_point() + geom_line(aes(Month, MeanRcrt, group = Year), linewidth = 1.25)+
+  lemon::facet_rep_grid(Year~.)+
+  scale_x_discrete(expand = c(0.025, 0))
+#Months don't show much
