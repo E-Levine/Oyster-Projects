@@ -99,7 +99,17 @@ rm(hsdbDermo, dboDermo)
                   dplyr::select(-OldSampleNumber) %>% filter(substring(SampleEventID,1,2) %in% Estuaries & TripDate >= Start_date & TripDate <= End_date),
                 dboRepro %>% mutate(TripDate = as.Date(substring(SampleEventID, 8, 15), format = "%Y%m%d"), FixedLocationID = substring(SampleEventID, 19, 22)) %>% 
                   filter(substring(SampleEventID,1,2) %in% Estuaries & TripDate >= Start_date & TripDate <= End_date)) %>%
-    left_join(FixedLocations) %>%
+    left_join(FixedLocations) %>% mutate_at(c("SectionName", "StationName", "StationNumber", "Sex", "FixedLocationID", "ReproStage"), as.factor) %>%
+    mutate(OldSample = as.integer(str_extract(Comments, "(?<=OldStage=).*?(?=;|$)"))) %>% #Extract the Old Stage number
+  mutate(ReproStage = as.factor(case_when(Parasite == "Buceph" ~ "8", #Set Buceph to Stage = 8
+                                Sex == "M/F" ~ "M/F", #Set M/F to Stage = M/F
+                                BadSlide == "Y" ~ NA, #Remove bad slides
+                                OldSample == 0 | OldSample == 10 ~ "1",
+                                OldSample > 0 &  OldSample < 5 ~ "2",
+                                OldSample > 4 &  OldSample < 7 ~ "3",
+                                OldSample > 6 &  OldSample < 10 ~ "4",
+                                BadSlide == "N" & is.na(OldSample) & is.na(ReproStage) ~ NA,
+                                TRUE ~ ReproStage))) %>%
     dplyr::select(TripDate, Estuary, SectionName, StationName, StationNumber, OysterID:BadSlide, Comments, FixedLocationID, EstuaryLongName) %>% arrange(TripDate))
 rm(hsdbRepro, dboRepro)
 #
@@ -123,8 +133,127 @@ rm(hsdbRCRT, dboRCRT, con)
 #
 #
 #
+####Formatting####
+#
+Month_abbs <- c("01" = "Jan", "02" = "Feb", "03" = "Mar", "04" = "Apr", "05" = "May", "06" = "Jun",
+                "07" = "Jul", "08" = "Aug", "09" = "Sep", "10" = "Oct", "11" = "Nov", "12" = "Dec")
+#
+#Map color to Stage
+Stages <- c("1" = "Developing", "2" = "Ripe/Spawning", "3" = "Spent/Recycling", "4" = "Indifferent", "8" = "Buceph", "M/F" = "M/F", "Z" = "Z")
+cbPalette <- c("#D55E00", "#E69F00", "#009E73", "#56B4E9", "#9966FF", "#333333", "#666666")
+names(cbPalette) <- levels(Repro$ReproStage)
+StaFill <- scale_fill_manual(name = "Stage", labels = Stages, values = cbPalette, na.value = "#999999")
+StaColor <- scale_color_manual(name = "Stage", labels = Stages, values = cbPalette, na.value = "#999999")
+#
+Base <- theme_bw() +
+  theme(panel.grid = element_blank(), panel.border = element_blank(), panel.background = element_blank(),
+        axis.line = element_line(color = "black"),
+        axis.title = element_text(size = 15, color = "black", family = "sans"),
+        axis.text.x = element_text(size = 14, color = "black", 
+                                   margin = unit(c(0.4, 0.5, 0, 0.5), "cm"), family = "sans"),
+        axis.text.y = element_text(size = 14, color = "black", 
+                                   margin = unit(c(0, 0.4, 0, 0), "cm"), family = "sans"),
+        axis.ticks.length = unit(-0.15, "cm"), plot.margin = margin(0.25, 0.5, 0.25, 0.25, "cm"))
+#
+Prez <- theme_bw() +
+  theme(panel.grid = element_blank(), panel.border = element_blank(), panel.background = element_blank(),
+        axis.line = element_line(color = "black"),
+        axis.title = element_text(size = 24, color = "black", family = "sans"),
+        axis.text.x = element_text(size = 23, color = "black", 
+                                   margin = unit(c(0.4, 0.5, 0, 0.5), "cm"), family = "sans"),
+        axis.text.y = element_text(size = 23, color = "black", 
+                                   margin = unit(c(0, 0.4, 0, 0), "cm"), family = "sans"),
+        axis.ticks.length = unit(-0.15, "cm"), plot.margin = margin(0.25, 0.5, 0.25, 0.25, "cm"))
+#
+theme_f <- theme(strip.text.y = element_text(color = "black", size = 15, family = "sans", face = "bold"),
+                 strip.background = element_rect(fill = "#999999"),
+                 panel.spacing = unit(0.75, "lines"),
+                 strip.text.x = element_text(size = 13, face = "bold", family = "sans"))
+#
+#
+#
 ####Repro figure####
 #
 #
+head(Repro)
+Repro_c <- Repro %>% filter(!is.na(ReproStage) & ReproStage != "M/F" & ReproStage != "8") %>% droplevels() %>% #limit to only determined repro stages
+  mutate(Year = as.factor(format(TripDate, "%Y")), Month = as.factor(format(TripDate, "%m"))) #Add year and month columns
+#
+(Stage_counts <- left_join(Repro_c %>% group_by(Year, Month, ReproStage) %>% summarise(Count = n()), #Determine counts per stage, total number
+                          Repro_c %>% group_by(Year, Month) %>% summarise(Total = n())) %>%
+    mutate(Prop = Count/Total) %>% ungroup() %>% complete(ReproStage, nesting(Year, Month), fill = list(Count = 0, Total = 0, Prop = 0))) #Determine proportion per stage, complete any missing data with 0s
+#
+#Data frames of Month*Years with 33%, 50%, or 66% ripe samples
+(Ripe_0.33 <- Stage_counts %>% group_by(Year, Month, ReproStage) %>%
+    summarise(meanProp3 = round(mean(Prop), 3)) %>% subset(ReproStage == 2) %>% ungroup() %>%
+    arrange(Year) %>% group_by(Year) %>%#Arrange and group by Year
+    filter(meanProp3 > 0.333 & meanProp3 < 0.5)) 
+#
+(Ripe_0.5 <- Stage_counts %>% group_by(Year, Month, ReproStage) %>%
+    summarise(meanProp5 = round(mean(Prop), 3)) %>% subset(ReproStage == 2) %>% ungroup() %>%
+    arrange(Year) %>% group_by(Year) %>% print(n = Inf) %>%#Arrange and group by Year
+    filter(meanProp5 > 0.5 & meanProp5 < 0.66))
+#
+(Ripe_0.66 <- Stage_counts %>% group_by(Year, Month, ReproStage) %>%
+    summarise(meanProp3 = round(mean(Prop), 3)) %>% subset(ReproStage == 2) %>% ungroup() %>%
+    arrange(Year) %>% group_by(Year) %>%#Arrange and group by Year
+    filter(meanProp3 > 0.66))
+#
+Stage_counts %>% group_by(Year, Month, ReproStage) %>%
+  summarise(meanProp = round(mean(Prop), 3)) %>% subset(ReproStage == 2) %>%
+  ggplot()+
+  geom_rect(data = Ripe_0.33, aes(xmin = as.numeric(Month)-0.5, xmax = as.numeric(Month)+0.5, ymin = -Inf, ymax = Inf), 
+            fill = "darkblue", alpha = 0.5)+
+  geom_rect(data = Ripe_0.5, aes(xmin = as.numeric(Month)-0.5, xmax = as.numeric(Month)+0.5, ymin = -Inf, ymax = Inf), 
+            fill = "orange", alpha = 0.5)+
+  geom_rect(data = Ripe_0.66, aes(xmin = as.numeric(Month)-0.5, xmax = as.numeric(Month)+0.5, ymin = -Inf, ymax = Inf), 
+            fill = "red", alpha = 0.5)+
+  geom_rect(data = data.frame(Year = as.factor(seq(2005, 2024, by = 1)), Month = as.factor("01")), aes(xmin = 0.5, xmax = 1, ymin = -Inf, ymax = Inf), fill = "white")+
+  geom_rect(data = data.frame(Year = as.factor(seq(2005, 2024, by = 1)), Month = as.factor("12")), aes(xmin = 12, xmax = 12.5, ymin = -Inf, ymax = Inf), fill = "white")+
+  geom_text(aes(label = Year), x = 0.75, y = 0.55, size = 6)+
+  geom_line(aes(Month, meanProp, group = ReproStage), linewidth = 1.25)+
+  lemon::facet_rep_grid(Year~.)+
+  Prez + theme(panel.spacing.y = unit(0.05, "lines"), strip.text = element_blank(),
+                         axis.title = element_text(size = 20, color = "black", family = "sans"),
+                         axis.text.x = element_text(size = 18, color = "black", family = "sans", margin = unit(c(0, 0, -0.2, 0), "cm"), vjust = 0),
+                         axis.text.y = element_text(size = 9, color = "black", family = "sans", margin = unit(c(0, 0.1, 0, 0.2), "cm")))+
+  scale_x_discrete("", expand = c(0,0.5), labels = Month_abbs)+
+  scale_y_continuous("Average proportion in the ripe phase", expand = c(0,0), limits = c(0,1.0), breaks = c(0, 0.5, 1.0))
 #
 #
+#Data frames of Month*Years with 33%, 50%, or 66% developing samples
+(Dev_0.33 <- Stage_counts %>% group_by(Year, Month, ReproStage) %>%
+    summarise(meanProp3 = round(mean(Prop), 3)) %>% subset(ReproStage == 1) %>% ungroup() %>%
+    arrange(Year) %>% group_by(Year) %>%#Arrange and group by Year
+    filter(meanProp3 > 0.333 & meanProp3 < 0.5)) 
+#
+(Dev_0.5 <- Stage_counts %>% group_by(Year, Month, ReproStage) %>%
+    summarise(meanProp5 = round(mean(Prop), 3)) %>% subset(ReproStage == 1) %>% ungroup() %>%
+    arrange(Year) %>% group_by(Year) %>% print(n = Inf) %>%#Arrange and group by Year
+    filter(meanProp5 > 0.5 & meanProp5 < 0.66))
+#
+(Dev_0.66 <- Stage_counts %>% group_by(Year, Month, ReproStage) %>%
+    summarise(meanProp3 = round(mean(Prop), 3)) %>% subset(ReproStage == 1) %>% ungroup() %>%
+    arrange(Year) %>% group_by(Year) %>%#Arrange and group by Year
+    filter(meanProp3 > 0.66))
+#
+Stage_counts %>% group_by(Year, Month, ReproStage) %>%
+  summarise(meanProp = round(mean(Prop), 3)) %>% subset(ReproStage == 1) %>%
+  ggplot()+
+  geom_rect(data = Dev_0.33, aes(xmin = as.numeric(Month)-0.5, xmax = as.numeric(Month)+0.5, ymin = -Inf, ymax = Inf), 
+            fill = "darkblue", alpha = 0.5)+
+  geom_rect(data = Dev_0.5, aes(xmin = as.numeric(Month)-0.5, xmax = as.numeric(Month)+0.5, ymin = -Inf, ymax = Inf), 
+            fill = "orange", alpha = 0.5)+
+  geom_rect(data = Dev_0.66, aes(xmin = as.numeric(Month)-0.5, xmax = as.numeric(Month)+0.5, ymin = -Inf, ymax = Inf), 
+            fill = "red", alpha = 0.5)+
+  geom_rect(data = data.frame(Year = as.factor(seq(2005, 2024, by = 1)), Month = as.factor("01")), aes(xmin = 0.5, xmax = 1, ymin = -Inf, ymax = Inf), fill = "white")+
+  geom_rect(data = data.frame(Year = as.factor(seq(2005, 2024, by = 1)), Month = as.factor("12")), aes(xmin = 12, xmax = 12.5, ymin = -Inf, ymax = Inf), fill = "white")+
+  geom_text(aes(label = Year), x = 0.75, y = 0.55, size = 6)+
+  geom_line(aes(Month, meanProp, group = ReproStage), linewidth = 1.25)+
+  lemon::facet_rep_grid(Year~.)+
+  Prez + theme(panel.spacing.y = unit(0.05, "lines"), strip.text = element_blank(),
+               axis.title = element_text(size = 20, color = "black", family = "sans"),
+               axis.text.x = element_text(size = 18, color = "black", family = "sans", margin = unit(c(0, 0, -0.2, 0), "cm"), vjust = 0),
+               axis.text.y = element_text(size = 9, color = "black", family = "sans", margin = unit(c(0, 0.1, 0, 0.2), "cm")))+
+  scale_x_discrete("", expand = c(0,0.5), labels = Month_abbs)+
+  scale_y_continuous("Average proportion in the developing phase", expand = c(0,0), limits = c(0,1.0), breaks = c(0, 0.5, 1.0))
