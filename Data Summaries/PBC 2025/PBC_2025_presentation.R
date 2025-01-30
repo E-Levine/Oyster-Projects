@@ -13,7 +13,7 @@ pacman::p_load(odbc, DBI, dbplyr,
                install = TRUE)
 #
 Author <- c("E Levine") #Change to your name
-Database <- "Oysters_25-01-27"  #Set the local database to use
+Database <- "Oysters_25-01-30"  #Set the local database to use
 Server = "localhost\\ERICALOCALSQL" #Set the local Server to use
 #
 ##Sites of interest
@@ -121,8 +121,22 @@ rm(hsdbRepro, dboRepro)
                      filter(substring(SampleEventID,1,2) %in% Estuaries & TripDate >= Start_date & TripDate <= End_date),
                    hsdbSDTP %>% mutate(TripDate = as.Date(substring(SampleEventID, 8, 15), format = "%Y%m%d"), FixedLocationID = substring(SampleEventID, 19, 22), NumDays = as.numeric(interval(DeployedDate, TripDate), "days")) %>%
                      filter(substring(SampleEventID,1,2) %in% Estuaries & TripDate >= Start_date & TripDate <= End_date)) %>%
+    mutate(Year = format(TripDate, "%Y"), Month = format(TripDate, "%m")) %>%
     left_join(FixedLocations) %>%
-    dplyr::select(TripDate, Estuary, SectionName, StationName, StationNumber, CupSampleID:NumOtherBiota, TareCrucible:CrucibleDW, Comments, FixedLocationID, EstuaryLongName) %>% arrange(TripDate))
+    dplyr::select(TripDate, Estuary, SectionName, StationName, StationNumber, CupSampleID:NumOtherBiota, TareCrucible:CrucibleDW, Year, Month, Comments, FixedLocationID, EstuaryLongName) %>% arrange(TripDate))
+#Create date columns 
+(Sediment_data <- Sediment %>% 
+  mutate(DeployedDate = as.Date(DeployedDate, format = "%Y-%m-%d"),
+         Position = case_when(FixedLocationID %in% c("0312", "0235", "0236") ~ "North",
+                              !FixedLocationID %in% c("0312", "0235", "0236") ~ "South",
+                              TRUE ~ NA),
+         TotalDW = (PanDryWeight - PanTareWeight) + (FilterDryWeight - FilterTareWeight),
+         Proportion = round((CrucibleDW-TareCrucible)/((PanDryWeight - PanTareWeight) + (FilterDryWeight - FilterTareWeight)),3),
+         TotalAsh = case_when(is.na(Proportion) ~(AshWeight - TareCrucible)*(1/PortionofSample), TRUE ~ (AshWeight - TareCrucible)*(1/Proportion)),
+         PctOrganic = ((TotalDW-round(TotalAsh,3))/TotalDW)*100,
+         OrganicWt = TotalDW*(PctOrganic/100),
+         TotalBycatch = rowSums(dplyr::select(., c("NumDrills", "NumCrabs", "NumHermitCrabs", "NumFish", "NumOtherBiota")))) %>%
+  dplyr::select(TripDate, StationName, CupSampleID:DeployedDate, NumDrills:NumOtherBiota, TotalBycatch, TotalDW, TotalAsh, PctOrganic, OrganicWt, Comments, Year, Month, FixedLocationID, EstuaryLongName, Position))
 rm(hsdbSDTP, dboSDTP)
 #
 #
@@ -176,6 +190,14 @@ theme_f <- theme(strip.text.y = element_text(color = "black", size = 15, family 
                  panel.spacing = unit(0.75, "lines"),
                  strip.text.x = element_text(size = 13, face = "bold", family = "sans"))
 #
+#Color and shape to station number
+Stat_pal <- c(rgb(0, 0, 228, maxColorValue = 255), rgb(245, 0, 0, maxColorValue = 255), rgb(0, 118, 0, maxColorValue = 255), 
+              rgb(0, 0, 228, maxColorValue = 255), rgb(245, 0, 0, maxColorValue = 255), rgb(0, 118, 0, maxColorValue = 255), rgb(102, 0, 102, maxColorValue = 255))
+names(Stat_pal) <- levels(DermoInt$StationName)
+StationNames <- c("LWL1" = "LWL1", "LWL2" = "LWL2", "LWL3" = "LWL3", "LWLR1" = "LWR1", "LWR2" = "LWR2", "LWR3" = "LWR3", "LWR44" = "LWR4") 
+Station_fill <- scale_fill_manual("", labels = StationNames, values =Stat_pal, na.value = "#999999")
+Station_color <- scale_color_manual("", labels = StationNames, values = Stat_pal, na.value = "#999999")
+Station_shape <- scale_shape_manual("",labels = StationNames, values = setNames(c(21, 25, 22, 23), 1:4))
 #
 #
 ####Repro figure####
@@ -301,29 +323,139 @@ Recruitment %>% group_by(Year, Month) %>%
 #
 ####Dermo figures####
 #
-(MeanDermo <- Dermo %>% group_by(TripDate, Year, Month, SectionName, StationName) %>% #Calculate Mean, SD, and Pct dermo
-  summarise(MeanInt = mean(MeanDermo, na.rm = T), SDInt = sd(MeanDermo, na.rm = T), Pct = (sum(DermoSum, na.rm = T)/n())*100) %>%
-  mutate(Pct = case_when(is.na(MeanInt) ~ NA, TRUE ~ Pct)))
-DermoInt <- Dermo %>% group_by(Year, StationName) %>% summarise(MeanInt = mean(MeanDermo, na.rm = T), SDInt = sd(MeanDermo, na.rm = T)) 
-DermoPct <- MeanDermo %>% group_by(Year, StationName) %>% summarise(MeanPct = mean(Pct, na.rm = T)) 
-
- DermoInt %>%
+(MeanDermo <- Dermo %>% group_by(Year) %>% 
+   summarise(MeanInt = mean(MeanDermo, na.rm = T), SDInt = sd(MeanDermo, na.rm = T), Pct = (sum(DermoSum, na.rm = T)/n())*100) %>%
+  mutate(Pct = case_when(is.na(MeanInt) ~ NA, TRUE ~ Pct), StationName = factor(as.factor(StationName), levels = c("LWL1", "LWL2", "LWL3", "LWR1", "LWR2", "LWR3", "LWR4"))))
+DermoInt <- Dermo %>% group_by(Year, StationName) %>% summarise(MeanInt = mean(MeanDermo, na.rm = T), SDInt = sd(MeanDermo, na.rm = T)) %>% mutate(StationName = factor(as.factor(StationName), levels = c("LWL1", "LWL2", "LWL3", "LWR1", "LWR2", "LWR3", "LWR4")))
+DermoPct <- Dermo %>% group_by(Year, StationName) %>% summarise(Pct = (sum(DermoSum, na.rm = T)/n())*100) %>% mutate(StationName = factor(as.factor(StationName), levels = c("LWL1", "LWL2", "LWL3", "LWR1", "LWR2", "LWR3", "LWR4")))
+#
+MeanDermo %>% 
   ggplot(aes(Year, MeanInt))+
   geom_errorbar(aes(ymin = MeanInt, ymax = MeanInt + SDInt), width = 0.3)+
-  geom_col(aes(fill = StationName))+
+  geom_col(fill = "#333333")+
+  scale_x_discrete(expand = c(0.05,0))+
+  scale_y_continuous("Mean Dermo Infection Intensity", expand = c(0,0), limits = c(0, 2.25), breaks = seq(0, 2.25, by = 0.75))+
+  Prez + theme_f + theme(legend.position = "none",axis.text.x = element_text(size = 16)) 
+#PBC_Dermo_Intensity @ 1400
+DermoInt %>%
+  ggplot(aes(Year, MeanInt))+
+  geom_errorbar(aes(ymin = MeanInt, ymax = MeanInt + SDInt), width = 0.3)+
+  geom_col(fill = "#333333")+
   lemon::facet_rep_grid(StationName ~.)+
-  scale_x_discrete(expand = c(0.05,0))
-  scale_y_continuous("Mean Dermo Infection Intensity", expand = c(0,0), limits = c(0, 1.2), breaks = seq(0, 1.2, by = 0.4))+
-  Prez + theme_f + theme(legend.position = "none")
-
-DermoPct %>%
-  ggplot(aes(Year, MeanPct))+
-  geom_col(aes(fill = StationName))+
+  scale_x_discrete(expand = c(0.05,0))+
+  scale_y_continuous("Mean Dermo Infection Intensity", expand = c(0,0), limits = c(0, 2.6), breaks = seq(0, 2.6, by = 0.65))+
+  Prez + theme_f + theme(legend.position = "none", axis.text.y = element_text(size = 13), axis.text.x = element_text(size = 15)) #+ Station_fill
+#PBC_Dermo_Intensity_Stations (_gray) @ 1400
+#
+#
+MeanDermo %>%
+  ggplot(aes(Year, Pct))+
+  geom_col(fill = "#333333")+
   scale_x_discrete(expand = c(0.05,0))+
   scale_y_continuous("Mean Dermo Infection Prevalence", expand = c(0,0), limits = c(0, 100))+
-  Prez
+  Prez + theme(legend.position = "none", axis.text.x = element_text(size = 16))
+#PBC_Dermo_Prev
+DermoPct %>%
+  ggplot(aes(Year, Pct))+
+  geom_col(fill = "#333333")+
+  lemon::facet_rep_grid(StationName ~.)+
+  scale_x_discrete(expand = c(0.05,0))+
+  scale_y_continuous("Mean Dermo Infection Prevalence", expand = c(0,0), limits = c(0, 100))+
+  Prez + theme_f + theme(legend.position = "none", axis.text.y = element_text(size = 13), axis.text.x = element_text(size = 15)) #+ Station_fill
+#PBC_Dermo_Prev_Stations (_gray)
 #
 #
+#
+####Sediment figures####
+#
+(Sediment_means <- Sediment_data %>% group_by(TripDate, Year, Month, Position, StationName) %>%
+  summarise(MeanDrills = mean(NumDrills, na.rm = T),
+            MeanCrabs = sum(NumCrabs, na.rm = T),
+            MeanHermit = sum(NumHermitCrabs, na.rm = T),
+            MeanFish = sum(NumFish, na.rm = T),
+            MeanBycatch = sum(TotalBycatch, na.rm = T),
+            RateMean = mean(TotalDW/(as.integer(TripDate-DeployedDate)/28), na.rm = T),
+            RateSD = sd(TotalDW/(as.integer(TripDate-DeployedDate)/28), na.rm = T),
+            PctOrganicMean = mean(PctOrganic, na.rm = T),
+            PctOrganicSD = sd(PctOrganic, na.rm = T),
+            OrgWtMean = mean(OrganicWt/(as.integer(TripDate-DeployedDate)/28), na.rm = T),
+            OrgWtSD = sd(OrganicWt/(as.integer(TripDate-DeployedDate)/28), na.rm = T)) )
+#
+Sediment_position <- Sediment_means %>% group_by(TripDate, Position) %>% summarise_if(is.numeric, mean, na.rm = T)
+#
+Sediment_means %>%
+  ggplot(aes(TripDate, MeanBycatch))+ 
+  geom_col(fill = "#333333")+  
+  lemon::facet_rep_grid(StationName~.)
+Sediment_position %>%
+  ggplot(aes(TripDate, MeanBycatch))+
+  geom_col(fill = "#333333")+
+  lemon::facet_rep_grid(Position~.)+ 
+  scale_x_date(expand = c(0.025,0), limits = c(as.Date("2023-10-28"), as.Date("2024-12-14")), date_labels = "%b %Y", breaks = "2 months")+
+  scale_y_continuous("Average amount of bycatch", expand = c(0,0), limits = c(0, 100))+
+  Prez + theme_f + theme(panel.spacing = unit(1.25, "lines"))
+#PBC_Sediment_NorthSouth_Bycatch
+Sediment_position %>% 
+  mutate(Drills = MeanDrills/MeanBycatch, Crabs = MeanCrabs/MeanBycatch, Hermit_Crabs = MeanHermit/MeanBycatch, Fish = MeanFish/MeanBycatch) %>%
+  dplyr::select(TripDate, Position, Drills:Fish) %>%
+  gather(Type, Prop, -TripDate, -Position) %>%
+  ggplot(aes(TripDate, Prop, fill = Type))+
+  geom_col(position = "fill")+
+  lemon::facet_rep_grid(Position~.)+
+  scale_x_date(expand = c(0.025,0), limits = c(as.Date("2023-10-28"), as.Date("2024-12-14")), date_labels = "%b %Y", breaks = "2 months")+
+  scale_y_continuous(expand = c(0,0))+ 
+  scale_fill_manual(values = c(rgb(0, 0, 228, maxColorValue = 255), rgb(245, 0, 0, maxColorValue = 255), rgb(0, 118, 0, maxColorValue = 255), rgb(102, 0, 102, maxColorValue = 255)))+
+  Prez + theme_f + theme(panel.spacing = unit(1.25, "lines"))
+#PBC_Sediment_Bycatch_Proportions
+#
+Sediment_means %>% mutate(StationName = factor(StationName, levels = c("LWR4", "LWL1", "LWL2", "LWL3", "LWR2", "LWR3"))) %>%
+  ggplot(aes(TripDate, RateMean))+ 
+  geom_col(aes(fill = Position))+  
+  lemon::facet_rep_grid(StationName~., scales = "free_y") +
+  scale_x_date(expand = c(0.025,0), limits = c(as.Date("2023-10-28"), as.Date("2024-12-14")), date_labels = "%b %Y", breaks = "2 months")+
+  scale_y_continuous(expand = c(0,0))+
+  scale_fill_manual("", values = c(rgb(0, 0, 228, maxColorValue = 255), rgb(245, 0, 0, maxColorValue = 255)))+ 
+  Prez + theme_f + theme(panel.spacing = unit(1.25, "lines"))
+#PBC_Sediment_NorthSouth_Bycatch_Stations
+#
+Sediment_position %>%
+  ggplot(aes(TripDate, RateMean))+
+  geom_errorbar(aes(ymin = RateMean, ymax = RateMean+RateSD))+
+  geom_col(fill = "#333333")+
+  lemon::facet_rep_grid(Position~.)+
+  scale_x_date(expand = c(0.025,0), limits = c(as.Date("2023-10-28"), as.Date("2024-12-14")), date_labels = "%b %Y", breaks = "2 months")+
+  scale_y_continuous("Sedimentation Rate (g/month)", expand = c(0,0), limits = c(0, 400))+
+  Prez + theme_f + theme(panel.spacing = unit(1.25, "lines"))
+#PBC_Sediment_NorthSouth_Sedimentation
+Sediment_position %>%
+  ggplot(aes(TripDate, RateMean))+
+  geom_errorbar(aes(ymin = RateMean, ymax = RateMean+RateSD))+
+  geom_col(fill = "#333333")+
+  lemon::facet_rep_grid(Position~.)+
+  scale_x_date(expand = c(0.025,0), limits = c(as.Date("2023-10-28"), as.Date("2024-12-14")), date_labels = "%b %Y", breaks = "2 months")+
+  scale_y_continuous("Sedimentation Rate (g/month)", expand = c(0,0), limits = c(0, 150))+
+  Prez + theme_f + theme(panel.spacing = unit(1.25, "lines"))
+#PBC_Sediment_NorthSouth_Sedimentation_noOutier
+#
+Sediment_position %>%
+  ggplot(aes(TripDate, PctOrganicMean))+
+  geom_errorbar(aes(ymin = PctOrganicMean, ymax = PctOrganicMean+PctOrganicSD))+
+  geom_col(fill = "#333333")+
+  lemon::facet_rep_grid(Position~.)+
+  scale_x_date(expand = c(0.025,0), limits = c(as.Date("2023-10-28"), as.Date("2024-12-14")), date_labels = "%b %Y", breaks = "2 months")+
+  scale_y_continuous("Organic Content (%)", expand = c(0,0), limits = c(0, 30))+
+  Prez + theme_f + theme(panel.spacing = unit(1.25, "lines"))
+#PBC_Sediment_NorthSouth_PctOrganic
+#
+Sediment_position %>%
+  ggplot(aes(TripDate, OrgWtMean))+
+  geom_errorbar(aes(ymin = OrgWtMean, ymax = OrgWtMean+OrgWtSD))+
+  geom_col(fill = "#333333")+
+  lemon::facet_rep_grid(Position~.)+
+  scale_x_date(expand = c(0.025,0), limits = c(as.Date("2023-10-28"), as.Date("2024-12-14")), date_labels = "%b %Y", breaks = "2 months")+
+  scale_y_continuous("Organic Weight (g/month)", expand = c(0,0), limits = c(0, 15))+
+  Prez + theme_f + theme(panel.spacing = unit(1.25, "lines"))
+#PBC_Sediment_NorthSouth_OrgWeight
 #
 #
 ####All Sites Repro figure####
