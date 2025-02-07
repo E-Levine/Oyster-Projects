@@ -46,6 +46,56 @@ glimpse(Cage_WQ_raw)
            FixedLocationID = substring(SampleEventID, 19, 22)) %>%
     left_join(Locations) %>% filter(FixedLocationID %in% Locations$FixedLocationID))
 #
+#CRE
+CR_WQ_raw <- read_excel("CR_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
+                     skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+                     na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                     .name_repair = "unique")
+glimpse(CR_WQ_raw)
+(CR_WQ <- CR_WQ_raw %>% dplyr::select(MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, ActivityStartDate, CharacteristicName, ResultMeasureValue, Result_Unit) %>%
+  mutate(MonYr = as.yearmon(as.Date(ActivityStartDate, format = "%Y-%m-%d"))) %>%
+  group_by(MonYr, MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, CharacteristicName, Result_Unit) %>%
+  summarise(MeanValue = mean(ResultMeasureValue, na.rm = T)) %>%
+  mutate(FixedLocationID = case_when(grepl(paste(c("WQX-CES10SUR", "WQX-CES07"), collapse = "|"), MonitoringLocationIdentifier) ~ "0231",
+                          grepl(paste(c("WQX-62-SEAS500", "WQX-PI-02", "WQX-PI-01", "WQX-GSD0108", "4607", "CES08", "NSF04", "CLEW10"), collapse = "|"), MonitoringLocationIdentifier) ~ "0232", 
+                          TRUE ~ NA)) %>%
+  left_join(Locations) %>%
+    subset(MonYr > as.yearmon("12-31-2014", format = "%m-%d-%Y")))
+CRE_WQ <- CR_WQ %>% subset(FixedLocationID == "0231")
+CRW_WQ <- CR_WQ %>% subset(FixedLocationID == "0232")
+#
+#LXN
+LXN_WQ_raw <- read_excel("LX_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
+                        skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+                        na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                        .name_repair = "unique")
+glimpse(LXN_WQ_raw)
+(LXN_WQ <- LXN_WQ_raw %>% dplyr::select(MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, ActivityStartDate, CharacteristicName, ResultMeasureValue, Result_Unit) %>%
+    mutate(MonYr = as.yearmon(as.Date(ActivityStartDate, format = "%Y-%m-%d"))) %>%
+    group_by(MonYr, MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, CharacteristicName, Result_Unit) %>%
+    summarise(MeanValue = mean(ResultMeasureValue, na.rm = T)) %>%
+    mutate(FixedLocationID = "0243") %>%
+    left_join(Locations) %>%
+    subset(MonYr > as.yearmon("12-31-2014", format = "%m-%d-%Y")))
+#
+#SLC
+SLC_WQ_raw <- read_excel("SL_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
+                         skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+                         na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                         .name_repair = "unique")
+glimpse(SLC_WQ_raw)
+(SLC_WQ <- SLC_WQ_raw %>% dplyr::select(MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, ActivityStartDate, CharacteristicName, ResultMeasureValue, Result_Unit) %>%
+    mutate(MonYr = as.yearmon(as.Date(ActivityStartDate, format = "%Y-%m-%d"))) %>%
+    group_by(MonYr, MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, CharacteristicName, Result_Unit) %>%
+    summarise(MeanValue = mean(ResultMeasureValue, na.rm = T)) %>%
+    mutate(FixedLocationID = "0255") %>%
+    left_join(Locations) %>%
+    subset(MonYr > as.yearmon("12-31-2014", format = "%m-%d-%Y")))
+#
+#
+#
+#
+#
 ###Cage Counts
 Cage_counts_raw <- read_excel("Growth_database_2025_02.xlsx", sheet = "CageCount", #File name and sheet name
                               skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
@@ -88,6 +138,8 @@ head(Cage_SH_raw)
            CageCountID = substr(CageCountID, 1, 22)) %>%
     left_join(Locations) %>% left_join(Cage_counts %>% dplyr::select(CageCountID, DaysDeployed) %>% unique()) %>% unique())
 #
+#
+#
 #END OF SECTION
 #
 #
@@ -123,11 +175,25 @@ names(SiteColor) <- levels(Locations$Site)
 #
 #
 #
-####Data checks####
+####Data checks, WQ combination####
 #
 t <- Cage_counts %>% group_by(Site, MonYr) %>% tally() %>% spread(Site, n)
 t <- Cage_counts %>% group_by(Site, MonYr) %>% summarise(meanRet = round(mean(LiveCount, na.rm = T),1)) %>% spread(Site, meanRet)
 rm(t)
+#
+unique(CRE_WQ$CharacteristicName)
+Cage_WQ %>% filter(Site == "CRE") %>% dplyr::select(-SampleEventID_Coll, -SectionName) %>%
+  dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, SampleEventWQID, SampleEventID, everything())
+CRE_WQ %>% ungroup() %>% dplyr::select(-SectionName, -LatitudeMeasure, -LongitudeMeasure, -Result_Unit) %>%
+  dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, MonitoringLocationIdentifier, everything()) %>%
+  mutate(CharacteristicName = case_when(CharacteristicName == "Depth, Secchi disk depth" ~ "Secchi",
+                                        CharacteristicName == "Temperature, water" ~ "Temperature",
+                                        CharacteristicName == "Dissolved oxygen (DO)" ~ "DissolvedOxygen",
+                                        CharacteristicName == "Dissolved oxygen saturation" ~ "PercentDissolvedOxygen",
+                                        CharacteristicName == "Total suspended solids" ~ "TSS",
+                                        TRUE ~ CharacteristicName)) %>%
+  filter(CharacteristicName != "Chlorophyll a, corrected for pheophytin" & CharacteristicName != "Specific conductance") %>% 
+  spread(CharacteristicName, MeanValue)
 #
 #
 #
