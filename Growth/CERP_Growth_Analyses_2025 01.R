@@ -23,7 +23,7 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
 #Reading in Excel files, adding station information to dfs.
 #
 ##Station information
-Locations_raw <- read_excel("Growth_database_2024_10_29.xlsx", sheet = "FixedLocations", #File name and sheet name
+Locations_raw <- read_excel("Growth_database_2025_02.xlsx", sheet = "FixedLocations", #File name and sheet name
                             skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                             na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                             .name_repair = "unique")
@@ -31,25 +31,27 @@ head(Locations_raw)
 (Locations <- Locations_raw %>% mutate(Site = as.factor(paste0(Estuary, SectionName))))
 #
 ###Water quality
-Cage_WQ_raw <- read_excel("Growth_database_2024_10_29.xlsx", sheet = "SampleEventWQ", #File name and sheet name
+Cage_WQ_raw <- read_excel("Growth_database_2025_02.xlsx", sheet = "SampleEventWQ", #File name and sheet name
                           skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                           na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                           .name_repair = "unique")
 #Check data and column names
-head(Cage_WQ_raw)
+glimpse(Cage_WQ_raw)
 #Remove unneeded columns and add in station info
 (Cage_WQ <- Cage_WQ_raw %>% 
     dplyr::select(SampleEventWQID:DissolvedOxygen, PercentDissolvedOxygen, pH:TurbidityYSI, CollectionTime, Comments) %>%
-    mutate(MonYr = as.yearmon(as.Date(substring(SampleEventID, 8, 15), format = "%Y%m%d")),
+    rename("SampleEventID_Coll" = SampleEventID) %>%
+    mutate(SampleEventID = str_replace_all(SampleEventID_Coll, "COLL", "CAGE"),
+           MonYr = as.yearmon(as.Date(substring(SampleEventID, 8, 15), format = "%Y%m%d")),
            FixedLocationID = substring(SampleEventID, 19, 22)) %>%
-    left_join(Locations))
+    left_join(Locations) %>% filter(FixedLocationID %in% Locations$FixedLocationID))
 #
 ###Cage Counts
-Cage_counts_raw <- read_excel("Growth_database_2024_10_29.xlsx", sheet = "CageCount_Dead", #File name and sheet name
+Cage_counts_raw <- read_excel("Growth_database_2025_02.xlsx", sheet = "CageCount", #File name and sheet name
                               skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                               na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                               .name_repair = "unique")
-head(Cage_counts_raw)
+glimpse(Cage_counts_raw)
 (Cage_counts <- Cage_counts_raw %>% dplyr::select(CageCountID, CageColor, DataType, TotalCount, DaysDeployed) %>%
     #Get deployed and retrieved counts
     mutate(CageCountID = substr(CageCountID, 1, 22),
@@ -58,7 +60,7 @@ head(Cage_counts_raw)
     spread(DataType, TotalCount) %>% rename(DepCount = Deployed, LiveCount = Retrieved) %>%
     #Determine dead counts per cage
     left_join(Cage_counts_raw %>% dplyr::select(CageCountID, CageColor, DataType, Dead) %>%
-                mutate(CageCountID = substr(CageCountID, 1, 22)) %>% 
+                mutate(CageCountID = substr(CageCountID, 1, 22), Dead = as.numeric(Dead)) %>% 
                 spread(DataType, Dead) %>% rename("DeadCount" = Retrieved) %>%
                 dplyr::select(-Deployed)) %>%
     mutate(RetTotal = LiveCount + DeadCount,
@@ -67,7 +69,7 @@ head(Cage_counts_raw)
            DeadCountRate = (DeadCount/DepCount)) %>% left_join(Locations))
 #
 ###Cage SHS
-Cage_SH_raw <- read_excel("Growth_database_2024_10_29.xlsx", sheet = "CageSH", #File name and sheet name
+Cage_SH_raw <- read_excel("Growth_database_2025_02.xlsx", sheet = "CageSH", #File name and sheet name
                           skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                           na = c("", "Z", "z", "NA"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                           .name_repair = "unique")
@@ -118,6 +120,15 @@ SiteColor <- c("#56B4E9", "#009E73", "#E69F00", "#CC79A7")
 names(SiteColor) <- levels(Locations$Site)
 #
 #END OF SECTION
+#
+#
+#
+####Data checks####
+#
+t <- Cage_counts %>% group_by(Site, MonYr) %>% tally() %>% spread(Site, n)
+t <- Cage_counts %>% group_by(Site, MonYr) %>% summarise(meanRet = round(mean(LiveCount, na.rm = T),1)) %>% spread(Site, meanRet)
+rm(t)
+#
 #
 #
 #
