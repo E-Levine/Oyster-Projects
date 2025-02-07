@@ -182,19 +182,65 @@ t <- Cage_counts %>% group_by(Site, MonYr) %>% summarise(meanRet = round(mean(Li
 rm(t)
 #
 unique(CRE_WQ$CharacteristicName)
-Cage_WQ %>% filter(Site == "CRE") %>% dplyr::select(-SampleEventID_Coll, -SectionName) %>%
-  dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, SampleEventWQID, SampleEventID, everything())
-CRE_WQ %>% ungroup() %>% dplyr::select(-SectionName, -LatitudeMeasure, -LongitudeMeasure, -Result_Unit) %>%
-  dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, MonitoringLocationIdentifier, everything()) %>%
-  mutate(CharacteristicName = case_when(CharacteristicName == "Depth, Secchi disk depth" ~ "Secchi",
-                                        CharacteristicName == "Temperature, water" ~ "Temperature",
-                                        CharacteristicName == "Dissolved oxygen (DO)" ~ "DissolvedOxygen",
-                                        CharacteristicName == "Dissolved oxygen saturation" ~ "PercentDissolvedOxygen",
-                                        CharacteristicName == "Total suspended solids" ~ "TSS",
-                                        TRUE ~ CharacteristicName)) %>%
-  filter(CharacteristicName != "Chlorophyll a, corrected for pheophytin" & CharacteristicName != "Specific conductance") %>% 
-  spread(CharacteristicName, MeanValue)
+(CRE_WQ_all <- full_join(Cage_WQ %>% filter(Site == "CRE") %>% dplyr::select(-SampleEventID_Coll, -SectionName, -SampleEventID, -CollectionTime) %>%
+            dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, SampleEventWQID, everything()) %>%
+            mutate(PercentDissolvedOxygen = as.numeric(PercentDissolvedOxygen), pH = as.numeric(pH)) %>% rename("StationID" = SampleEventWQID),
+          CRE_WQ %>% ungroup() %>% dplyr::select(-SectionName, -LatitudeMeasure, -LongitudeMeasure, -Result_Unit) %>%
+            dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, MonitoringLocationIdentifier, everything()) %>%
+            mutate(CharacteristicName = case_when(CharacteristicName == "Depth, Secchi disk depth" ~ "Secchi",
+                                                  CharacteristicName == "Temperature, water" ~ "Temperature",
+                                                  CharacteristicName == "Dissolved oxygen (DO)" ~ "DissolvedOxygen",
+                                                  CharacteristicName == "Dissolved oxygen saturation" ~ "PercentDissolvedOxygen",
+                                                  CharacteristicName == "Total suspended solids" ~ "TSS",
+                                                  TRUE ~ CharacteristicName)) %>%
+            filter(CharacteristicName != "Chlorophyll a, corrected for pheophytin" & CharacteristicName != "Specific conductance") %>% 
+            spread(CharacteristicName, MeanValue) %>% rename("StationID" = MonitoringLocationIdentifier)))
+(CRW_WQ_all <- full_join(Cage_WQ %>% filter(Site == "CRW") %>% dplyr::select(-SampleEventID_Coll, -SectionName, -SampleEventID, -CollectionTime) %>%
+                           dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, SampleEventWQID, everything()) %>%
+                           mutate(PercentDissolvedOxygen = as.numeric(PercentDissolvedOxygen), pH = as.numeric(pH)) %>% rename("StationID" = SampleEventWQID),
+                         CRW_WQ %>% ungroup() %>% dplyr::select(-SectionName, -LatitudeMeasure, -LongitudeMeasure, -Result_Unit) %>%
+                           dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, MonitoringLocationIdentifier, everything()) %>%
+                           mutate(CharacteristicName = case_when(CharacteristicName == "Depth, Secchi disk depth" ~ "Secchi",
+                                                                 CharacteristicName == "Temperature, water" ~ "Temperature",
+                                                                 CharacteristicName == "Dissolved oxygen (DO)" ~ "DissolvedOxygen",
+                                                                 CharacteristicName == "Dissolved oxygen saturation" ~ "PercentDissolvedOxygen",
+                                                                 CharacteristicName == "Total suspended solids" ~ "TSS",
+                                                                 TRUE ~ CharacteristicName)) %>%
+                           filter(CharacteristicName != "Chlorophyll a, corrected for pheophytin" & CharacteristicName != "Specific conductance") %>% 
+                           spread(CharacteristicName, MeanValue) %>% rename("StationID" = MonitoringLocationIdentifier)))
+
 #
+unique(LXN_WQ$CharacteristicName)
+(LXN_WQ_all <- full_join(Cage_WQ %>% filter(Site == "LXN") %>% dplyr::select(-SampleEventID_Coll, -SectionName, -SampleEventID, -CollectionTime) %>%
+                           dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, SampleEventWQID, everything()) %>%
+                           mutate(PercentDissolvedOxygen = as.numeric(PercentDissolvedOxygen), pH = as.numeric(pH)) %>% rename("StationID" = SampleEventWQID),
+                         LXN_WQ %>% ungroup() %>% dplyr::select(-SectionName, -LatitudeMeasure, -LongitudeMeasure, -Result_Unit) %>%
+                           dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, MonitoringLocationIdentifier, everything()) %>%
+                           mutate(CharacteristicName = case_when(CharacteristicName == "Depth, Secchi disk depth" ~ "Secchi",
+                                                                 CharacteristicName == "Temperature, water" ~ "Temperature",
+                                                                 CharacteristicName == "Dissolved oxygen (DO)" ~ "DissolvedOxygen",
+                                                                 CharacteristicName == "Dissolved oxygen saturation" ~ "PercentDissolvedOxygen",
+                                                                 CharacteristicName == "Total suspended solids" ~ "TSS",
+                                                                 TRUE ~ CharacteristicName)) %>%
+                           filter(CharacteristicName != "Chlorophyll a, corrected for pheophytin" & CharacteristicName != "Specific conductance") %>% 
+                           spread(CharacteristicName, MeanValue) %>% rename("StationID" = MonitoringLocationIdentifier)))
+#
+#
+unique(SLC_WQ$CharacteristicName)
+(SLC_WQ_all <- full_join(Cage_WQ %>% filter(Site == "SLC") %>% dplyr::select(-SampleEventID_Coll, -SectionName, -SampleEventID, -CollectionTime) %>%
+                           dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, SampleEventWQID, everything()) %>%
+                           mutate(PercentDissolvedOxygen = as.numeric(PercentDissolvedOxygen), pH = as.numeric(pH)) %>% rename("StationID" = SampleEventWQID),
+                         SLC_WQ %>% ungroup() %>% dplyr::select(-SectionName, -LatitudeMeasure, -LongitudeMeasure, -Result_Unit) %>%
+                           dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, MonitoringLocationIdentifier, everything()) %>%
+                           mutate(CharacteristicName = case_when(CharacteristicName == "Depth, Secchi disk depth" ~ "Secchi",
+                                                                 CharacteristicName == "Temperature, water" ~ "Temperature",
+                                                                 CharacteristicName == "Dissolved oxygen (DO)" ~ "DissolvedOxygen",
+                                                                 CharacteristicName == "Dissolved oxygen saturation" ~ "PercentDissolvedOxygen",
+                                                                 CharacteristicName == "Total suspended solids" ~ "TSS",
+                                                                 TRUE ~ CharacteristicName)) %>%
+                           filter(CharacteristicName != "Chlorophyll a, corrected for pheophytin" & CharacteristicName != "Specific conductance") %>% 
+                           spread(CharacteristicName, MeanValue) %>% rename("StationID" = MonitoringLocationIdentifier)))
+
 #
 #
 #
