@@ -44,7 +44,7 @@ glimpse(Cage_WQ_raw)
     mutate(SampleEventID = str_replace_all(SampleEventID_Coll, "COLL", "CAGE"),
            MonYr = as.yearmon(as.Date(substring(SampleEventID, 8, 15), format = "%Y%m%d")),
            FixedLocationID = substring(SampleEventID, 19, 22)) %>%
-    left_join(Locations) %>% filter(FixedLocationID %in% Locations$FixedLocationID))
+    left_join(Locations) %>% filter(FixedLocationID %in% Locations$FixedLocationID & MonYr < as.yearmon(as.Date("2025-01-01", format = "%Y-%m-%d"))))
 #
 #CRE
 CR_WQ_raw <- read_excel("CR_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
@@ -59,10 +59,9 @@ glimpse(CR_WQ_raw)
   mutate(FixedLocationID = case_when(grepl(paste(c("WQX-CES10SUR", "WQX-CES07"), collapse = "|"), MonitoringLocationIdentifier) ~ "0231",
                           grepl(paste(c("WQX-62-SEAS500", "WQX-PI-02", "WQX-PI-01", "WQX-GSD0108", "4607", "CES08", "NSF04", "CLEW10"), collapse = "|"), MonitoringLocationIdentifier) ~ "0232", 
                           TRUE ~ NA)) %>%
-  left_join(Locations) %>%
-    subset(MonYr > as.yearmon("12-31-2014", format = "%m-%d-%Y")))
-CRE_WQ <- CR_WQ %>% subset(FixedLocationID == "0231")
-CRW_WQ <- CR_WQ %>% subset(FixedLocationID == "0232")
+  left_join(Locations))
+CRE_WQ <- CR_WQ %>% subset(FixedLocationID == "0231") %>% subset(MonYr > as.yearmon("03-31-2019", format = "%m-%d-%Y"))
+CRW_WQ <- CR_WQ %>% subset(FixedLocationID == "0232") %>% subset(MonYr > as.yearmon("12-31-2017", format = "%m-%d-%Y"))
 #
 #LXN
 LXN_WQ_raw <- read_excel("LX_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
@@ -76,7 +75,7 @@ glimpse(LXN_WQ_raw)
     summarise(MeanValue = mean(ResultMeasureValue, na.rm = T)) %>%
     mutate(FixedLocationID = "0243") %>%
     left_join(Locations) %>%
-    subset(MonYr > as.yearmon("12-31-2014", format = "%m-%d-%Y")))
+    subset(MonYr > as.yearmon("01-31-2015", format = "%m-%d-%Y")))
 #
 #SLC
 SLC_WQ_raw <- read_excel("SL_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
@@ -90,7 +89,7 @@ glimpse(SLC_WQ_raw)
     summarise(MeanValue = mean(ResultMeasureValue, na.rm = T)) %>%
     mutate(FixedLocationID = "0255") %>%
     left_join(Locations) %>%
-    subset(MonYr > as.yearmon("12-31-2014", format = "%m-%d-%Y")))
+    subset(MonYr > as.yearmon("01-31-2015", format = "%m-%d-%Y")))
 #
 #
 #
@@ -116,7 +115,8 @@ glimpse(Cage_counts_raw)
     mutate(RetTotal = LiveCount + DeadCount,
            MissCount = DepCount - RetTotal,
            DeadRate = 1-(LiveCount/DepCount),
-           DeadCountRate = (DeadCount/DepCount)) %>% left_join(Locations))
+           DeadCountRate = (DeadCount/DepCount)) %>% left_join(Locations) %>% 
+    filter(MonYr < as.yearmon(as.Date("2025-01-01", format = "%Y-%m-%d"))))
 #
 ###Cage SHS
 Cage_SH_raw <- read_excel("Growth_database_2025_02.xlsx", sheet = "CageSH", #File name and sheet name
@@ -135,7 +135,7 @@ head(Cage_SH_raw)
                                  TRUE ~ NA),
            MonYr = as.yearmon(as.Date(substring(CageCountID, 8, 15), format = "%Y%m%d")),
            FixedLocationID = substring(CageCountID, 19, 22),
-           CageCountID = substr(CageCountID, 1, 22)) %>%
+           CageCountID = substr(CageCountID, 1, 22)) %>% filter(MonYr < as.yearmon(as.Date("2025-01-01", format = "%Y-%m-%d"))) %>% 
     left_join(Locations) %>% left_join(Cage_counts %>% dplyr::select(CageCountID, DaysDeployed) %>% unique()) %>% unique())
 #
 #
@@ -179,6 +179,7 @@ names(SiteColor) <- levels(Locations$Site)
 #
 t <- Cage_counts %>% group_by(Site, MonYr) %>% tally() %>% spread(Site, n)
 t <- Cage_counts %>% group_by(Site, MonYr) %>% summarise(meanRet = round(mean(LiveCount, na.rm = T),1)) %>% spread(Site, meanRet)
+t <- Cage_SH %>% group_by(Site, MonYr) %>% tally() %>% spread(Site, n)
 rm(t)
 #
 unique(CRE_WQ$CharacteristicName)
@@ -240,7 +241,13 @@ unique(SLC_WQ$CharacteristicName)
                                                                  TRUE ~ CharacteristicName)) %>%
                            filter(CharacteristicName != "Chlorophyll a, corrected for pheophytin" & CharacteristicName != "Specific conductance") %>% 
                            spread(CharacteristicName, MeanValue) %>% rename("StationID" = MonitoringLocationIdentifier)))
-
+#
+glimpse(CRE_WQ_all)
+glimpse(CRW_WQ_all)
+glimpse(LXN_WQ_all)
+glimpse(SLC_WQ_all)
+#
+#END OF SECTION
 #
 #
 #
@@ -272,7 +279,7 @@ ShellHeights %>% group_by(Site) %>%
   geom_point()+
   geom_boxplot()+
   scale_y_continuous(expand = c(0,0), limits = c(0,85))+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  ggtitle("Cage data through December 2024")+
   basetheme + axistheme
 #
 #
@@ -300,7 +307,7 @@ ShellHeights %>% group_by(Site) %>%
   geom_boxplot(fill = SiteColor)+
   scale_y_continuous("Depolyed shell height (mm)", expand = c(0,0), limits = c(0,100))+
   annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(85, 62, 69, 75), label = c("a", "b", "c", "d"), fontface = "bold", size = 5)+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  ggtitle("Cage data through December 2024")+
   preztheme + axistheme  
 ###Presentation fig: Site_dep_SH_ave -- 1000
 #
@@ -328,8 +335,8 @@ ShellHeights %>% group_by(Site) %>%
   geom_point()+
   geom_boxplot(fill = SiteColor)+
   scale_y_continuous("Retrieved shell height (mm)", expand = c(0,0), limits = c(0,100))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(86, 72, 74, 76), label = c("a", "b", "c", "c"), fontface = "bold", size = 5)+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(90, 72, 74, 77), label = c("a", "b", "c", "c"), fontface = "bold", size = 5)+
+  ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme
 #
 ###Presentation fig: Site_ret_SH_ave -- 1000
@@ -357,7 +364,7 @@ ShellHeights %>% group_by(Site) %>%
   geom_point()+
   geom_boxplot()+
   scale_y_continuous("Growth rate (mm/day)", expand = c(0,0), limits = c(0,1))+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  ggtitle("Cage data  through Dec 2024")+
   basetheme + axistheme
 #
 #Compare growth rate (mm/day) among Sites
@@ -381,9 +388,9 @@ ShellHeights %>% group_by(Site) %>%
   ggplot(aes(Site, Growth_rate))+
   geom_point()+
   geom_boxplot(fill = SiteColor)+
-  scale_y_continuous("Growth rate (mm/day)", expand = c(0,0), limits = c(0,1))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(0.82, 0.83, 0.89, 0.8), label = c("a", "b", "c", "b"), fontface = "bold", size = 5)+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  scale_y_continuous("Growth rate (mm/day)", expand = c(0,0), limits = c(0,1.25))+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(1.19, 0.83, 0.89, 0.8), label = c("a", "b", "c", "b"), fontface = "bold", size = 5)+
+  ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme
 #
 ###Presentation fig: Site_growth_daily -- 1000
@@ -395,8 +402,8 @@ ShellHeights %>% group_by(Site) %>%
   ggplot(aes(Site, Month_rate))+
   geom_point()+
   geom_boxplot()+
-  scale_y_continuous("Growth rate (mm/month)", expand = c(0,0), limits = c(0,25))+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  scale_y_continuous("Growth rate (mm/month)", expand = c(0,0), limits = c(0,40))+
+  ggtitle("Cage data through Dec 2024")+
   basetheme + axistheme
 #
 #Compare growth rate (mm/day) among Sites
@@ -420,9 +427,9 @@ ShellHeights %>% group_by(Site) %>%
   ggplot(aes(Site, Month_rate))+
   geom_point()+
   geom_boxplot(fill = SiteColor)+
-  scale_y_continuous("Growth rate (mm/month)", expand = c(0,0), limits = c(0,25))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(23, 23, 24, 22), label = c("a", "b", "c", "b"), fontface = "bold", size = 5)+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  scale_y_continuous("Growth rate (mm/month)", expand = c(0,0), limits = c(0,40))+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(34, 23, 25, 22), label = c("a", "b", "c", "b"), fontface = "bold", size = 5)+
+  ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme
 #
 ###Presentation fig: Site_growth_monthly -- 1000
