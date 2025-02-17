@@ -13,7 +13,7 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
                zoo, lubridate, forecast, #Dates and times
                readxl, #Reading excel files
                car, emmeans, multcomp, #Basic analyses
-               lmPerm,  
+               lmPerm,   
                install = TRUE)
 #
 #
@@ -641,7 +641,7 @@ DepSH_demean %>%
   geom_col()+
   scale_fill_manual(values = SiteColor)+
   lemon::facet_rep_grid(Site~.)+
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth =)+
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth =1)+
   scale_y_continuous("Mean shell height difference", limits = c(-10, 10), expand = c(0,0), breaks = seq(-10, 10, by = 5))+
   preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0, "lines"), axis.text.x = element_text(angle = 25))
 #
@@ -934,50 +934,48 @@ DeadCount_demean %>%
 #
 ####Water quality####
 #
+###Working by Site
 ##Create df of all data, Scale continuous WQ parameters
 (CRE_data <- full_join(GrowthRates %>% filter(Site == "CRE"),
                       Counts_cages %>% filter(Site == "CRE") %>% group_by(MonYr, Year, Month, Site, CageCountID) %>% summarise(DeadRate = mean(DeadRate, na.rm = T), DeadCountRate = mean(DeadCountRate, na.rm = T))) %>%
   ungroup() %>% dplyr::select(-CageCountID) %>%
   left_join(CRE_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), mean, na.rm = T)) %>% ungroup() %>%
               mutate(stTemp = scale(Temperature)[,1], stSal = scale(Salinity)[,1], stDO = scale(DissolvedOxygen)[,1], stpH = scale(pH)[,1], stTurb = scale(Turbidity)[,1]) %>%
-              dplyr::select(MonYr, Site, stTemp:stTurb) %>% mutate(Year = as.factor(format(MonYr, "%Y")), Year_c = as.integer(format(MonYr, "%Y")))) %>% 
-  dplyr::select(MonYr, Year, Month, Site, everything()))
-#
-#Check spread 
+              mutate(Year = as.factor(format(MonYr, "%Y")), Year_c = as.integer(format(MonYr, "%Y")))) %>% 
+  dplyr::select(MonYr, Year, Site, everything()))
+#Check spread of response
 CRE_data %>% ggplot(aes(x = Growth_rate)) + geom_histogram(aes(y = ..count..)) 
 CRE_data %>% ggplot(aes(x = DeadRate)) + geom_histogram(aes(y = ..count..)) 
 CRE_data %>% ggplot(aes(x = DeadCountRate)) + geom_histogram(aes(y = ..count..)) #
-#
-##Initial MLR
-(CRE_growth <- (CRE_data %>% dplyr::select(Year_c, Growth_rate, stTemp:stTurb))[complete.cases((CRE_data %>% dplyr::select(Year, Growth_rate, stTemp:stTurb))),] %>% droplevels())
+##Initial MLR - all factors
+(CRE_growth <- (CRE_data %>% dplyr::select(Year_c, Growth_rate, stTemp:stTurb))[complete.cases((CRE_data %>% dplyr::select(Year_c, Growth_rate, stTemp:stTurb))),] %>% droplevels())
 set.seed(54321)
 fullCRE_growth <- lm(Growth_rate ~ ., data = CRE_growth)
 fullCRE_growth_tab <- tidy(fullCRE_growth)
 names(fullCRE_growth_tab) <- c("term", "Est.", "SE", "t", "p-value")
 fullCRE_growth_sum <- glance(fullCRE_growth) %>% dplyr::select(r.squared:df, deviance:df.residual)
 names(fullCRE_growth_sum) <- c("R2", "adjR2", "RSE", "F", "p-value", "df", "RSS", "Resid.df")
-##AIC - Model selection & final model
+##AIC - Model selection for final model - including YEAR
 CRE_growth_step <- stepAIC(fullCRE_growth, direction = "backward")
 set.seed(54321)
 CRE_growth_final <- update(fullCRE_growth, .~. -stTemp -stSal -stpH -stTurb, data = CRE_growth)
 tidy(CRE_growth_final)
 glance(CRE_growth_final) %>% dplyr::select(r.squared:df, deviance:df.residual)
 #
-cbind(data.frame(Growth_p = predict(CRE_growth_final, CRE_growth), Year_c = CRE_growth$Year_c),
+(CRE_modeldata <- cbind(data.frame(Growth_p = predict(CRE_growth_final, CRE_growth), Year_c = CRE_growth$Year_c),
       predict(CRE_growth_final, interval = "confidence")) %>% dplyr::select(-fit) %>% dplyr::select(Year_c, Growth_p, everything()) %>%
-  group_by(Year_c) %>% dplyr::summarise(Growth_p = mean(Growth_p, na.rm = T), lwr = mean(lwr), upr = mean(upr))
+  group_by(Year_c) %>% dplyr::summarise(Growth_p = mean(Growth_p, na.rm = T), Growth_lwr = mean(lwr), Growth_upr = mean(upr)))
 #
-#WORKING CODE
-ggplot(Bay_means)+
-  geom_point(aes(Year, AveBay, color = "Mean"))+
-  geom_line(data = modelBaysWQ, aes(Year, predW, color = "Predict"))+
-  geom_line(data = modelBaysWQ, aes(Year, lwr, color = "95% CI"), linetype = "dashed")+
-  geom_line(data = modelBaysWQ, aes(Year, upr, color = "95% CI"), linetype = "dashed")+
-  basetheme + legendON + theme(legend.position = c(0.899, 0.91))+ axistheme +
-  ylab("log(Mean spat + 1)")+ 
-  scale_x_continuous(expand = c(0,0), limits = c(2001, 2018), breaks = seq(2002, 2017, by = 3)) + 
-  scale_y_continuous(expand = c(0,0), limits = c(-0.25,1)) +
-  geom_hline(yintercept = 0, linetype = "dotted")+
+predict(fullCRE_growth, CRE_growth)
+#
+ggplot(CRE_growth %>% group_by(Year_c) %>% summarise(mean = mean(Growth_rate, na.rm = T)))+
+  geom_point(aes(Year_c, mean, color = "Mean"))+
+  geom_line(data = CRE_modeldata, aes(Year_c, Growth_p, color = "Predict"))+
+  geom_line(data = CRE_modeldata, aes(Year_c, Growth_lwr, color = "95% CI"), linetype = "dashed")+
+  geom_line(data = CRE_modeldata, aes(Year_c, Growth_upr, color = "95% CI"), linetype = "dashed")+
+  preztheme + theme(legend.position = c(0.899, 0.91))+ axistheme +
+  ylab("Mean growth rate (mm/day)")+ 
+  scale_y_continuous(expand = c(0,0), limits = c(0,0.5)) +
   scale_color_manual(name = "",
                      breaks = c("Mean", "Predict", "95% CI"),
                      values = c("#000000", "#FF0000", "#999999"),
@@ -985,6 +983,12 @@ ggplot(Bay_means)+
                      guide = guide_legend(override.aes = list(
                        linetype = c("blank", "solid", "dashed"),
                        shape = c(19, NA, NA))))
+#
+CRE_data %>% dplyr::select(Year, Temperature:Turbidity) %>% gather(Parameter, Measure, -Year) %>%
+  ggplot(aes(Year, Measure))+ 
+  geom_boxplot(fill = "#666666")+
+  lemon::facet_rep_grid(Parameter~., scales = "free_y")+
+  preztheme + facettheme
 #
 ###END OF SECTION
 #
