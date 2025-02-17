@@ -9,7 +9,7 @@
 if (!require("pacman")) {install.packages("pacman")}
 pacman::p_load(plyr, tidyverse, #Df manipulation, 
                ggpubr, ggpattern, scales, biostat,
-               rstatix, #Summary stats
+               rstatix, broom, #Summary stats
                zoo, lubridate, forecast, #Dates and times
                readxl, #Reading excel files
                car, emmeans, multcomp, #Basic analyses
@@ -493,8 +493,8 @@ Counts_cages %>% group_by(Site) %>%
   geom_boxplot(fill = SiteColor)+
   geom_jitter(width = 0.15)+
   scale_y_continuous("Mean mortality rate", expand = c(0,0), limits = c(0,1.15), breaks = seq(0, 1, by = 0.2))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(1.1, 1.1, 1.1, 1.1), label = c("a", "a", "a", "b"), fontface = "bold", size = 5)+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(1.1, 1.1, 1.1, 1.1), label = c("ab", "a", "b", "b"), fontface = "bold", size = 5)+
+  ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme
 #
 ###Presentation fig: Site_mortality -- 1000
@@ -535,14 +535,14 @@ Dead_mod_letters <- make_cld(Dead_mod_tab) %>% dplyr::select(-c("spaced_cld")) %
                            dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), Dead_mod_letters, by = "Site"))
 #
 Counts_cages %>% group_by(Site) %>%
-  ggplot(aes(Site, DeadRate))+
-  geom_point()+
-  geom_boxplot()+
-  scale_y_continuous(expand = c(0,0), limits = c(0,1))+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
-  basetheme + axistheme
+  ggplot(aes(Site, DeadCountRate))+
+  geom_boxplot(fill = SiteColor)+
+  geom_jitter(width = 0.15)+
+  scale_y_continuous("Mean dead count rate", expand = c(0,0), limits = c(0,0.5))+
+  ggtitle("Cage data through Dec 2024")+
+  preztheme + axistheme
 #
-#
+###Presentation fig: Site_deadCount -- 1000
 #
 #
 #
@@ -631,6 +631,21 @@ Annual_dep_tab %>% filter(Site == "LXN" & p.adjust < 0.05)
 Annual_dep_tab %>% filter(Site == "SLC" & p.adjust < 0.05)
 #
 #
+###De-meaning
+DepSH_demean <- left_join(DepSHs %>% group_by(Site, Year) %>% summarise(AnnualMean_DepSH = mean(Dep_SH, na.rm = T)), #annual within group means
+                          DepSHs %>% group_by(Site) %>% summarise(AllMean_DepSH = mean(Dep_SH, na.rm = T))) %>% #group means
+  mutate(Demeaning = AnnualMean_DepSH - AllMean_DepSH) 
+
+DepSH_demean %>%
+  ggplot(aes(Year, Demeaning, fill = Site))+
+  geom_col()+
+  scale_fill_manual(values = SiteColor)+
+  lemon::facet_rep_grid(Site~.)+
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth =)+
+  scale_y_continuous("Mean shell height difference", limits = c(-10, 10), expand = c(0,0), breaks = seq(-10, 10, by = 5))+
+  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0, "lines"), axis.text.x = element_text(angle = 25))
+#
+###Presentation fig: Site_dep_SH_annual_demean -- 1000
 #
 #
 #
@@ -718,7 +733,7 @@ names(Annual_grow_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 Annual_grow_comps %>% 
   ggplot(aes(Year, mean, group = 1))+
   geom_point(aes(color = Site), size = 4)+
-  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25)+
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25, size = 1)+
   geom_line()+
   lemon::facet_rep_grid(Site~.)+
   geom_text(aes(y = upper+0.1, label = Letters), size = 5) +
@@ -746,6 +761,23 @@ Annual_grow_tab %>% filter(Site == "LXN" & p.adjust < 0.06)
 Annual_grow_tab %>% filter(Site == "SLC" & p.adjust < 0.06)
 #
 #
+###De-meaning
+(Growth_demean <- left_join(GrowthRates %>% group_by(Site, Year) %>% summarise(AnnualMean_Growth = mean(Growth_rate, na.rm = T)), #annual within group means
+                           GrowthRates %>% group_by(Site) %>% summarise(AllMean_Growth = mean(Growth_rate, na.rm = T))) %>% #group means
+  mutate(Demeaning = AnnualMean_Growth - AllMean_Growth))
+
+Growth_demean %>%
+  ggplot(aes(Year, Demeaning, fill = Site))+
+  geom_col()+
+  scale_fill_manual(values = SiteColor)+
+  lemon::facet_rep_grid(Site~.)+
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1)+
+  scale_y_continuous("Mean growth rate (mm/day) difference", limits = c(-0.20, 0.20), expand = c(0,0), breaks = seq(-0.20, 0.20, by = 0.10))+
+  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0, "lines"), axis.text.x = element_text(angle = 25))
+#
+###Presentation fig: Site_growth_mmday_annual_demean -- 1000
+#
+#
 #END OF SECTION
 #
 #
@@ -766,7 +798,7 @@ ggarrange(
     basetheme +axistheme
 )
 #
-##Permutation based ANOVA - Year for each site percent mortality
+##Permu1tation based ANOVA - Year for each site percent mortality
 set.seed(54321)
 PctMort_LXN <- aovp(DeadRate ~ Year, data = Counts_cages %>% filter(Site == "LXN"), perm = "",  nperm = 10000)
 PctMort_SLC <- aovp(DeadRate ~ Year, data = Counts_cages %>% filter(Site == "SLC"), perm = "",  nperm = 10000)
@@ -794,7 +826,7 @@ names(Annual_PctMort_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 (Annual_PctMort_comps <- left_join(Counts_cages %>% group_by(Site, Year) %>% rstatix::get_summary_stats(DeadRate , type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
                                    rbind(rbind(make_cld(Annual_PctMort_tab %>% filter(Site == "LXN")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "LXN") %>% rename(Year = group, Letters = cld),
                                                make_cld(Annual_PctMort_tab %>% filter(Site == "SLC")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "SLC") %>% rename(Year = group, Letters = cld)),
-                                         rbind(make_cld(Annual_PctMort_tab %>% filter(Site == "CRE")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRE") %>% rename(Year = group, Letters = cld),
+                                         rbind(make_cld(Annual_PctMort_tab %>% filter(Site == "CRE")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRE", cld = NA) %>% rename(Year = group, Letters = cld),
                                                make_cld(Annual_PctMort_tab %>% filter(Site == "CRW")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRW") %>% rename(Year = group, Letters = cld)))) %>%
     arrange(Site, Year))
 #
@@ -812,6 +844,26 @@ Annual_PctMort_comps %>%
 #
 ###Presentation fig: Site_mortality_annual -- 1000
 #
+###De-meaning
+(DeadRate_demean <- left_join(Counts_cages %>% group_by(Site, Year) %>% summarise(AnnualMean_DeadRate = mean(DeadRate, na.rm = T)), #annual within group means
+                            Counts_cages %>% group_by(Site) %>% summarise(AllMean_DeadRate = mean(DeadRate, na.rm = T))) %>% #group means
+  mutate(Demeaning = AnnualMean_DeadRate - AllMean_DeadRate))
+
+DeadRate_demean %>%
+  ggplot(aes(Year, Demeaning, fill = Site))+
+  geom_col()+
+  scale_fill_manual(values = SiteColor)+
+  lemon::facet_rep_grid(Site~.)+
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1)+
+  scale_y_continuous("Mean mortality rate difference", limits = c(-0.4, 0.4), expand = c(0,0), breaks = seq(-0.4, 0.4, by = 0.2))+
+  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0, "lines"), axis.text.x = element_text(angle = 25))
+#
+###Presentation fig: Site_mortality_annual_demean -- 1000
+#
+#
+#
+#
+#
 #
 ##Permutation based ANOVA - Year for each site dead counts
 set.seed(54321)
@@ -822,7 +874,7 @@ PctDead_CRW <- aovp(DeadCountRate ~ Year, data = Counts_cages %>% filter(Site ==
 #
 (Annual_PctDead_tidy <- rbind(rbind(tidy(PctDead_LXN) %>% mutate(Site = "LXN"), tidy(PctDead_SLC) %>% mutate(Site = "SLC")), 
                               rbind(tidy(PctDead_CRE) %>% mutate(Site = "CRE"), tidy(PctDead_CRW) %>% mutate(Site = "CRW"))) %>% dplyr::select(Site, everything()))
-names(Annual_PctMort_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
+names(Annual_PctDead_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 
 (Annual_PctDead_tab <- rbind(rbind(as.data.frame(Counts_cages) %>% filter(Site == "LXN") %>% pairwise_t_test(DeadCountRate ~ Year, p.adjust.method = "holm")%>% 
                                      dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "LXN", Comparison = paste(group1, group2, sep = "-")) %>%
@@ -841,7 +893,7 @@ names(Annual_PctMort_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 (Annual_PctDead_comps <- left_join(Counts_cages %>% group_by(Site, Year) %>% rstatix::get_summary_stats(DeadCountRate , type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
                                    rbind(rbind(make_cld(Annual_PctDead_tab %>% filter(Site == "LXN")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "LXN") %>% rename(Year = group, Letters = cld),
                                                make_cld(Annual_PctDead_tab %>% filter(Site == "SLC")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "SLC") %>% rename(Year = group, Letters = cld)),
-                                         rbind(make_cld(Annual_PctDead_tab %>% filter(Site == "CRE")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRE") %>% rename(Year = group, Letters = cld),
+                                         rbind(make_cld(Annual_PctDead_tab %>% filter(Site == "CRE")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRE", cld = NA) %>% rename(Year = group, Letters = cld),
                                                make_cld(Annual_PctDead_tab %>% filter(Site == "CRW")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRW") %>% rename(Year = group, Letters = cld)))) %>%
     arrange(Site, Year))
 #
@@ -859,10 +911,82 @@ Annual_PctDead_comps %>%
 #
 ###Presentation fig: Site_mortality_dead_annual -- 1000
 #
+###De-meaning
+(DeadCount_demean <- left_join(Counts_cages %>% group_by(Site, Year) %>% summarise(AnnualMean_DeadCount = mean(DeadCountRate, na.rm = T)), #annual within group means
+                              Counts_cages %>% group_by(Site) %>% summarise(AllMean_DeadCount = mean(DeadCountRate, na.rm = T))) %>% #group means
+  mutate(Demeaning = AnnualMean_DeadCount - AllMean_DeadCount))
+
+DeadCount_demean %>%
+  ggplot(aes(Year, Demeaning, fill = Site))+
+  geom_col()+
+  scale_fill_manual(values = SiteColor)+
+  lemon::facet_rep_grid(Site~.)+
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1)+
+  scale_y_continuous("Mean shell height difference", limits = c(-0.1, 0.1), expand = c(0,0), breaks = seq(-0.1, 0.1, by = 0.05))+
+  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0, "lines"), axis.text.x = element_text(angle = 25))
+# 
+###Presentation fig: Site_mortality_count_annual_demean -- 1000
 #
 #
 ###END OF SECTION
 #
+#
+#
+####Water quality####
+#
+##Create df of all data, Scale continuous WQ parameters
+(CRE_data <- full_join(GrowthRates %>% filter(Site == "CRE"),
+                      Counts_cages %>% filter(Site == "CRE") %>% group_by(MonYr, Year, Month, Site, CageCountID) %>% summarise(DeadRate = mean(DeadRate, na.rm = T), DeadCountRate = mean(DeadCountRate, na.rm = T))) %>%
+  ungroup() %>% dplyr::select(-CageCountID) %>%
+  left_join(CRE_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), mean, na.rm = T)) %>% ungroup() %>%
+              mutate(stTemp = scale(Temperature)[,1], stSal = scale(Salinity)[,1], stDO = scale(DissolvedOxygen)[,1], stpH = scale(pH)[,1], stTurb = scale(Turbidity)[,1]) %>%
+              dplyr::select(MonYr, Site, stTemp:stTurb) %>% mutate(Year = as.factor(format(MonYr, "%Y")), Year_c = as.integer(format(MonYr, "%Y")))) %>% 
+  dplyr::select(MonYr, Year, Month, Site, everything()))
+#
+#Check spread 
+CRE_data %>% ggplot(aes(x = Growth_rate)) + geom_histogram(aes(y = ..count..)) 
+CRE_data %>% ggplot(aes(x = DeadRate)) + geom_histogram(aes(y = ..count..)) 
+CRE_data %>% ggplot(aes(x = DeadCountRate)) + geom_histogram(aes(y = ..count..)) #
+#
+##Initial MLR
+(CRE_growth <- (CRE_data %>% dplyr::select(Year_c, Growth_rate, stTemp:stTurb))[complete.cases((CRE_data %>% dplyr::select(Year, Growth_rate, stTemp:stTurb))),] %>% droplevels())
+set.seed(54321)
+fullCRE_growth <- lm(Growth_rate ~ ., data = CRE_growth)
+fullCRE_growth_tab <- tidy(fullCRE_growth)
+names(fullCRE_growth_tab) <- c("term", "Est.", "SE", "t", "p-value")
+fullCRE_growth_sum <- glance(fullCRE_growth) %>% dplyr::select(r.squared:df, deviance:df.residual)
+names(fullCRE_growth_sum) <- c("R2", "adjR2", "RSE", "F", "p-value", "df", "RSS", "Resid.df")
+##AIC - Model selection & final model
+CRE_growth_step <- stepAIC(fullCRE_growth, direction = "backward")
+set.seed(54321)
+CRE_growth_final <- update(fullCRE_growth, .~. -stTemp -stSal -stpH -stTurb, data = CRE_growth)
+tidy(CRE_growth_final)
+glance(CRE_growth_final) %>% dplyr::select(r.squared:df, deviance:df.residual)
+#
+cbind(data.frame(Growth_p = predict(CRE_growth_final, CRE_growth), Year_c = CRE_growth$Year_c),
+      predict(CRE_growth_final, interval = "confidence")) %>% dplyr::select(-fit) %>% dplyr::select(Year_c, Growth_p, everything()) %>%
+  group_by(Year_c) %>% dplyr::summarise(Growth_p = mean(Growth_p, na.rm = T), lwr = mean(lwr), upr = mean(upr))
+#
+#WORKING CODE
+ggplot(Bay_means)+
+  geom_point(aes(Year, AveBay, color = "Mean"))+
+  geom_line(data = modelBaysWQ, aes(Year, predW, color = "Predict"))+
+  geom_line(data = modelBaysWQ, aes(Year, lwr, color = "95% CI"), linetype = "dashed")+
+  geom_line(data = modelBaysWQ, aes(Year, upr, color = "95% CI"), linetype = "dashed")+
+  basetheme + legendON + theme(legend.position = c(0.899, 0.91))+ axistheme +
+  ylab("log(Mean spat + 1)")+ 
+  scale_x_continuous(expand = c(0,0), limits = c(2001, 2018), breaks = seq(2002, 2017, by = 3)) + 
+  scale_y_continuous(expand = c(0,0), limits = c(-0.25,1)) +
+  geom_hline(yintercept = 0, linetype = "dotted")+
+  scale_color_manual(name = "",
+                     breaks = c("Mean", "Predict", "95% CI"),
+                     values = c("#000000", "#FF0000", "#999999"),
+                     labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
+                     guide = guide_legend(override.aes = list(
+                       linetype = c("blank", "solid", "dashed"),
+                       shape = c(19, NA, NA))))
+#
+###END OF SECTION
 #
 #
 ####Extra code####
