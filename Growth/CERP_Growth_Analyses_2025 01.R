@@ -9,11 +9,11 @@
 if (!require("pacman")) {install.packages("pacman")}
 pacman::p_load(plyr, tidyverse, #Df manipulation, 
                ggpubr, ggpattern, scales, biostat,
-               rstatix, #Summary stats
+               rstatix, broom, #Summary stats
                zoo, lubridate, forecast, #Dates and times
                readxl, #Reading excel files
                car, emmeans, multcomp, #Basic analyses
-               lmPerm,  
+               lmPerm,   
                install = TRUE)
 #
 #
@@ -23,7 +23,7 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
 #Reading in Excel files, adding station information to dfs.
 #
 ##Station information
-Locations_raw <- read_excel("Growth_database_2024_10_29.xlsx", sheet = "FixedLocations", #File name and sheet name
+Locations_raw <- read_excel("Growth_database_2025_02.xlsx", sheet = "FixedLocations", #File name and sheet name
                             skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                             na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                             .name_repair = "unique")
@@ -31,25 +31,76 @@ head(Locations_raw)
 (Locations <- Locations_raw %>% mutate(Site = as.factor(paste0(Estuary, SectionName))))
 #
 ###Water quality
-Cage_WQ_raw <- read_excel("Growth_database_2024_10_29.xlsx", sheet = "SampleEventWQ", #File name and sheet name
+Cage_WQ_raw <- read_excel("Growth_database_2025_02.xlsx", sheet = "SampleEventWQ", #File name and sheet name
                           skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                           na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                           .name_repair = "unique")
 #Check data and column names
-head(Cage_WQ_raw)
+glimpse(Cage_WQ_raw)
 #Remove unneeded columns and add in station info
 (Cage_WQ <- Cage_WQ_raw %>% 
     dplyr::select(SampleEventWQID:DissolvedOxygen, PercentDissolvedOxygen, pH:TurbidityYSI, CollectionTime, Comments) %>%
-    mutate(MonYr = as.yearmon(as.Date(substring(SampleEventID, 8, 15), format = "%Y%m%d")),
+    rename("SampleEventID_Coll" = SampleEventID) %>%
+    mutate(SampleEventID = str_replace_all(SampleEventID_Coll, "COLL", "CAGE"),
+           MonYr = as.yearmon(as.Date(substring(SampleEventID, 8, 15), format = "%Y%m%d")),
            FixedLocationID = substring(SampleEventID, 19, 22)) %>%
-    left_join(Locations))
+    left_join(Locations) %>% filter(FixedLocationID %in% Locations$FixedLocationID & MonYr < as.yearmon(as.Date("2025-01-01", format = "%Y-%m-%d"))))
+#
+#CRE
+CR_WQ_raw <- read_excel("CR_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
+                     skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+                     na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                     .name_repair = "unique")
+glimpse(CR_WQ_raw)
+(CR_WQ <- CR_WQ_raw %>% dplyr::select(MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, ActivityStartDate, CharacteristicName, ResultMeasureValue, Result_Unit) %>%
+  mutate(MonYr = as.yearmon(as.Date(ActivityStartDate, format = "%Y-%m-%d"))) %>%
+  group_by(MonYr, MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, CharacteristicName, Result_Unit) %>%
+  summarise(MeanValue = mean(ResultMeasureValue, na.rm = T)) %>%
+  mutate(FixedLocationID = case_when(grepl(paste(c("WQX-CES10SUR", "WQX-CES07"), collapse = "|"), MonitoringLocationIdentifier) ~ "0231",
+                          grepl(paste(c("WQX-62-SEAS500", "WQX-PI-02", "WQX-PI-01", "WQX-GSD0108", "4607", "CES08", "NSF04", "CLEW10"), collapse = "|"), MonitoringLocationIdentifier) ~ "0232", 
+                          TRUE ~ NA)) %>%
+  left_join(Locations))
+CRE_WQ <- CR_WQ %>% subset(FixedLocationID == "0231") %>% subset(MonYr > as.yearmon("03-31-2019", format = "%m-%d-%Y"))
+CRW_WQ <- CR_WQ %>% subset(FixedLocationID == "0232") %>% subset(MonYr > as.yearmon("12-31-2017", format = "%m-%d-%Y"))
+#
+#LXN
+LXN_WQ_raw <- read_excel("LX_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
+                        skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+                        na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                        .name_repair = "unique")
+glimpse(LXN_WQ_raw)
+(LXN_WQ <- LXN_WQ_raw %>% dplyr::select(MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, ActivityStartDate, CharacteristicName, ResultMeasureValue, Result_Unit) %>%
+    mutate(MonYr = as.yearmon(as.Date(ActivityStartDate, format = "%Y-%m-%d"))) %>%
+    group_by(MonYr, MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, CharacteristicName, Result_Unit) %>%
+    summarise(MeanValue = mean(ResultMeasureValue, na.rm = T)) %>%
+    mutate(FixedLocationID = "0243") %>%
+    left_join(Locations) %>%
+    subset(MonYr > as.yearmon("01-31-2015", format = "%m-%d-%Y")))
+#
+#SLC
+SLC_WQ_raw <- read_excel("SL_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
+                         skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+                         na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                         .name_repair = "unique")
+glimpse(SLC_WQ_raw)
+(SLC_WQ <- SLC_WQ_raw %>% dplyr::select(MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, ActivityStartDate, CharacteristicName, ResultMeasureValue, Result_Unit) %>%
+    mutate(MonYr = as.yearmon(as.Date(ActivityStartDate, format = "%Y-%m-%d"))) %>%
+    group_by(MonYr, MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, CharacteristicName, Result_Unit) %>%
+    summarise(MeanValue = mean(ResultMeasureValue, na.rm = T)) %>%
+    mutate(FixedLocationID = "0255") %>%
+    left_join(Locations) %>%
+    subset(MonYr > as.yearmon("01-31-2015", format = "%m-%d-%Y")))
+#
+#
+#
+#
 #
 ###Cage Counts
-Cage_counts_raw <- read_excel("Growth_database_2024_10_29.xlsx", sheet = "CageCount_Dead", #File name and sheet name
+Cage_counts_raw <- read_excel("Growth_database_2025_02.xlsx", sheet = "CageCount", #File name and sheet name
                               skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                               na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                               .name_repair = "unique")
-head(Cage_counts_raw)
+glimpse(Cage_counts_raw)
 (Cage_counts <- Cage_counts_raw %>% dplyr::select(CageCountID, CageColor, DataType, TotalCount, DaysDeployed) %>%
     #Get deployed and retrieved counts
     mutate(CageCountID = substr(CageCountID, 1, 22),
@@ -58,16 +109,17 @@ head(Cage_counts_raw)
     spread(DataType, TotalCount) %>% rename(DepCount = Deployed, LiveCount = Retrieved) %>%
     #Determine dead counts per cage
     left_join(Cage_counts_raw %>% dplyr::select(CageCountID, CageColor, DataType, Dead) %>%
-                mutate(CageCountID = substr(CageCountID, 1, 22)) %>% 
+                mutate(CageCountID = substr(CageCountID, 1, 22), Dead = as.numeric(Dead)) %>% 
                 spread(DataType, Dead) %>% rename("DeadCount" = Retrieved) %>%
                 dplyr::select(-Deployed)) %>%
     mutate(RetTotal = LiveCount + DeadCount,
            MissCount = DepCount - RetTotal,
            DeadRate = 1-(LiveCount/DepCount),
-           DeadCountRate = (DeadCount/DepCount)) %>% left_join(Locations))
+           DeadCountRate = (DeadCount/DepCount)) %>% left_join(Locations) %>% 
+    filter(MonYr < as.yearmon(as.Date("2025-01-01", format = "%Y-%m-%d"))))
 #
 ###Cage SHS
-Cage_SH_raw <- read_excel("Growth_database_2024_10_29.xlsx", sheet = "CageSH", #File name and sheet name
+Cage_SH_raw <- read_excel("Growth_database_2025_02.xlsx", sheet = "CageSH", #File name and sheet name
                           skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                           na = c("", "Z", "z", "NA"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                           .name_repair = "unique")
@@ -83,8 +135,10 @@ head(Cage_SH_raw)
                                  TRUE ~ NA),
            MonYr = as.yearmon(as.Date(substring(CageCountID, 8, 15), format = "%Y%m%d")),
            FixedLocationID = substring(CageCountID, 19, 22),
-           CageCountID = substr(CageCountID, 1, 22)) %>%
+           CageCountID = substr(CageCountID, 1, 22)) %>% filter(MonYr < as.yearmon(as.Date("2025-01-01", format = "%Y-%m-%d"))) %>% 
     left_join(Locations) %>% left_join(Cage_counts %>% dplyr::select(CageCountID, DaysDeployed) %>% unique()) %>% unique())
+#
+#
 #
 #END OF SECTION
 #
@@ -121,6 +175,82 @@ names(SiteColor) <- levels(Locations$Site)
 #
 #
 #
+####Data checks, WQ combination####
+#
+t <- Cage_counts %>% group_by(Site, MonYr) %>% tally() %>% spread(Site, n)
+t <- Cage_counts %>% group_by(Site, MonYr) %>% summarise(meanRet = round(mean(LiveCount, na.rm = T),1)) %>% spread(Site, meanRet)
+t <- Cage_SH %>% group_by(Site, MonYr) %>% tally() %>% spread(Site, n)
+rm(t)
+#
+unique(CRE_WQ$CharacteristicName)
+(CRE_WQ_all <- full_join(Cage_WQ %>% filter(Site == "CRE") %>% dplyr::select(-SampleEventID_Coll, -SectionName, -SampleEventID, -CollectionTime) %>%
+            dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, SampleEventWQID, everything()) %>%
+            mutate(PercentDissolvedOxygen = as.numeric(PercentDissolvedOxygen), pH = as.numeric(pH)) %>% rename("StationID" = SampleEventWQID),
+          CRE_WQ %>% ungroup() %>% dplyr::select(-SectionName, -LatitudeMeasure, -LongitudeMeasure, -Result_Unit) %>%
+            dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, MonitoringLocationIdentifier, everything()) %>%
+            mutate(CharacteristicName = case_when(CharacteristicName == "Depth, Secchi disk depth" ~ "Secchi",
+                                                  CharacteristicName == "Temperature, water" ~ "Temperature",
+                                                  CharacteristicName == "Dissolved oxygen (DO)" ~ "DissolvedOxygen",
+                                                  CharacteristicName == "Dissolved oxygen saturation" ~ "PercentDissolvedOxygen",
+                                                  CharacteristicName == "Total suspended solids" ~ "TSS",
+                                                  TRUE ~ CharacteristicName)) %>%
+            filter(CharacteristicName != "Chlorophyll a, corrected for pheophytin" & CharacteristicName != "Specific conductance") %>% 
+            spread(CharacteristicName, MeanValue) %>% rename("StationID" = MonitoringLocationIdentifier)))
+(CRW_WQ_all <- full_join(Cage_WQ %>% filter(Site == "CRW") %>% dplyr::select(-SampleEventID_Coll, -SectionName, -SampleEventID, -CollectionTime) %>%
+                           dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, SampleEventWQID, everything()) %>%
+                           mutate(PercentDissolvedOxygen = as.numeric(PercentDissolvedOxygen), pH = as.numeric(pH)) %>% rename("StationID" = SampleEventWQID),
+                         CRW_WQ %>% ungroup() %>% dplyr::select(-SectionName, -LatitudeMeasure, -LongitudeMeasure, -Result_Unit) %>%
+                           dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, MonitoringLocationIdentifier, everything()) %>%
+                           mutate(CharacteristicName = case_when(CharacteristicName == "Depth, Secchi disk depth" ~ "Secchi",
+                                                                 CharacteristicName == "Temperature, water" ~ "Temperature",
+                                                                 CharacteristicName == "Dissolved oxygen (DO)" ~ "DissolvedOxygen",
+                                                                 CharacteristicName == "Dissolved oxygen saturation" ~ "PercentDissolvedOxygen",
+                                                                 CharacteristicName == "Total suspended solids" ~ "TSS",
+                                                                 TRUE ~ CharacteristicName)) %>%
+                           filter(CharacteristicName != "Chlorophyll a, corrected for pheophytin" & CharacteristicName != "Specific conductance") %>% 
+                           spread(CharacteristicName, MeanValue) %>% rename("StationID" = MonitoringLocationIdentifier)))
+
+#
+unique(LXN_WQ$CharacteristicName)
+(LXN_WQ_all <- full_join(Cage_WQ %>% filter(Site == "LXN") %>% dplyr::select(-SampleEventID_Coll, -SectionName, -SampleEventID, -CollectionTime) %>%
+                           dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, SampleEventWQID, everything()) %>%
+                           mutate(PercentDissolvedOxygen = as.numeric(PercentDissolvedOxygen), pH = as.numeric(pH)) %>% rename("StationID" = SampleEventWQID),
+                         LXN_WQ %>% ungroup() %>% dplyr::select(-SectionName, -LatitudeMeasure, -LongitudeMeasure, -Result_Unit) %>%
+                           dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, MonitoringLocationIdentifier, everything()) %>%
+                           mutate(CharacteristicName = case_when(CharacteristicName == "Depth, Secchi disk depth" ~ "Secchi",
+                                                                 CharacteristicName == "Temperature, water" ~ "Temperature",
+                                                                 CharacteristicName == "Dissolved oxygen (DO)" ~ "DissolvedOxygen",
+                                                                 CharacteristicName == "Dissolved oxygen saturation" ~ "PercentDissolvedOxygen",
+                                                                 CharacteristicName == "Total suspended solids" ~ "TSS",
+                                                                 TRUE ~ CharacteristicName)) %>%
+                           filter(CharacteristicName != "Chlorophyll a, corrected for pheophytin" & CharacteristicName != "Specific conductance") %>% 
+                           spread(CharacteristicName, MeanValue) %>% rename("StationID" = MonitoringLocationIdentifier)))
+#
+#
+unique(SLC_WQ$CharacteristicName)
+(SLC_WQ_all <- full_join(Cage_WQ %>% filter(Site == "SLC") %>% dplyr::select(-SampleEventID_Coll, -SectionName, -SampleEventID, -CollectionTime) %>%
+                           dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, SampleEventWQID, everything()) %>%
+                           mutate(PercentDissolvedOxygen = as.numeric(PercentDissolvedOxygen), pH = as.numeric(pH)) %>% rename("StationID" = SampleEventWQID),
+                         SLC_WQ %>% ungroup() %>% dplyr::select(-SectionName, -LatitudeMeasure, -LongitudeMeasure, -Result_Unit) %>%
+                           dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, MonitoringLocationIdentifier, everything()) %>%
+                           mutate(CharacteristicName = case_when(CharacteristicName == "Depth, Secchi disk depth" ~ "Secchi",
+                                                                 CharacteristicName == "Temperature, water" ~ "Temperature",
+                                                                 CharacteristicName == "Dissolved oxygen (DO)" ~ "DissolvedOxygen",
+                                                                 CharacteristicName == "Dissolved oxygen saturation" ~ "PercentDissolvedOxygen",
+                                                                 CharacteristicName == "Total suspended solids" ~ "TSS",
+                                                                 TRUE ~ CharacteristicName)) %>%
+                           filter(CharacteristicName != "Chlorophyll a, corrected for pheophytin" & CharacteristicName != "Specific conductance") %>% 
+                           spread(CharacteristicName, MeanValue) %>% rename("StationID" = MonitoringLocationIdentifier)))
+#
+glimpse(CRE_WQ_all)
+glimpse(CRW_WQ_all)
+glimpse(LXN_WQ_all)
+glimpse(SLC_WQ_all)
+#
+#END OF SECTION
+#
+#
+#
 ####Overall - summary####
 #
 ##Dep, Ret, Growth summary by cage 
@@ -149,7 +279,7 @@ ShellHeights %>% group_by(Site) %>%
   geom_point()+
   geom_boxplot()+
   scale_y_continuous(expand = c(0,0), limits = c(0,85))+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  ggtitle("Cage data through December 2024")+
   basetheme + axistheme
 #
 #
@@ -177,7 +307,7 @@ ShellHeights %>% group_by(Site) %>%
   geom_boxplot(fill = SiteColor)+
   scale_y_continuous("Depolyed shell height (mm)", expand = c(0,0), limits = c(0,100))+
   annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(85, 62, 69, 75), label = c("a", "b", "c", "d"), fontface = "bold", size = 5)+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  ggtitle("Cage data through December 2024")+
   preztheme + axistheme  
 ###Presentation fig: Site_dep_SH_ave -- 1000
 #
@@ -205,8 +335,8 @@ ShellHeights %>% group_by(Site) %>%
   geom_point()+
   geom_boxplot(fill = SiteColor)+
   scale_y_continuous("Retrieved shell height (mm)", expand = c(0,0), limits = c(0,100))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(86, 72, 74, 76), label = c("a", "b", "c", "c"), fontface = "bold", size = 5)+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(90, 72, 74, 77), label = c("a", "b", "c", "c"), fontface = "bold", size = 5)+
+  ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme
 #
 ###Presentation fig: Site_ret_SH_ave -- 1000
@@ -234,7 +364,7 @@ ShellHeights %>% group_by(Site) %>%
   geom_point()+
   geom_boxplot()+
   scale_y_continuous("Growth rate (mm/day)", expand = c(0,0), limits = c(0,1))+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  ggtitle("Cage data  through Dec 2024")+
   basetheme + axistheme
 #
 #Compare growth rate (mm/day) among Sites
@@ -258,9 +388,9 @@ ShellHeights %>% group_by(Site) %>%
   ggplot(aes(Site, Growth_rate))+
   geom_point()+
   geom_boxplot(fill = SiteColor)+
-  scale_y_continuous("Growth rate (mm/day)", expand = c(0,0), limits = c(0,1))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(0.82, 0.83, 0.89, 0.8), label = c("a", "b", "c", "b"), fontface = "bold", size = 5)+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  scale_y_continuous("Growth rate (mm/day)", expand = c(0,0), limits = c(0,1.25))+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(1.19, 0.83, 0.89, 0.8), label = c("a", "b", "c", "b"), fontface = "bold", size = 5)+
+  ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme
 #
 ###Presentation fig: Site_growth_daily -- 1000
@@ -272,8 +402,8 @@ ShellHeights %>% group_by(Site) %>%
   ggplot(aes(Site, Month_rate))+
   geom_point()+
   geom_boxplot()+
-  scale_y_continuous("Growth rate (mm/month)", expand = c(0,0), limits = c(0,25))+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  scale_y_continuous("Growth rate (mm/month)", expand = c(0,0), limits = c(0,40))+
+  ggtitle("Cage data through Dec 2024")+
   basetheme + axistheme
 #
 #Compare growth rate (mm/day) among Sites
@@ -297,9 +427,9 @@ ShellHeights %>% group_by(Site) %>%
   ggplot(aes(Site, Month_rate))+
   geom_point()+
   geom_boxplot(fill = SiteColor)+
-  scale_y_continuous("Growth rate (mm/month)", expand = c(0,0), limits = c(0,25))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(23, 23, 24, 22), label = c("a", "b", "c", "b"), fontface = "bold", size = 5)+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  scale_y_continuous("Growth rate (mm/month)", expand = c(0,0), limits = c(0,40))+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(34, 23, 25, 22), label = c("a", "b", "c", "b"), fontface = "bold", size = 5)+
+  ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme
 #
 ###Presentation fig: Site_growth_monthly -- 1000
@@ -363,8 +493,8 @@ Counts_cages %>% group_by(Site) %>%
   geom_boxplot(fill = SiteColor)+
   geom_jitter(width = 0.15)+
   scale_y_continuous("Mean mortality rate", expand = c(0,0), limits = c(0,1.15), breaks = seq(0, 1, by = 0.2))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(1.1, 1.1, 1.1, 1.1), label = c("a", "a", "a", "b"), fontface = "bold", size = 5)+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(1.1, 1.1, 1.1, 1.1), label = c("ab", "a", "b", "b"), fontface = "bold", size = 5)+
+  ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme
 #
 ###Presentation fig: Site_mortality -- 1000
@@ -405,14 +535,14 @@ Dead_mod_letters <- make_cld(Dead_mod_tab) %>% dplyr::select(-c("spaced_cld")) %
                            dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd), Dead_mod_letters, by = "Site"))
 #
 Counts_cages %>% group_by(Site) %>%
-  ggplot(aes(Site, DeadRate))+
-  geom_point()+
-  geom_boxplot()+
-  scale_y_continuous(expand = c(0,0), limits = c(0,1))+
-  ggtitle("Cage data  Feb 2005 - Sept 2024")+
-  basetheme + axistheme
+  ggplot(aes(Site, DeadCountRate))+
+  geom_boxplot(fill = SiteColor)+
+  geom_jitter(width = 0.15)+
+  scale_y_continuous("Mean dead count rate", expand = c(0,0), limits = c(0,0.5))+
+  ggtitle("Cage data through Dec 2024")+
+  preztheme + axistheme
 #
-#
+###Presentation fig: Site_deadCount -- 1000
 #
 #
 #
@@ -501,6 +631,21 @@ Annual_dep_tab %>% filter(Site == "LXN" & p.adjust < 0.05)
 Annual_dep_tab %>% filter(Site == "SLC" & p.adjust < 0.05)
 #
 #
+###De-meaning
+DepSH_demean <- left_join(DepSHs %>% group_by(Site, Year) %>% summarise(AnnualMean_DepSH = mean(Dep_SH, na.rm = T)), #annual within group means
+                          DepSHs %>% group_by(Site) %>% summarise(AllMean_DepSH = mean(Dep_SH, na.rm = T))) %>% #group means
+  mutate(Demeaning = AnnualMean_DepSH - AllMean_DepSH) 
+
+DepSH_demean %>%
+  ggplot(aes(Year, Demeaning, fill = Site))+
+  geom_col()+
+  scale_fill_manual(values = SiteColor)+
+  lemon::facet_rep_grid(Site~.)+
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth =1)+
+  scale_y_continuous("Mean shell height difference", limits = c(-10, 10), expand = c(0,0), breaks = seq(-10, 10, by = 5))+
+  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0, "lines"), axis.text.x = element_text(angle = 25))
+#
+###Presentation fig: Site_dep_SH_annual_demean -- 1000
 #
 #
 #
@@ -588,7 +733,7 @@ names(Annual_grow_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 Annual_grow_comps %>% 
   ggplot(aes(Year, mean, group = 1))+
   geom_point(aes(color = Site), size = 4)+
-  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25)+
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25, size = 1)+
   geom_line()+
   lemon::facet_rep_grid(Site~.)+
   geom_text(aes(y = upper+0.1, label = Letters), size = 5) +
@@ -616,6 +761,23 @@ Annual_grow_tab %>% filter(Site == "LXN" & p.adjust < 0.06)
 Annual_grow_tab %>% filter(Site == "SLC" & p.adjust < 0.06)
 #
 #
+###De-meaning
+(Growth_demean <- left_join(GrowthRates %>% group_by(Site, Year) %>% summarise(AnnualMean_Growth = mean(Growth_rate, na.rm = T)), #annual within group means
+                           GrowthRates %>% group_by(Site) %>% summarise(AllMean_Growth = mean(Growth_rate, na.rm = T))) %>% #group means
+  mutate(Demeaning = AnnualMean_Growth - AllMean_Growth))
+
+Growth_demean %>%
+  ggplot(aes(Year, Demeaning, fill = Site))+
+  geom_col()+
+  scale_fill_manual(values = SiteColor)+
+  lemon::facet_rep_grid(Site~.)+
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1)+
+  scale_y_continuous("Mean growth rate (mm/day) difference", limits = c(-0.20, 0.20), expand = c(0,0), breaks = seq(-0.20, 0.20, by = 0.10))+
+  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0, "lines"), axis.text.x = element_text(angle = 25))
+#
+###Presentation fig: Site_growth_mmday_annual_demean -- 1000
+#
+#
 #END OF SECTION
 #
 #
@@ -636,7 +798,7 @@ ggarrange(
     basetheme +axistheme
 )
 #
-##Permutation based ANOVA - Year for each site percent mortality
+##Permu1tation based ANOVA - Year for each site percent mortality
 set.seed(54321)
 PctMort_LXN <- aovp(DeadRate ~ Year, data = Counts_cages %>% filter(Site == "LXN"), perm = "",  nperm = 10000)
 PctMort_SLC <- aovp(DeadRate ~ Year, data = Counts_cages %>% filter(Site == "SLC"), perm = "",  nperm = 10000)
@@ -664,7 +826,7 @@ names(Annual_PctMort_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 (Annual_PctMort_comps <- left_join(Counts_cages %>% group_by(Site, Year) %>% rstatix::get_summary_stats(DeadRate , type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
                                    rbind(rbind(make_cld(Annual_PctMort_tab %>% filter(Site == "LXN")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "LXN") %>% rename(Year = group, Letters = cld),
                                                make_cld(Annual_PctMort_tab %>% filter(Site == "SLC")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "SLC") %>% rename(Year = group, Letters = cld)),
-                                         rbind(make_cld(Annual_PctMort_tab %>% filter(Site == "CRE")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRE") %>% rename(Year = group, Letters = cld),
+                                         rbind(make_cld(Annual_PctMort_tab %>% filter(Site == "CRE")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRE", cld = NA) %>% rename(Year = group, Letters = cld),
                                                make_cld(Annual_PctMort_tab %>% filter(Site == "CRW")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRW") %>% rename(Year = group, Letters = cld)))) %>%
     arrange(Site, Year))
 #
@@ -682,6 +844,26 @@ Annual_PctMort_comps %>%
 #
 ###Presentation fig: Site_mortality_annual -- 1000
 #
+###De-meaning
+(DeadRate_demean <- left_join(Counts_cages %>% group_by(Site, Year) %>% summarise(AnnualMean_DeadRate = mean(DeadRate, na.rm = T)), #annual within group means
+                            Counts_cages %>% group_by(Site) %>% summarise(AllMean_DeadRate = mean(DeadRate, na.rm = T))) %>% #group means
+  mutate(Demeaning = AnnualMean_DeadRate - AllMean_DeadRate))
+
+DeadRate_demean %>%
+  ggplot(aes(Year, Demeaning, fill = Site))+
+  geom_col()+
+  scale_fill_manual(values = SiteColor)+
+  lemon::facet_rep_grid(Site~.)+
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1)+
+  scale_y_continuous("Mean mortality rate difference", limits = c(-0.4, 0.4), expand = c(0,0), breaks = seq(-0.4, 0.4, by = 0.2))+
+  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0, "lines"), axis.text.x = element_text(angle = 25))
+#
+###Presentation fig: Site_mortality_annual_demean -- 1000
+#
+#
+#
+#
+#
 #
 ##Permutation based ANOVA - Year for each site dead counts
 set.seed(54321)
@@ -692,7 +874,7 @@ PctDead_CRW <- aovp(DeadCountRate ~ Year, data = Counts_cages %>% filter(Site ==
 #
 (Annual_PctDead_tidy <- rbind(rbind(tidy(PctDead_LXN) %>% mutate(Site = "LXN"), tidy(PctDead_SLC) %>% mutate(Site = "SLC")), 
                               rbind(tidy(PctDead_CRE) %>% mutate(Site = "CRE"), tidy(PctDead_CRW) %>% mutate(Site = "CRW"))) %>% dplyr::select(Site, everything()))
-names(Annual_PctMort_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
+names(Annual_PctDead_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 
 (Annual_PctDead_tab <- rbind(rbind(as.data.frame(Counts_cages) %>% filter(Site == "LXN") %>% pairwise_t_test(DeadCountRate ~ Year, p.adjust.method = "holm")%>% 
                                      dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "LXN", Comparison = paste(group1, group2, sep = "-")) %>%
@@ -711,7 +893,7 @@ names(Annual_PctMort_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 (Annual_PctDead_comps <- left_join(Counts_cages %>% group_by(Site, Year) %>% rstatix::get_summary_stats(DeadCountRate , type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
                                    rbind(rbind(make_cld(Annual_PctDead_tab %>% filter(Site == "LXN")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "LXN") %>% rename(Year = group, Letters = cld),
                                                make_cld(Annual_PctDead_tab %>% filter(Site == "SLC")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "SLC") %>% rename(Year = group, Letters = cld)),
-                                         rbind(make_cld(Annual_PctDead_tab %>% filter(Site == "CRE")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRE") %>% rename(Year = group, Letters = cld),
+                                         rbind(make_cld(Annual_PctDead_tab %>% filter(Site == "CRE")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRE", cld = NA) %>% rename(Year = group, Letters = cld),
                                                make_cld(Annual_PctDead_tab %>% filter(Site == "CRW")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "CRW") %>% rename(Year = group, Letters = cld)))) %>%
     arrange(Site, Year))
 #
@@ -729,10 +911,86 @@ Annual_PctDead_comps %>%
 #
 ###Presentation fig: Site_mortality_dead_annual -- 1000
 #
+###De-meaning
+(DeadCount_demean <- left_join(Counts_cages %>% group_by(Site, Year) %>% summarise(AnnualMean_DeadCount = mean(DeadCountRate, na.rm = T)), #annual within group means
+                              Counts_cages %>% group_by(Site) %>% summarise(AllMean_DeadCount = mean(DeadCountRate, na.rm = T))) %>% #group means
+  mutate(Demeaning = AnnualMean_DeadCount - AllMean_DeadCount))
+
+DeadCount_demean %>%
+  ggplot(aes(Year, Demeaning, fill = Site))+
+  geom_col()+
+  scale_fill_manual(values = SiteColor)+
+  lemon::facet_rep_grid(Site~.)+
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1)+
+  scale_y_continuous("Mean shell height difference", limits = c(-0.1, 0.1), expand = c(0,0), breaks = seq(-0.1, 0.1, by = 0.05))+
+  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0, "lines"), axis.text.x = element_text(angle = 25))
+# 
+###Presentation fig: Site_mortality_count_annual_demean -- 1000
 #
 #
 ###END OF SECTION
 #
+#
+#
+####Water quality####
+#
+###Working by Site
+##Create df of all data, Scale continuous WQ parameters
+(CRE_data <- full_join(GrowthRates %>% filter(Site == "CRE"),
+                      Counts_cages %>% filter(Site == "CRE") %>% group_by(MonYr, Year, Month, Site, CageCountID) %>% summarise(DeadRate = mean(DeadRate, na.rm = T), DeadCountRate = mean(DeadCountRate, na.rm = T))) %>%
+  ungroup() %>% dplyr::select(-CageCountID) %>%
+  left_join(CRE_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), mean, na.rm = T)) %>% ungroup() %>%
+              mutate(stTemp = scale(Temperature)[,1], stSal = scale(Salinity)[,1], stDO = scale(DissolvedOxygen)[,1], stpH = scale(pH)[,1], stTurb = scale(Turbidity)[,1]) %>%
+              mutate(Year = as.factor(format(MonYr, "%Y")), Year_c = as.integer(format(MonYr, "%Y")))) %>% 
+  dplyr::select(MonYr, Year, Site, everything()))
+#Check spread of response
+CRE_data %>% ggplot(aes(x = Growth_rate)) + geom_histogram(aes(y = ..count..)) 
+CRE_data %>% ggplot(aes(x = DeadRate)) + geom_histogram(aes(y = ..count..)) 
+CRE_data %>% ggplot(aes(x = DeadCountRate)) + geom_histogram(aes(y = ..count..)) #
+##Initial MLR - all factors
+(CRE_growth <- (CRE_data %>% dplyr::select(Year_c, Growth_rate, stTemp:stTurb))[complete.cases((CRE_data %>% dplyr::select(Year_c, Growth_rate, stTemp:stTurb))),] %>% droplevels())
+set.seed(54321)
+fullCRE_growth <- lm(Growth_rate ~ ., data = CRE_growth)
+fullCRE_growth_tab <- tidy(fullCRE_growth)
+names(fullCRE_growth_tab) <- c("term", "Est.", "SE", "t", "p-value")
+fullCRE_growth_sum <- glance(fullCRE_growth) %>% dplyr::select(r.squared:df, deviance:df.residual)
+names(fullCRE_growth_sum) <- c("R2", "adjR2", "RSE", "F", "p-value", "df", "RSS", "Resid.df")
+##AIC - Model selection for final model - including YEAR
+CRE_growth_step <- stepAIC(fullCRE_growth, direction = "backward")
+set.seed(54321)
+CRE_growth_final <- update(fullCRE_growth, .~. -stTemp -stSal -stpH -stTurb, data = CRE_growth)
+tidy(CRE_growth_final)
+glance(CRE_growth_final) %>% dplyr::select(r.squared:df, deviance:df.residual)
+#
+(CRE_modeldata <- cbind(data.frame(Growth_p = predict(CRE_growth_final, CRE_growth), Year_c = CRE_growth$Year_c),
+      predict(CRE_growth_final, interval = "confidence")) %>% dplyr::select(-fit) %>% dplyr::select(Year_c, Growth_p, everything()) %>%
+  group_by(Year_c) %>% dplyr::summarise(Growth_p = mean(Growth_p, na.rm = T), Growth_lwr = mean(lwr), Growth_upr = mean(upr)))
+#
+predict(fullCRE_growth, CRE_growth)
+#
+ggplot(CRE_growth %>% group_by(Year_c) %>% summarise(mean = mean(Growth_rate, na.rm = T)))+
+  geom_point(aes(Year_c, mean, color = "Mean"))+
+  geom_line(data = CRE_modeldata, aes(Year_c, Growth_p, color = "Predict"))+
+  geom_line(data = CRE_modeldata, aes(Year_c, Growth_lwr, color = "95% CI"), linetype = "dashed")+
+  geom_line(data = CRE_modeldata, aes(Year_c, Growth_upr, color = "95% CI"), linetype = "dashed")+
+  preztheme + theme(legend.position = c(0.899, 0.91))+ axistheme +
+  ylab("Mean growth rate (mm/day)")+ 
+  scale_y_continuous(expand = c(0,0), limits = c(0,0.5)) +
+  scale_color_manual(name = "",
+                     breaks = c("Mean", "Predict", "95% CI"),
+                     values = c("#000000", "#FF0000", "#999999"),
+                     labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
+                     guide = guide_legend(override.aes = list(
+                       linetype = c("blank", "solid", "dashed"),
+                       shape = c(19, NA, NA))))
+#
+CRE_data %>% dplyr::select(Year, Temperature:Turbidity) %>% gather(Parameter, Measure, -Year) %>%
+  ggplot(aes(Year, Measure))+ 
+  geom_boxplot(fill = "#666666")+
+  lemon::facet_rep_grid(Parameter~., scales = "free_y")+
+  preztheme + facettheme
+#
+###END OF SECTION
 #
 #
 ####Extra code####
