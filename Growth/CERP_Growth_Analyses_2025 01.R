@@ -23,7 +23,7 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
 #Reading in Excel files, adding station information to dfs.
 #
 ##Station information
-Locations_raw <- read_excel("Growth_database_2025_02.xlsx", sheet = "FixedLocations", #File name and sheet name
+Locations_raw <- read_excel("Data/Growth_database_2025_02.xlsx", sheet = "FixedLocations", #File name and sheet name
                             skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                             na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                             .name_repair = "unique")
@@ -31,7 +31,7 @@ head(Locations_raw)
 (Locations <- Locations_raw %>% mutate(Site = as.factor(paste0(Estuary, SectionName))))
 #
 ###Water quality
-Cage_WQ_raw <- read_excel("Growth_database_2025_02.xlsx", sheet = "SampleEventWQ", #File name and sheet name
+Cage_WQ_raw <- read_excel("Data/Growth_database_2025_02.xlsx", sheet = "SampleEventWQ", #File name and sheet name
                           skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                           na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                           .name_repair = "unique")
@@ -47,7 +47,7 @@ glimpse(Cage_WQ_raw)
     left_join(Locations) %>% filter(FixedLocationID %in% Locations$FixedLocationID & MonYr < as.yearmon(as.Date("2025-01-01", format = "%Y-%m-%d"))))
 #
 #CRE
-CR_WQ_raw <- read_excel("CR_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
+CR_WQ_raw <- read_excel("Data/CR_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
                      skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                      na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                      .name_repair = "unique")
@@ -64,7 +64,7 @@ CRE_WQ <- CR_WQ %>% subset(FixedLocationID == "0231") %>% subset(MonYr > as.year
 CRW_WQ <- CR_WQ %>% subset(FixedLocationID == "0232") %>% subset(MonYr > as.yearmon("12-31-2017", format = "%m-%d-%Y"))
 #
 #LXN
-LXN_WQ_raw <- read_excel("LX_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
+LXN_WQ_raw <- read_excel("Data/LX_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
                         skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                         na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                         .name_repair = "unique")
@@ -78,7 +78,7 @@ glimpse(LXN_WQ_raw)
     subset(MonYr > as.yearmon("01-31-2015", format = "%m-%d-%Y")))
 #
 #SLC
-SLC_WQ_raw <- read_excel("SL_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
+SLC_WQ_raw <- read_excel("Data/SL_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
                          skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                          na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                          .name_repair = "unique")
@@ -96,7 +96,7 @@ glimpse(SLC_WQ_raw)
 #
 #
 ###Cage Counts
-Cage_counts_raw <- read_excel("Growth_database_2025_02.xlsx", sheet = "CageCount", #File name and sheet name
+Cage_counts_raw <- read_excel("Data/Growth_database_2025_02.xlsx", sheet = "CageCount", #File name and sheet name
                               skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                               na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                               .name_repair = "unique")
@@ -119,7 +119,7 @@ glimpse(Cage_counts_raw)
     filter(MonYr < as.yearmon(as.Date("2025-01-01", format = "%Y-%m-%d"))))
 #
 ###Cage SHS
-Cage_SH_raw <- read_excel("Growth_database_2025_02.xlsx", sheet = "CageSH", #File name and sheet name
+Cage_SH_raw <- read_excel("Data/Growth_database_2025_02.xlsx", sheet = "CageSH", #File name and sheet name
                           skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
                           na = c("", "Z", "z", "NA"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                           .name_repair = "unique")
