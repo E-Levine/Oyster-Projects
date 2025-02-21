@@ -934,15 +934,42 @@ DeadCount_demean %>%
 #
 ####Water quality####
 #
+###Comparing all Sites
+(All_data <- left_join(GrowthRates,
+                       Counts_cages %>% group_by(MonYr, Year, Month, Site, CageCountID) %>% summarise(DeadRate = mean(DeadRate, na.rm = T), DeadCountRate = mean(DeadCountRate, na.rm = T))) %>%
+   ungroup() %>% dplyr::select(-CageCountID) %>% mutate(Month = case_when(is.na(Month) ~ as.factor(format(MonYr, "%m")), TRUE ~ Month)) %>%
+   left_join(rbind(CRE_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), mean, na.rm = T)) %>% ungroup(), 
+                   CRW_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), mean, na.rm = T)) %>% ungroup()) %>% 
+               rbind(LXN_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), mean, na.rm = T)) %>% ungroup()) %>% 
+               rbind(SLC_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), mean, na.rm = T)) %>% ungroup()) %>%
+               mutate(stTemp = scale(Temperature)[,1], stSal = scale(Salinity)[,1], stDO = scale(DissolvedOxygen)[,1], stpH = scale(pH)[,1], stTurb = scale(Turbidity)[,1]) %>%
+               mutate(Year = as.factor(format(MonYr, "%Y")), Year_c = as.integer(format(MonYr, "%Y")))) %>%
+   dplyr::select(MonYr, Year, Site, everything()))
+#
+All_data %>% ggplot(aes(x = Growth_rate)) + geom_histogram(aes(y = ..count..)) + lemon::facet_rep_grid(Site~.) #CRE/SLC skewed slightly
+All_data %>% ggplot(aes(x = DeadRate)) + geom_histogram(aes(y = ..count..)) + lemon::facet_rep_grid(Site~.) 
+All_data %>% ggplot(aes(x = DeadCountRate)) + geom_histogram(aes(y = ..count..)) + lemon::facet_rep_grid(Site~.) #skewed
+#
+###Growth_rate
+All_growth <- All_data %>% dplyr::select(MonYr, Year_c, Site, Growth_rate, stTemp:stTurb)
+#Initial glm
+set.seed(54321)
+fullmodel_growth <- glm(Growth_rate ~ Year_c * Site * stTemp * stSal * stDO * stpH * stTurb, family = "gaussian", data = All_growth)
+fullmodel_growth_tab <- tidy(fullmodel_growth)
+names(fullmodel_growth_tab) <- c("term", "Est.", "SE", "t", "p-value")
+fullmodel_growth_sum <- glance(fullmodel_growth) 
+names(fullmodel_growth_sum) <- c("Null_dev", "Null_df", "LL", "AIC", "BIC", "Mod_dev", "Resid_df", "N")
+summary(fullmodel_growth); fullmodel_growth_sum
+##AIC - Model selection for final model - including YEAR
+Anova(fullmodel_growth)
+#
+#
+#
+#
+####MLR####
 ###Working by Site
 ##Create df of all data, Scale continuous WQ parameters
-(CRE_data <- full_join(GrowthRates %>% filter(Site == "CRE"),
-                      Counts_cages %>% filter(Site == "CRE") %>% group_by(MonYr, Year, Month, Site, CageCountID) %>% summarise(DeadRate = mean(DeadRate, na.rm = T), DeadCountRate = mean(DeadCountRate, na.rm = T))) %>%
-  ungroup() %>% dplyr::select(-CageCountID) %>%
-  left_join(CRE_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), mean, na.rm = T)) %>% ungroup() %>%
-              mutate(stTemp = scale(Temperature)[,1], stSal = scale(Salinity)[,1], stDO = scale(DissolvedOxygen)[,1], stpH = scale(pH)[,1], stTurb = scale(Turbidity)[,1]) %>%
-              mutate(Year = as.factor(format(MonYr, "%Y")), Year_c = as.integer(format(MonYr, "%Y")))) %>% 
-  dplyr::select(MonYr, Year, Site, everything()))
+(CRE_data <- All_data %>% filter(Site == "CRE"))
 #Check spread of response
 CRE_data %>% ggplot(aes(x = Growth_rate)) + geom_histogram(aes(y = ..count..)) 
 CRE_data %>% ggplot(aes(x = DeadRate)) + geom_histogram(aes(y = ..count..)) 
@@ -991,6 +1018,34 @@ CRE_data %>% dplyr::select(Year, Temperature:Turbidity) %>% gather(Parameter, Me
   preztheme + facettheme
 #
 ###END OF SECTION
+#
+#
+####Example code####
+#
+#
+#Change in proportions over time (Year)
+set.seed(5432)
+Prop_mod1 <- glmmTMB(sProp ~ Year * Final_Stage, data = Overall_counts, family = "beta_family")
+summary(Prop_mod1)
+plot(simulateResiduals(Prop_mod1)) #No issues
+testZeroInflation(Prop_mod1) #Not sig 
+testDispersion(Prop_mod1) #Not Sig
+testOutliers(Prop_mod1) #some
+testQuantiles(Prop_mod1)
+testCategorical(Prop_mod1, catPred = Overall_counts$Year)
+testCategorical(Prop_mod1, catPred = Overall_counts$Final_Stage)
+#
+Anova(Prop_mod1)
+(Prop_yr_summ <- tidy(Anova(Prop_mod1)) %>% rename("F" = statistic) %>% mutate_if(is.numeric,round, digits = 3))
+(Prop_m1_em <- emmeans(Prop_mod1, ~Year*Final_Stage, type = "response"))
+(Prop_m1_pairs <- pairs(Prop_m1_em, simple = "Year", adjust = "tukey") %>% as.data.frame() %>% dplyr::select(-df, -null) %>%
+    mutate(contrast = gsub("Year", "", contrast)))
+#
+(Prop_means <- Overall_counts %>% group_by(Year, Final_Stage) %>%
+    summarise(meanProp = round(mean(Prop), 3),
+              sdProp = round(sd(Prop), 3),
+              minProp = round(min(Prop), 3),
+              maxProp = round(max(Prop), 3)))
 #
 #
 ####Extra code####
