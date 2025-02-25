@@ -13,7 +13,7 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
                zoo, lubridate, forecast, #Dates and times
                readxl, #Reading excel files
                car, emmeans, multcomp, #Basic analyses
-               lmPerm,   
+               lmPerm, tweedie,  
                install = TRUE)
 #
 #
@@ -441,7 +441,10 @@ ShellHeights %>% group_by(Site) %>%
 ###Mortality by Site
 #
 (Counts_cages <- Cage_counts %>% group_by(MonYr, Site, CageCountID, CageColor) %>% 
-    summarise(DeadRate = mean(DeadRate, na.rm = T),
+    summarise(DepCount = DepCount,
+              AssumeDead = DepCount-LiveCount,
+              DeadCount = DeadCount,
+              DeadRate = mean(DeadRate, na.rm = T),
               DeadCountRate = mean(DeadCountRate, na.rm = T),
               MissPct = (MissCount/DepCount)*100) %>% 
               mutate(Comparison = case_when(round(DeadRate,3) == round(DeadCountRate,3) ~ 0, 
@@ -934,9 +937,11 @@ DeadCount_demean %>%
 #
 ####Water quality####
 #
-###Comparing all Sites
-(All_data <- left_join(GrowthRates,
-                       Counts_cages %>% group_by(MonYr, Year, Month, Site, CageCountID) %>% summarise(DeadRate = mean(DeadRate, na.rm = T), DeadCountRate = mean(DeadCountRate, na.rm = T))) %>%
+(Site_WQ_means <- All_data %>% group_by(Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), list(Mean = mean), na.rm = T)))
+#
+###Data for all Sites
+(All_data <- left_join(GrowthRates %>% mutate(Growth_rate = as.numeric(case_when(Growth_rate < 0 ~ 0, TRUE ~ Growth_rate))),
+                       Counts_cages %>% group_by(MonYr, Year, Month, Site, CageCountID) %>% summarise(DepCount = mean(DepCount), AssumeDead = mean(AssumeDead), DeadCount = mean(DeadCount), DeadRate = mean(DeadRate, na.rm = T), DeadCountRate = mean(DeadCountRate, na.rm = T))) %>%
    ungroup() %>% dplyr::select(-CageCountID) %>% mutate(Month = case_when(is.na(Month) ~ as.factor(format(MonYr, "%m")), TRUE ~ Month)) %>%
    left_join(rbind(CRE_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), mean, na.rm = T)) %>% ungroup(), 
                    CRW_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), mean, na.rm = T)) %>% ungroup()) %>% 
@@ -944,25 +949,222 @@ DeadCount_demean %>%
                rbind(SLC_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), mean, na.rm = T)) %>% ungroup()) %>%
                mutate(stTemp = scale(Temperature)[,1], stSal = scale(Salinity)[,1], stDO = scale(DissolvedOxygen)[,1], stpH = scale(pH)[,1], stTurb = scale(Turbidity)[,1]) %>%
                mutate(Year = as.factor(format(MonYr, "%Y")), Year_c = as.integer(format(MonYr, "%Y")))) %>%
+   left_join(Site_WQ_means) %>% mutate(Temp_diff = Temperature - Temperature_Mean, Salinity_diff = Salinity - Salinity_Mean,
+                                       DO_diff = DissolvedOxygen - DissolvedOxygen_Mean, pH_diff = pH - pH_Mean, 
+                                       Turbidity_diff = Turbidity - Turbidity_Mean) %>% 
+    dplyr::select(-contains("Mean")) %>% 
    dplyr::select(MonYr, Year, Site, everything()))
 #
-All_data %>% ggplot(aes(x = Growth_rate)) + geom_histogram(aes(y = ..count..)) + lemon::facet_rep_grid(Site~.) #CRE/SLC skewed slightly
-All_data %>% ggplot(aes(x = DeadRate)) + geom_histogram(aes(y = ..count..)) + lemon::facet_rep_grid(Site~.) 
+All_data %>% dplyr::select(-contains("st"), -DepCount, -contains("diff"), -Turbidity) %>%
+  gather(Parameter, Value, -MonYr, -Year, -Year_c, -Site, -Month) %>% 
+  ggplot(aes(MonYr, Value))+
+  geom_point()+
+  facet_grid(Parameter~Site, scales = "free")
+  
+#
+##Plots for initial comparisons
+ggarrange(
+  All_data %>% group_by(Year, Site) %>% summarise(across(c(Temperature), mean, na.rm = T)) %>%
+    ggplot(aes(Year, Temperature))+ 
+    geom_point()+
+    lemon::facet_rep_grid(Site~.) + theme_classic(),
+  All_data %>% group_by(Year, Site) %>% summarise(across(c(Temp_diff), mean, na.rm = T)) %>% 
+    ggplot(aes(Year, Temp_diff))+ 
+    geom_point()+ geom_hline(yintercept = 0, linetype = "dashed")+
+    lemon::facet_rep_grid(Site~.) + theme_classic(),
+  ncol = 2)
+#
+ggarrange(
+  All_data %>% group_by(Year, Site) %>% summarise(across(c(Salinity), mean, na.rm = T)) %>%
+    ggplot(aes(Year, Salinity))+ 
+    geom_point()+
+    lemon::facet_rep_grid(Site~.) + theme_classic(),
+  All_data %>% group_by(Year, Site) %>% summarise(across(c(Salinity_diff), mean, na.rm = T)) %>% 
+    ggplot(aes(Year, Salinity_diff))+ 
+    geom_point()+ geom_hline(yintercept = 0, linetype = "dashed")+
+    lemon::facet_rep_grid(Site~.) + theme_classic(),
+  ncol = 2)
+#
+ggarrange(
+  All_data %>% group_by(Year, Site) %>% summarise(across(c(DissolvedOxygen), mean, na.rm = T)) %>%
+    ggplot(aes(Year, DissolvedOxygen))+ 
+    geom_point()+
+    lemon::facet_rep_grid(Site~.) + theme_classic(),
+  All_data %>% group_by(Year, Site) %>% summarise(across(c(DO_diff), mean, na.rm = T)) %>% 
+    ggplot(aes(Year, DO_diff))+ 
+    geom_point()+ geom_hline(yintercept = 0, linetype = "dashed")+
+    lemon::facet_rep_grid(Site~.) + theme_classic(),
+  ncol = 2)
+#
+ggarrange(
+  All_data %>% group_by(Year, Site) %>% summarise(across(c(pH), mean, na.rm = T)) %>%
+    ggplot(aes(Year, pH))+ 
+    geom_point()+
+    lemon::facet_rep_grid(Site~.) + theme_classic(),
+  All_data %>% group_by(Year, Site) %>% summarise(across(c(pH_diff), mean, na.rm = T)) %>% 
+    ggplot(aes(Year, pH_diff))+ 
+    geom_point()+ geom_hline(yintercept = 0, linetype = "dashed")+
+    lemon::facet_rep_grid(Site~.) + theme_classic(),
+  ncol = 2)
+#
+ggarrange(
+  All_data %>% group_by(Year, Site) %>% summarise(across(c(Turbidity), mean, na.rm = T)) %>%
+    ggplot(aes(Year, Turbidity))+ 
+    geom_point()+
+    lemon::facet_rep_grid(Site~.) + theme_classic(),
+  All_data %>% group_by(Year, Site) %>% summarise(across(c(Turbidity_diff), mean, na.rm = T)) %>% 
+    ggplot(aes(Year, Turbidity_diff))+ 
+    geom_point()+ geom_hline(yintercept = 0, linetype = "dashed")+
+    lemon::facet_rep_grid(Site~.) + theme_classic(),
+  ncol = 2)
+#
+#
+#
+All_data %>% ggplot(aes(x = Growth_rate)) + geom_histogram(aes(y = ..count..)) + 
+  stat_function(data = All_data %>% filter(Site == "CRE"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "CRE"))$Growth_rate, na.rm = T), sd = sd((All_data %>% filter(Site == "CRE"))$Growth_rate, na.rm = T)), color = "red") + 
+  stat_function(data = All_data %>% filter(Site == "CRW"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "CRW"))$Growth_rate, na.rm = T), sd = sd((All_data %>% filter(Site == "CRW"))$Growth_rate, na.rm = T)), color = "red") + 
+  stat_function(data = All_data %>% filter(Site == "LXN"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "LXN"))$Growth_rate, na.rm = T), sd = sd((All_data %>% filter(Site == "LXN"))$Growth_rate, na.rm = T)), color = "red") + 
+  stat_function(data = All_data %>% filter(Site == "SLC"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "SLC"))$Growth_rate, na.rm = T), sd = sd((All_data %>% filter(Site == "SLC"))$Growth_rate, na.rm = T)), color = "red") +
+  lemon::facet_rep_grid(Site~., scales = "free_y") #CRE/SLC skewed slightly
 All_data %>% ggplot(aes(x = DeadCountRate)) + geom_histogram(aes(y = ..count..)) + lemon::facet_rep_grid(Site~.) #skewed
 #
+#
+#
+#
 ###Growth_rate
-All_growth <- All_data %>% dplyr::select(MonYr, Year_c, Site, Growth_rate, stTemp:stTurb)
+Sig_growth <- All_data %>% filter(Site == "LXN" | Site == "SLC") %>% dplyr::select(MonYr, Year_c, Site, Growth_rate, stTemp:stpH, Temp_diff:pH_diff) %>% drop_na() %>% droplevels()
 #Initial glm
 set.seed(54321)
-fullmodel_growth <- glm(Growth_rate ~ Year_c * Site * stTemp * stSal * stDO * stpH * stTurb, family = "gaussian", data = All_growth)
-fullmodel_growth_tab <- tidy(fullmodel_growth)
-names(fullmodel_growth_tab) <- c("term", "Est.", "SE", "t", "p-value")
-fullmodel_growth_sum <- glance(fullmodel_growth) 
-names(fullmodel_growth_sum) <- c("Null_dev", "Null_df", "LL", "AIC", "BIC", "Mod_dev", "Resid_df", "N")
-summary(fullmodel_growth); fullmodel_growth_sum
+LXNmodel_growth <- glm(Growth_rate ~ Year_c * stTemp * stSal * stDO * stpH, family = "gaussian", data = Sig_growth %>% filter(Site == "LXN")) 
+LXNmodel_growth_tab <- tidy(LXNmodel_growth)
+names(LXNmodel_growth_tab) <- c("term", "Est.", "SE", "t", "p-value")
+LXNmodel_growth_sum <- glance(LXNmodel_growth) 
+names(LXNmodel_growth_sum) <- c("Null_dev", "Null_df", "LL", "AIC", "BIC", "Mod_dev", "Resid_df", "N")
+summary(LXNmodel_growth); LXNmodel_growth_sum
+par(mfrow = c(2,2))
+plot(LXNmodel_growth)
+par(mfrow = c(1,1))
 ##AIC - Model selection for final model - including YEAR
-Anova(fullmodel_growth)
+anova(LXNmodel_growth, test = "Chisq")
 #
+ggarrange(
+  Sig_growth %>% filter(Site == "LXN") %>%
+    ggplot(aes(Year_c, Growth_rate))+
+    geom_point()+
+    geom_point(data = Sig_growth %>% filter(Site == "LXN") %>% group_by(Year_c) %>% summarise(Growth_rate = mean(Growth_rate, na.rm = T)), 
+               aes(Year_c, Growth_rate), color = "red", size = 6),
+  All_data %>% filter(Site == "LXN") %>%
+    ggplot(aes(Year_c, Temperature))+
+    geom_point()+
+    geom_point(data = All_data %>% filter(Site == "LXN") %>% group_by(Year_c) %>% summarise(Temperature = mean(Temperature, na.rm = T)), 
+               aes(Year_c, Temperature), color = "red", size = 6),
+  ncol = 2)
+#
+#
+#Initial glm
+set.seed(54321)
+SLCmodel_growth <- glm(Growth_rate ~ Year_c * stTemp * stSal * stDO * stpH, family = "gaussian", data = Sig_growth %>% filter(Site == "SLC")) 
+SLCmodel_growth_tab <- tidy(SLCmodel_growth)
+names(SLCmodel_growth_tab) <- c("term", "Est.", "SE", "t", "p-value")
+SLCmodel_growth_sum <- glance(SLCmodel_growth) 
+names(SLCmodel_growth_sum) <- c("Null_dev", "Null_df", "LL", "AIC", "BIC", "Mod_dev", "Resid_df", "N")
+summary(SLCmodel_growth); SLCmodel_growth_sum
+par(mfrow = c(2,2))
+plot(SLCmodel_growth)
+par(mfrow = c(1,1))
+##AIC - Model selection for final model - including YEAR
+anova(SLCmodel_growth, test = "Chisq")
+#
+ggarrange(
+  Sig_growth %>% filter(Site == "SLC") %>%
+    ggplot(aes(Year_c, Growth_rate))+
+    geom_point()+
+    geom_point(data = Sig_growth %>% filter(Site == "SLC") %>% group_by(Year_c) %>% summarise(Growth_rate = mean(Growth_rate, na.rm = T)), 
+               aes(Year_c, Growth_rate), color = "red", size = 6),
+  All_data %>% filter(Site == "SLC") %>%
+    ggplot(aes(Year_c, Temperature))+
+    geom_point()+
+    geom_point(data = All_data %>% filter(Site == "SLC") %>% group_by(Year_c) %>% summarise(Temperature = mean(Temperature, na.rm = T)), 
+               aes(Year_c, Temperature), color = "red", size = 6),
+  ncol = 2)
+#
+#
+#
+#
+#
+###DeadRate
+All_data %>% ggplot(aes(x = DeadRate)) + geom_histogram(aes(y = ..count..)) + 
+  stat_function(data = All_data %>% filter(Site == "CRE"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "CRE"))$DeadRate, na.rm = T), sd = sd((All_data %>% filter(Site == "CRE"))$DeadRate, na.rm = T)), color = "red") + 
+  stat_function(data = All_data %>% filter(Site == "CRW"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "CRW"))$DeadRate, na.rm = T), sd = sd((All_data %>% filter(Site == "CRW"))$DeadRate, na.rm = T)), color = "red") + 
+  stat_function(data = All_data %>% filter(Site == "LXN"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "LXN"))$DeadRate, na.rm = T), sd = sd((All_data %>% filter(Site == "LXN"))$DeadRate, na.rm = T)), color = "red") + 
+  stat_function(data = All_data %>% filter(Site == "SLC"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "SLC"))$DeadRate, na.rm = T), sd = sd((All_data %>% filter(Site == "SLC"))$DeadRate, na.rm = T)), color = "red") +
+  lemon::facet_rep_grid(Site~., scales = "free_y") #CRE/SLC skewed slightly
+#
+Sig_dead <- All_data %>% filter(Site != "CRE") %>% dplyr::select(MonYr, Year_c, Site, DeadRate, stTemp:stpH, Temp_diff:pH_diff) %>% mutate(DepRate = 1) %>% drop_na() %>% droplevels()
+#Initial glm
+set.seed(54321)
+LXNmodel_dead <- glm(DeadRate ~ Year_c * stTemp * stSal * stDO * stpH, family = "binomial", data = Sig_dead %>% filter(Site == "LXN"), weights = DepRate) 
+LXNmodel_dead_tab <- tidy(LXNmodel_dead)
+names(LXNmodel_dead_tab) <- c("term", "Est.", "SE", "t", "p-value")
+LXNmodel_dead_sum <- glance(LXNmodel_dead) 
+names(LXNmodel_dead_sum) <- c("Null_dev", "Null_df", "LL", "AIC", "BIC", "Mod_dev", "Resid_df", "N")
+summary(LXNmodel_dead); LXNmodel_dead_sum
+par(mfrow = c(2,2))
+plot(LXNmodel_dead)
+par(mfrow = c(1,1))
+##AIC - Model selection for final model - including YEAR
+anova(LXNmodel_dead, test = "Chisq")
+#
+Sig_dead %>% filter(Site == "LXN") %>%
+    ggplot(aes(Year_c, DeadRate))+
+    geom_point()+
+    geom_point(data = Sig_dead %>% filter(Site == "LXN") %>% group_by(Year_c) %>% summarise(DeadRate = mean(DeadRate, na.rm = T)), 
+               aes(Year_c, DeadRate), color = "red", size = 6)
+#
+#
+#
+#
+#Initial glm
+set.seed(54321)
+SLCmodel_dead <- glm(DeadRate ~ Year_c * stTemp * stSal * stDO * stpH, family = "binomial", data = Sig_dead %>% filter(Site == "SLC"), weights = DepRate) 
+SLCmodel_dead_tab <- tidy(SLCmodel_dead)
+names(SLCmodel_dead_tab) <- c("term", "Est.", "SE", "t", "p-value")
+SLCmodel_dead_sum <- glance(SLCmodel_dead) 
+names(SLCmodel_dead_sum) <- c("Null_dev", "Null_df", "LL", "AIC", "BIC", "Mod_dev", "Resid_df", "N")
+summary(SLCmodel_dead); SLCmodel_dead_sum
+par(mfrow = c(2,2))
+plot(SLCmodel_dead)
+par(mfrow = c(1,1))
+##AIC - Model selection for final model - including YEAR
+anova(SLCmodel_dead, test = "Chisq")
+#
+Sig_dead %>% filter(Site == "SLC") %>%
+  ggplot(aes(Year_c, DeadRate))+
+  geom_point()+
+  geom_point(data = Sig_dead %>% filter(Site == "SLC") %>% group_by(Year_c) %>% summarise(DeadRate = mean(DeadRate, na.rm = T)), 
+             aes(Year_c, DeadRate), color = "red", size = 6)
+#
+#
+#
+#Initial glm
+set.seed(54321)
+CRWmodel_dead <- glm(DeadRate ~ Year_c * stTemp * stSal * stDO * stpH, family = "binomial", data = Sig_dead %>% filter(Site == "CRW"), weights = DepRate) 
+CRWmodel_dead_tab <- tidy(CRWmodel_dead)
+names(CRWmodel_dead_tab) <- c("term", "Est.", "SE", "t", "p-value")
+CRWmodel_dead_sum <- glance(CRWmodel_dead) 
+names(CRWmodel_dead_sum) <- c("Null_dev", "Null_df", "LL", "AIC", "BIC", "Mod_dev", "Resid_df", "N")
+summary(CRWmodel_dead); CRWmodel_dead_sum
+par(mfrow = c(2,2))
+plot(CRWmodel_dead)
+par(mfrow = c(1,1))
+##AIC - Model selection for final model - including YEAR
+anova(CRWmodel_dead, test = "Chisq")
+#
+Sig_dead %>% filter(Site == "CRW") %>%
+  ggplot(aes(Year_c, DeadRate))+
+  geom_point()+
+  geom_point(data = Sig_dead %>% filter(Site == "CRW") %>% group_by(Year_c) %>% summarise(DeadRate = mean(DeadRate, na.rm = T)), 
+             aes(Year_c, DeadRate), color = "red", size = 6)
 #
 #
 #
