@@ -13,7 +13,7 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
                zoo, lubridate, forecast, #Dates and times
                readxl, #Reading excel files
                car, emmeans, multcomp, #Basic analyses
-               lmPerm, tweedie,  
+               lmPerm,  
                install = TRUE)
 #
 #
@@ -307,8 +307,8 @@ ShellHeights %>% group_by(Site) %>%
   geom_boxplot(fill = SiteColor)+
   scale_y_continuous("Depolyed shell height (mm)", expand = c(0,0), limits = c(0,100))+
   annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(85, 62, 69, 75), label = c("a", "b", "c", "d"), fontface = "bold", size = 5)+
-  ggtitle("Cage data through December 2024")+
-  preztheme + axistheme  
+  ggtitle("Cage data through December 2024") +
+  preztheme + axistheme + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
 ###Presentation fig: Site_dep_SH_ave -- 1000
 #
 #
@@ -337,7 +337,7 @@ ShellHeights %>% group_by(Site) %>%
   scale_y_continuous("Retrieved shell height (mm)", expand = c(0,0), limits = c(0,100))+
   annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(90, 72, 74, 77), label = c("a", "b", "c", "c"), fontface = "bold", size = 5)+
   ggtitle("Cage data through Dec 2024")+
-  preztheme + axistheme
+  preztheme + axistheme + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
 #
 ###Presentation fig: Site_ret_SH_ave -- 1000
 #
@@ -346,10 +346,10 @@ ShellHeights %>% group_by(Site) %>% dplyr::select(MonYr:CageColor, Dep_MeanSH, R
   gather("Type", "MeanSH", -MonYr, -CageCountID, -Site, -CageColor) %>%
   mutate(Type = as.factor(substr(Type, 1, 3))) %>%
   ggplot(aes(Site, MeanSH, fill = Site, pattern = Type)) +
-  #geom_point(aes(alpha = interaction(Site, Type)), position = "dodge") +
-  geom_boxplot_pattern(color = "black", linewidth = 0.75)+ scale_pattern_manual(values = c("none", "weave"))+
+  geom_boxplot_pattern(color = "black",  fill = c("#56B4E9", "#56B4E9", "#009E73", "#009E73", "#E69F00", "#E69F00", "#CC79A7", "#CC79A7"), linewidth = 0.75, pattern_key_scale_factor=.25)+ scale_pattern_manual(values = c("none", "weave"))+
   scale_y_continuous("Shell height (mm)", expand = c(0,0), limits = c(0,100))+
-  preztheme + axistheme + theme(legend.position = "none")
+  preztheme + axistheme + theme(legend.position = "top") +
+  guides(fill = "none", pattern = guide_legend(override.aes = list(size = 5, pattern_density = 0.5)))
 #
 ###Presentation fig: Site_SH_ave -- 1000
 #
@@ -430,7 +430,7 @@ ShellHeights %>% group_by(Site) %>%
   scale_y_continuous("Growth rate (mm/month)", expand = c(0,0), limits = c(0,40))+
   annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(34, 23, 25, 22), label = c("a", "b", "c", "b"), fontface = "bold", size = 5)+
   ggtitle("Cage data through Dec 2024")+
-  preztheme + axistheme
+  preztheme + axistheme  + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
 #
 ###Presentation fig: Site_growth_monthly -- 1000
 #
