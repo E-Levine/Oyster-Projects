@@ -306,7 +306,7 @@ ShellHeights %>% group_by(Site) %>%
   geom_point()+
   geom_boxplot(fill = SiteColor)+
   scale_y_continuous("Depolyed shell height (mm)", expand = c(0,0), limits = c(0,100))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(85, 62, 69, 75), label = c("a", "b", "c", "d"), fontface = "bold", size = 5)+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(85, 62, 69, 75), label = c("a", "d", "c", "b"), fontface = "bold", size = 5)+
   ggtitle("Cage data through December 2024") +
   preztheme + axistheme + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
 ###Presentation fig: Site_dep_SH_ave -- 1000
@@ -335,7 +335,7 @@ ShellHeights %>% group_by(Site) %>%
   geom_point()+
   geom_boxplot(fill = SiteColor)+
   scale_y_continuous("Retrieved shell height (mm)", expand = c(0,0), limits = c(0,100))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(90, 72, 74, 77), label = c("a", "b", "c", "c"), fontface = "bold", size = 5)+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(90, 72, 74, 77), label = c("a", "c", "b", "b"), fontface = "bold", size = 5)+
   ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
 #
@@ -347,9 +347,9 @@ ShellHeights %>% group_by(Site) %>% dplyr::select(MonYr:CageColor, Dep_MeanSH, R
   mutate(Type = as.factor(substr(Type, 1, 3))) %>%
   ggplot(aes(Site, MeanSH, fill = Site, pattern = Type)) +
   geom_boxplot_pattern(color = "black",  fill = c("#56B4E9", "#56B4E9", "#009E73", "#009E73", "#E69F00", "#E69F00", "#CC79A7", "#CC79A7"), linewidth = 0.75, pattern_key_scale_factor=.25)+ scale_pattern_manual(values = c("none", "weave"))+
-  scale_y_continuous("Shell height (mm)", expand = c(0,0), limits = c(0,100))+
-  preztheme + axistheme + theme(legend.position = "top") +
-  guides(fill = "none", pattern = guide_legend(override.aes = list(size = 5, pattern_density = 0.5)))
+  scale_y_continuous("Mean shell height (mm)", expand = c(0,0), limits = c(0,100))+
+  preztheme + axistheme + theme(legend.position = "top", legend.text = element_text(size = 14), legend.title = element_text(size = 15)) +
+  guides(fill = "none", pattern = guide_legend(override.aes = list(size = 10, pattern_density = 0.5)))
 #
 ###Presentation fig: Site_SH_ave -- 1000
 #
@@ -389,7 +389,7 @@ ShellHeights %>% group_by(Site) %>%
   geom_point()+
   geom_boxplot(fill = SiteColor)+
   scale_y_continuous("Growth rate (mm/day)", expand = c(0,0), limits = c(0,1.25))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(1.19, 0.83, 0.89, 0.8), label = c("a", "b", "c", "b"), fontface = "bold", size = 5)+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(1.19, 0.83, 0.89, 0.8), label = c("a", "c", "b", "c"), fontface = "bold", size = 5)+
   ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme
 #
@@ -428,7 +428,7 @@ ShellHeights %>% group_by(Site) %>%
   geom_point()+
   geom_boxplot(fill = SiteColor)+
   scale_y_continuous("Growth rate (mm/month)", expand = c(0,0), limits = c(0,40))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(34, 23, 25, 22), label = c("a", "b", "c", "b"), fontface = "bold", size = 5)+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(34, 23, 25, 22), label = c("a", "c", "b", "c"), fontface = "bold", size = 5)+
   ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme  + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
 #
@@ -492,7 +492,7 @@ Counts_cages %>% group_by(Site) %>%
   ggplot(aes(Site, DeadRate))+
   geom_boxplot(fill = SiteColor)+
   geom_jitter(width = 0.15)+
-  scale_y_continuous("Mean mortality rate", expand = c(0,0), limits = c(0,1.15), breaks = seq(0, 1, by = 0.2))+
+  scale_y_continuous("Mean percent mortality", expand = c(0,0), labels = percent_format(), limits = c(0,1.15), breaks = seq(0, 1, by = 0.2))+
   annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(1.1, 1.1, 1.1, 1.1), label = c("ab", "a", "b", "b"), fontface = "bold", size = 5)+
   ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
@@ -538,7 +538,7 @@ Counts_cages %>% group_by(Site) %>%
   ggplot(aes(Site, DeadCountRate))+
   geom_boxplot(fill = SiteColor)+
   geom_jitter(width = 0.15)+
-  scale_y_continuous("Mean dead rate", expand = c(0,0), limits = c(0,0.5))+
+  scale_y_continuous("Mean percent dead", expand = c(0,0), limits = c(0,0.5), labels = percent_format())+
   ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
 #
@@ -1066,6 +1066,16 @@ detrending <- function(df, param){
                         SalAdj  = detrending(All_WQ_clean %>% group_by(MonYr) %>% summarise(Salinity = mean(Salinity, na.rm = T)), "Salinity"),
                         DOAdj = detrending(All_WQ_clean %>% group_by(MonYr) %>% summarise(DissolvedOxygen = mean(DissolvedOxygen, na.rm = T)), "DissolvedOxygen"),
                         pHAdj = detrending(All_WQ_clean %>% group_by(MonYr) %>% summarise(pH = mean(pH, na.rm = T)), "pH")))
+#
+All_WQ_clean %>% rename("DO" = DissolvedOxygen) %>% gather(Parameter, Value, -MonYr, -Site) %>%
+  ggplot(aes(MonYr, Value))+
+  geom_line(aes(group = Site, color = Site), size = 1.5)+
+  lemon::facet_rep_grid(Parameter~., scales = "free_y", switch = "y")+
+  scale_color_manual(values = SiteColor)+ xlab("Year")+
+  scale_x_yearmon(expand = c(0.01,0), limits = c(as.yearmon("Jul 2015", format = "%b %Y"), as.yearmon("Dec 2024", format = "%b %Y")))+
+  preztheme + facettheme + theme(legend.position = "bottom", legend.title = element_blank(), legend.text = element_text(size = 14), panel.spacing.y = unit(1, "lines"))
+#
+###Presentation fig: All_WQ_patterns -- 1000
 #
 Alldata <- left_join(AllWQ_adj, GrowthMonth %>% group_by(MonYr) %>% summarise(MeanMonthly = mean(Growth_rate, na.rm = T))) %>% 
   drop_na() %>% mutate(Year = as.integer(format(MonYr, "%Y")))
