@@ -1070,7 +1070,7 @@ detrending <- function(df, param){
 Alldata <- left_join(AllWQ_adj, GrowthMonth %>% group_by(MonYr) %>% summarise(MeanMonthly = mean(Growth_rate, na.rm = T))) %>% 
   drop_na() %>% mutate(Year = as.integer(format(MonYr, "%Y")))
 ##Vizualize data##
-#Get summary mean/sd per grouping Quarter x Bay x IvO
+#Get summary mean/sd
 Alldata %>% group_by(Year) %>% rstatix::get_summary_stats(MeanMonthly, type = "mean_sd")
 ggboxplot(Alldata, x = "Year", y = "MeanMonthly")
 Alldata %>% ggplot(aes(x = MeanMonthly))+ geom_histogram(aes(y = ..count..)) #Has zeros, add constant for comparison
@@ -1114,7 +1114,7 @@ ggplot(Alldata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm =
                        linetype = c("blank", "solid", "dashed"),
                        shape = c(19, NA, NA))))
 #
-###Presentation fig: Annual_growth_model -- 1000
+###Presentation fig: Growth_model_annual -- 1000
 #
 #
 ###Predictions###
@@ -1160,3 +1160,263 @@ preztheme + theme(legend.position = c(0.899, 0.91))+ axistheme +
                      guide = guide_legend(override.aes = list(
                        linetype = c("blank", "solid", "dashed"),
                        shape = c(19, NA, NA))))
+
+####Water quality - CRE####
+#
+##Working within estuary
+#
+###Detrend each parameter - additive
+detrending <- function(df, param){
+  temp <- df %>% ungroup() %>% dplyr::select(c("MonYr", param))
+  #temp$MonYr <- as.yearmon(temp$MonYr, format = "%m/%Y")
+  temp <- na.interp(as.ts(read.zoo(temp, FUN = as.yearmon)))
+  temp %>% decompose("additive") -> decompTemp
+  tempAdj <- temp-decompTemp$seasonal
+  return(tempAdj)
+}
+#
+(CREWQ_adj <- data.frame(MonYr = as.yearmon(time(detrending((All_WQ_clean %>% filter(Site == "CRE")) %>% group_by(MonYr) %>% summarise(Temperature = mean(Temperature, na.rm = T)), "Temperature"))),
+                         TempAdj = detrending((All_WQ_clean %>% filter(Site == "CRE")) %>% group_by(MonYr) %>% summarise(Temperature = mean(Temperature, na.rm = T)), "Temperature"),
+                         SalAdj  = detrending((All_WQ_clean %>% filter(Site == "CRE")) %>% group_by(MonYr) %>% summarise(Salinity = mean(Salinity, na.rm = T)), "Salinity"),
+                         DOAdj = detrending((All_WQ_clean %>% filter(Site == "CRE")) %>% group_by(MonYr) %>% summarise(DissolvedOxygen = mean(DissolvedOxygen, na.rm = T)), "DissolvedOxygen"),
+                         pHAdj = detrending((All_WQ_clean %>% filter(Site == "CRE")) %>% group_by(MonYr) %>% summarise(pH = mean(pH, na.rm = T)), "pH")))
+#
+CREdata <- left_join(CREWQ_adj, GrowthMonth %>% filter(Site == "CRE") %>% group_by(MonYr) %>% summarise(MeanMonthly = mean(Growth_rate, na.rm = T))) %>% 
+  drop_na() %>% mutate(Year = as.integer(format(MonYr, "%Y")))
+##Vizualize data##
+#Get summary mean/sd
+CREdata %>% group_by(Year) %>% rstatix::get_summary_stats(MeanMonthly, type = "mean_sd")
+ggboxplot(CREdata, x = "Year", y = "MeanMonthly")
+CREdata %>% ggplot(aes(x = MeanMonthly))+ geom_histogram(aes(y = ..count..)) #Has negatives, add constant for comparison
+CREdata <- CREdata %>% mutate(MeanMonthly1 = MeanMonthly + 2)
+CREdata %>% ggplot(aes(x = MeanMonthly1))+ geom_histogram(aes(y = ..count..)) #Has negatives, add constant for comparison
+#
+#
+##Initial MLR - all dat, growth
+set.seed(54321)
+CRE_growth <- lm(MeanMonthly1 ~ ., data = CREdata %>% dplyr::select(-MonYr, -MeanMonthly))
+CRE_growth_tab <- tidy(CRE_growth)
+names(CRE_growth_tab) <- c("term", "Est.", "SE", "t", "p-value")
+CRE_growth_sum <- glance(CRE_growth) %>% dplyr::select(r.squared:df, deviance:df.residual)
+names(CRE_growth_sum) <- c("R2", "adjR2", "RSE", "F", "p-value", "df", "RSS", "Resid.df")
+CRE_growth_tab; CRE_growth_sum
+##AIC - Model selection for final model - including YEAR
+CRE_growth_step <- stepAIC(CRE_growth, direction = "backward")
+set.seed(54321)
+CRE_growth_final <- update(CRE_growth, .~. -TempAdj -SalAdj -DOAdj -pHAdj, data = CREdata %>% dplyr::select(-MonYr, -MeanMonthly))
+tidy(CRE_growth_final)
+glance(CRE_growth_final) %>% dplyr::select(r.squared:df, deviance:df.residual)
+#R2 is higher with all parameters
+(CRE_growth_modeldata <- cbind(data.frame(Growth_p = predict(CRE_growth, (CREdata %>% dplyr::select(-MonYr, -MeanMonthly)))-2, Year = CREdata$Year),
+                               predict(CRE_growth, interval = "confidence")-2) %>% dplyr::select(-fit) %>% dplyr::select(Year, Growth_p, everything()) %>%
+    group_by(Year) %>% dplyr::summarise(Growth_p = mean(Growth_p, na.rm = T), Growth_lwr = mean(lwr), Growth_upr = mean(upr)))
+#
+ggplot(CREdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm = T)))+
+  geom_point(aes(Year, mean, color = "Mean"), size = 4)+
+  geom_line(data = CRE_growth_modeldata, aes(Year, Growth_p, color = "Predict"), size = 1.25)+
+  geom_line(data = CRE_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  geom_line(data = CRE_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16))+ axistheme +
+  ylab("Mean growth rate (mm/month)")+ 
+  scale_x_continuous(expand = c(0.1,0), limits = c(2019, 2024), breaks = seq(2019, 2024, 1))+
+  scale_y_continuous(expand = c(0,0), limits = c(0,20)) +
+  scale_color_manual(name = "",
+                     breaks = c("Mean", "Predict", "95% CI"),
+                     values = c("#000000", "#FF0000", "#999999"),
+                     labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
+                     guide = guide_legend(override.aes = list(
+                       linetype = c("blank", "solid", "dashed"),
+                       shape = c(19, NA, NA))))
+#
+###Presentation fig: Growth_model_CRE -- 1000
+#
+#
+
+
+####Water quality - CRW####
+#
+##Working within estuary
+#
+(CRWWQ_adj <- data.frame(MonYr = as.yearmon(time(detrending((All_WQ_clean %>% filter(Site == "CRW")) %>% group_by(MonYr) %>% summarise(Temperature = mean(Temperature, na.rm = T)), "Temperature"))),
+                         TempAdj = detrending((All_WQ_clean %>% filter(Site == "CRW")) %>% group_by(MonYr) %>% summarise(Temperature = mean(Temperature, na.rm = T)), "Temperature"),
+                         SalAdj  = detrending((All_WQ_clean %>% filter(Site == "CRW")) %>% group_by(MonYr) %>% summarise(Salinity = mean(Salinity, na.rm = T)), "Salinity"),
+                         DOAdj = detrending((All_WQ_clean %>% filter(Site == "CRW")) %>% group_by(MonYr) %>% summarise(DissolvedOxygen = mean(DissolvedOxygen, na.rm = T)), "DissolvedOxygen"),
+                         pHAdj = detrending((All_WQ_clean %>% filter(Site == "CRW")) %>% group_by(MonYr) %>% summarise(pH = mean(pH, na.rm = T)), "pH")))
+#
+CRWdata <- left_join(CRWWQ_adj, GrowthMonth %>% filter(Site == "CRW") %>% group_by(MonYr) %>% summarise(MeanMonthly = mean(Growth_rate, na.rm = T))) %>% 
+  drop_na() %>% mutate(Year = as.integer(format(MonYr, "%Y")))
+##Vizualize data##
+#Get summary mean/sd
+CRWdata %>% group_by(Year) %>% rstatix::get_summary_stats(MeanMonthly, type = "mean_sd")
+ggboxplot(CRWdata, x = "Year", y = "MeanMonthly")
+CRWdata %>% ggplot(aes(x = MeanMonthly))+ geom_histogram(aes(y = ..count..)) #Has negatives, add constant for comparison
+CRWdata <- CRWdata %>% mutate(MeanMonthly1 = MeanMonthly + 6)
+CRWdata %>% ggplot(aes(x = MeanMonthly1))+ geom_histogram(aes(y = ..count..)) #Has negatives, add constant for comparison
+#
+#
+##Initial MLR - all dat, growth
+set.seed(54321)
+CRW_growth <- lm(MeanMonthly1 ~ ., data = CRWdata %>% dplyr::select(-MonYr, -MeanMonthly))
+CRW_growth_tab <- tidy(CRW_growth)
+names(CRW_growth_tab) <- c("term", "Est.", "SE", "t", "p-value")
+CRW_growth_sum <- glance(CRW_growth) %>% dplyr::select(r.squared:df, deviance:df.residual)
+names(CRW_growth_sum) <- c("R2", "adjR2", "RSE", "F", "p-value", "df", "RSS", "Resid.df")
+CRW_growth_tab; CRW_growth_sum
+##AIC - Model selection for final model - including YEAR
+CRW_growth_step <- stepAIC(CRW_growth, direction = "backward")
+set.seed(54321)
+CRW_growth_final <- update(CRW_growth, .~. -TempAdj -SalAdj, data = CRWdata %>% dplyr::select(-MonYr, -MeanMonthly))
+tidy(CRW_growth_final)
+glance(CRW_growth_final) %>% dplyr::select(r.squared:df, deviance:df.residual)
+#
+(CRW_growth_modeldata <- cbind(data.frame(Growth_p = predict(CRW_growth, (CRWdata %>% dplyr::select(-MonYr, -MeanMonthly)))-6, Year = CRWdata$Year),
+                               predict(CRW_growth, interval = "confidence")-6) %>% dplyr::select(-fit) %>% dplyr::select(Year, Growth_p, everything()) %>%
+    group_by(Year) %>% dplyr::summarise(Growth_p = mean(Growth_p, na.rm = T), Growth_lwr = mean(lwr), Growth_upr = mean(upr)))
+#
+ggplot(CRWdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm = T)))+
+  geom_point(aes(Year, mean, color = "Mean"), size = 4)+
+  geom_line(data = CRW_growth_modeldata, aes(Year, Growth_p, color = "Predict"), size = 1.25)+
+  geom_line(data = CRW_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  geom_line(data = CRW_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16))+ axistheme +
+  ylab("Mean growth rate (mm/month)")+ 
+  scale_x_continuous(expand = c(0.1,0), limits = c(2018, 2024), breaks = seq(2018, 2024, 1))+
+  scale_y_continuous(expand = c(0,0), limits = c(0,10)) +
+  scale_color_manual(name = "",
+                     breaks = c("Mean", "Predict", "95% CI"),
+                     values = c("#000000", "#FF0000", "#999999"),
+                     labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
+                     guide = guide_legend(override.aes = list(
+                       linetype = c("blank", "solid", "dashed"),
+                       shape = c(19, NA, NA))))
+#
+###Presentation fig: Growth_model_CRW -- 1000
+#
+#
+#
+#
+
+
+####Water quality - LXN####
+#
+##Working within estuary
+#
+(LXNWQ_adj <- data.frame(MonYr = as.yearmon(time(detrending((All_WQ_clean %>% filter(Site == "LXN")) %>% group_by(MonYr) %>% summarise(Temperature = mean(Temperature, na.rm = T)), "Temperature"))),
+                         TempAdj = detrending((All_WQ_clean %>% filter(Site == "LXN")) %>% group_by(MonYr) %>% summarise(Temperature = mean(Temperature, na.rm = T)), "Temperature"),
+                         SalAdj  = detrending((All_WQ_clean %>% filter(Site == "LXN")) %>% group_by(MonYr) %>% summarise(Salinity = mean(Salinity, na.rm = T)), "Salinity"),
+                         DOAdj = detrending((All_WQ_clean %>% filter(Site == "LXN")) %>% group_by(MonYr) %>% summarise(DissolvedOxygen = mean(DissolvedOxygen, na.rm = T)), "DissolvedOxygen"),
+                         pHAdj = detrending((All_WQ_clean %>% filter(Site == "LXN")) %>% group_by(MonYr) %>% summarise(pH = mean(pH, na.rm = T)), "pH")))
+#
+LXNdata <- left_join(LXNWQ_adj, GrowthMonth %>% filter(Site == "LXN") %>% group_by(MonYr) %>% summarise(MeanMonthly = mean(Growth_rate, na.rm = T))) %>% 
+  drop_na() %>% mutate(Year = as.integer(format(MonYr, "%Y")))
+##Vizualize data##
+#Get summary mean/sd
+LXNdata %>% group_by(Year) %>% rstatix::get_summary_stats(MeanMonthly, type = "mean_sd")
+ggboxplot(LXNdata, x = "Year", y = "MeanMonthly")
+LXNdata %>% ggplot(aes(x = MeanMonthly))+ geom_histogram(aes(y = ..count..)) #
+#
+#
+##Initial MLR - all dat, growth
+set.seed(54321)
+LXN_growth <- lm(MeanMonthly ~ ., data = LXNdata %>% dplyr::select(-MonYr))
+LXN_growth_tab <- tidy(LXN_growth)
+names(LXN_growth_tab) <- c("term", "Est.", "SE", "t", "p-value")
+LXN_growth_sum <- glance(LXN_growth) %>% dplyr::select(r.squared:df, deviance:df.residual)
+names(LXN_growth_sum) <- c("R2", "adjR2", "RSE", "F", "p-value", "df", "RSS", "Resid.df")
+LXN_growth_tab; LXN_growth_sum
+##AIC - Model selection for final model - including YEAR
+LXN_growth_step <- stepAIC(LXN_growth, direction = "backward")
+set.seed(54321)
+LXN_growth_final <- update(LXN_growth, .~. -TempAdj -DOAdj, data = LXNdata %>% dplyr::select(-MonYr))
+tidy(LXN_growth_final)
+glance(LXN_growth_final) %>% dplyr::select(r.squared:df, deviance:df.residual)
+#
+(LXN_growth_modeldata <- cbind(data.frame(Growth_p = predict(LXN_growth, (LXNdata %>% dplyr::select(-MonYr))), Year = LXNdata$Year),
+                               predict(LXN_growth, interval = "confidence")) %>% dplyr::select(-fit) %>% dplyr::select(Year, Growth_p, everything()) %>%
+    group_by(Year) %>% dplyr::summarise(Growth_p = mean(Growth_p, na.rm = T), Growth_lwr = mean(lwr), Growth_upr = mean(upr)))
+#
+ggplot(LXNdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm = T)))+
+  geom_point(aes(Year, mean, color = "Mean"), size = 4)+
+  geom_line(data = LXN_growth_modeldata, aes(Year, Growth_p, color = "Predict"), size = 1.25)+
+  geom_line(data = LXN_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  geom_line(data = LXN_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16))+ axistheme +
+  ylab("Mean growth rate (mm/month)")+ 
+  scale_x_continuous(expand = c(0.1,0), limits = c(2015, 2024), breaks = seq(2015, 2024, 1))+
+  scale_y_continuous(expand = c(0,0), limits = c(0,10)) +
+  scale_color_manual(name = "",
+                     breaks = c("Mean", "Predict", "95% CI"),
+                     values = c("#000000", "#FF0000", "#999999"),
+                     labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
+                     guide = guide_legend(override.aes = list(
+                       linetype = c("blank", "solid", "dashed"),
+                       shape = c(19, NA, NA))))
+#
+###Presentation fig: Growth_model_LXN -- 1000
+#
+#
+#
+#
+####Water quality - SLC####
+#
+##Working within estuary
+#
+(SLCWQ_adj <- data.frame(MonYr = as.yearmon(time(detrending((All_WQ_clean %>% filter(Site == "SLC")) %>% group_by(MonYr) %>% summarise(Temperature = mean(Temperature, na.rm = T)), "Temperature"))),
+                         TempAdj = detrending((All_WQ_clean %>% filter(Site == "SLC")) %>% group_by(MonYr) %>% summarise(Temperature = mean(Temperature, na.rm = T)), "Temperature"),
+                         SalAdj  = detrending((All_WQ_clean %>% filter(Site == "SLC")) %>% group_by(MonYr) %>% summarise(Salinity = mean(Salinity, na.rm = T)), "Salinity"),
+                         DOAdj = detrending((All_WQ_clean %>% filter(Site == "SLC")) %>% group_by(MonYr) %>% summarise(DissolvedOxygen = mean(DissolvedOxygen, na.rm = T)), "DissolvedOxygen"),
+                         pHAdj = detrending((All_WQ_clean %>% filter(Site == "SLC")) %>% group_by(MonYr) %>% summarise(pH = mean(pH, na.rm = T)), "pH")))
+#
+SLCdata <- left_join(SLCWQ_adj, GrowthMonth %>% filter(Site == "SLC") %>% group_by(MonYr) %>% summarise(MeanMonthly = mean(Growth_rate, na.rm = T))) %>% 
+  drop_na() %>% mutate(Year = as.integer(format(MonYr, "%Y")))
+##Vizualize data##
+#Get summary mean/sd
+SLCdata %>% group_by(Year) %>% rstatix::get_summary_stats(MeanMonthly, type = "mean_sd")
+ggboxplot(SLCdata, x = "Year", y = "MeanMonthly")
+SLCdata %>% ggplot(aes(x = MeanMonthly))+ geom_histogram(aes(y = ..count..)) #
+SLCdata <- SLCdata %>% mutate(MeanMonthly1 = MeanMonthly + 5)
+SLCdata %>% ggplot(aes(x = MeanMonthly1))+ geom_histogram(aes(y = ..count..)) #Has negatives, add constant for comparison
+
+#
+#
+##Initial MLR - all dat, growth
+set.seed(54321)
+SLC_growth <- lm(MeanMonthly1 ~ ., data = SLCdata %>% dplyr::select(-MonYr, -MeanMonthly))
+SLC_growth_tab <- tidy(SLC_growth)
+names(SLC_growth_tab) <- c("term", "Est.", "SE", "t", "p-value")
+SLC_growth_sum <- glance(SLC_growth) %>% dplyr::select(r.squared:df, deviance:df.residual)
+names(SLC_growth_sum) <- c("R2", "adjR2", "RSE", "F", "p-value", "df", "RSS", "Resid.df")
+SLC_growth_tab; SLC_growth_sum
+##AIC - Model selection for final model - including YEAR
+SLC_growth_step <- stepAIC(SLC_growth, direction = "backward")
+set.seed(54321)
+SLC_growth_final <- update(SLC_growth, .~. -TempAdj -SalAdj -DOAdj -pHAdj, data = SLCdata %>% dplyr::select(-MonYr, -MeanMonthly))
+tidy(SLC_growth_final)
+glance(SLC_growth_final) %>% dplyr::select(r.squared:df, deviance:df.residual)
+#
+(SLC_growth_modeldata <- cbind(data.frame(Growth_p = predict(SLC_growth, (SLCdata %>% dplyr::select(-MonYr)))-5, Year = SLCdata$Year),
+                               predict(SLC_growth, interval = "confidence")-5) %>% dplyr::select(-fit) %>% dplyr::select(Year, Growth_p, everything()) %>%
+    group_by(Year) %>% dplyr::summarise(Growth_p = mean(Growth_p, na.rm = T), Growth_lwr = mean(lwr), Growth_upr = mean(upr)))
+#
+ggplot(SLCdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm = T)))+
+  geom_point(aes(Year, mean, color = "Mean"), size = 4)+
+  geom_line(data = SLC_growth_modeldata, aes(Year, Growth_p, color = "Predict"), size = 1.25)+
+  geom_line(data = SLC_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  geom_line(data = SLC_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16))+ axistheme +
+  ylab("Mean growth rate (mm/month)")+ 
+  scale_x_continuous(expand = c(0.1,0), limits = c(2015, 2024), breaks = seq(2015, 2024, 1))+
+  scale_y_continuous(expand = c(0,0), limits = c(0,10)) +
+  scale_color_manual(name = "",
+                     breaks = c("Mean", "Predict", "95% CI"),
+                     values = c("#000000", "#FF0000", "#999999"),
+                     labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
+                     guide = guide_legend(override.aes = list(
+                       linetype = c("blank", "solid", "dashed"),
+                       shape = c(19, NA, NA))))
+#
+###Presentation fig: Growth_model_SLC -- 1000
+#
+#
+#
+#
