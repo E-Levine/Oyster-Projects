@@ -447,10 +447,7 @@ ShellHeights %>% group_by(Site) %>%
               DeadRate = mean(DeadRate, na.rm = T),
               DeadCountRate = mean(DeadCountRate, na.rm = T),
               MissPct = (MissCount/DepCount)*100) %>% 
-              mutate(Comparison = case_when(round(DeadRate,3) == round(DeadCountRate,3) ~ 0, 
-                                            round(DeadRate,3) > round(DeadCountRate,3) ~ 1, 
-                                            round(DeadRate,3) < round(DeadCountRate,3) ~ -1, TRUE ~ NA)) %>%
-    mutate(Year = as.factor(format(MonYr, "%Y")), Month = as.factor(format(MonYr, "%m"))))
+              mutate(Year = as.factor(format(MonYr, "%Y")), Month = as.factor(format(MonYr, "%m"))))
 #
 ##Summary by site/station per MonYr and by Site overall
 (Dead_summ <- Counts_cages %>% group_by(MonYr, Year, Site, CageCountID) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)))
@@ -463,14 +460,14 @@ ggarrange(
     geom_point()+
     geom_boxplot()+
     scale_y_continuous("Mean mortality rate", expand = c(0,0), limits = c(0,1))+
-    ggtitle("Cage data  Feb 2005 - Sept 2024")+
+    ggtitle("Cage data through Dec 2024")+
     basetheme + axistheme,
   Counts_cages %>% group_by(Site) %>%
     ggplot(aes(Site, DeadCountRate))+
     geom_point()+
     geom_boxplot()+
     scale_y_continuous("Mean dead count rate", expand = c(0,0), limits = c(0,1))+
-    ggtitle("Cage data  Feb 2005 - Sept 2024")+
+    ggtitle("Cage data through Dec 2024")+
     basetheme + axistheme
 )
 #
@@ -498,7 +495,7 @@ Counts_cages %>% group_by(Site) %>%
   scale_y_continuous("Mean mortality rate", expand = c(0,0), limits = c(0,1.15), breaks = seq(0, 1, by = 0.2))+
   annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(1.1, 1.1, 1.1, 1.1), label = c("ab", "a", "b", "b"), fontface = "bold", size = 5)+
   ggtitle("Cage data through Dec 2024")+
-  preztheme + axistheme
+  preztheme + axistheme + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
 #
 ###Presentation fig: Site_mortality -- 1000
 #
@@ -541,9 +538,9 @@ Counts_cages %>% group_by(Site) %>%
   ggplot(aes(Site, DeadCountRate))+
   geom_boxplot(fill = SiteColor)+
   geom_jitter(width = 0.15)+
-  scale_y_continuous("Mean dead count rate", expand = c(0,0), limits = c(0,0.5))+
+  scale_y_continuous("Mean dead rate", expand = c(0,0), limits = c(0,0.5))+
   ggtitle("Cage data through Dec 2024")+
-  preztheme + axistheme
+  preztheme + axistheme + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
 #
 ###Presentation fig: Site_deadCount -- 1000
 #
@@ -606,12 +603,12 @@ names(Annual_dep_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 #
 Annual_dep_comps %>% 
   ggplot(aes(Year, mean, group = 1))+
-  geom_point(aes(color = Site), size = 4)+
-  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25, size = 1)+
-  geom_line()+
+  geom_point(aes(color = Site), size = 6)+
+  #geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25, size = 1)+
+  geom_line(aes(color = Site), size = 1.5)+
   lemon::facet_rep_grid(Site~.)+
-  geom_text(aes(y = upper+10, label = Letters), size = 5) +
-  scale_y_continuous("Mean deployed shell height (mm)", expand = c(0,0), limits= c(0, 90), breaks = seq(0, 90, by = 30))+
+  #geom_text(aes(y = upper+10, label = Letters), size = 5) +
+  scale_y_continuous("Mean deployed shell height (mm)", expand = c(0,0), limits= c(0, 75), breaks = seq(0, 75, by = 25))+
   scale_color_manual(values = SiteColor)+
   preztheme + axistheme + theme(legend.position = "none") + facettheme
 #
@@ -645,8 +642,8 @@ DepSH_demean %>%
   scale_fill_manual(values = SiteColor)+
   lemon::facet_rep_grid(Site~.)+
   geom_hline(yintercept = 0, linetype = "dashed", linewidth =1)+
-  scale_y_continuous("Mean shell height difference", limits = c(-10, 10), expand = c(0,0), breaks = seq(-10, 10, by = 5))+
-  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0, "lines"), axis.text.x = element_text(angle = 25))
+  scale_y_continuous("Difference from mean shell height", limits = c(-8, 8), expand = c(0,0), breaks = seq(-8, 8, by = 4))+
+  preztheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines")) + facettheme 
 #
 ###Presentation fig: Site_dep_SH_annual_demean -- 1000
 #
@@ -662,11 +659,11 @@ DepSH_demean %>%
                               Cage_counts_raw %>% mutate(CageCountID = substr(CageCountID, 1, 22)) %>% 
                                 filter(DataType == "Retrieved") %>% dplyr::select(CageCountID, CageColor, TotalCount, DaysDeployed)) %>%
    mutate(Year = as.factor(format(MonYr, "%Y")), Month = as.factor(format(MonYr, "%m")), 
-          Site = as.factor(Site), mm_day = Mean_growth/DaysDeployed))
+          Site = as.factor(Site), mm_day = Mean_growth/DaysDeployed, mm_mon = Mean_growth/(DaysDeployed/28)))
 (Cage_growth <- Cage_growth_raw %>% group_by(MonYr, Year, Month, CageCountID, Site) %>%
     summarise(MeanDep = mean(Dep_MeanSH, na.rm = T), MeanRet = mean(Ret_MeanSH, na.rm = T), 
               MeanCount = mean(TotalCount, na.rm = T), MeanGrowth = mean(Mean_growth, na.rm = T), DaysDeployed = mean(DaysDeployed),
-              MeanDaily = MeanGrowth/DaysDeployed))
+              MeanDaily = MeanGrowth/DaysDeployed, MeanMonth = MeanGrowth/(DaysDeployed/28)))
 #
 #Visualize 
 ggarrange(
@@ -780,6 +777,92 @@ Growth_demean %>%
 #
 ###Presentation fig: Site_growth_mmday_annual_demean -- 1000
 #
+#
+#
+#
+#
+#
+###Change in growth rate (mm/month) over time?
+(GrowthMonth <- SH_summ %>% dplyr::select(MonYr, Year, Site, CageCountID, Month_rate_mean) %>% rename(Growth_rate = Month_rate_mean))
+ggarrange(
+  GrowthMonth %>%
+    ggplot(aes(MonYr, Growth_rate, group = 1))+
+    geom_line()+
+    lemon::facet_rep_grid(Site~.)+
+    basetheme + axistheme,
+  GrowthMonth %>% group_by(Site, Year) %>% summarise(meanRate = mean(Growth_rate, na.rm = T)) %>%
+    ggplot(aes(Year, meanRate, group = 1))+
+    geom_line()+
+    lemon::facet_rep_grid(Site~.)+
+    basetheme +axistheme)
+#
+##Permutation based ANOVA - Year for each site growth rate
+set.seed(54321)
+MonthRate_LXN <- aovp(Growth_rate ~ Year, data = GrowthMonth %>% filter(Site == "LXN"), perm = "",  nperm = 10000)
+MonthRate_SLC <- aovp(Growth_rate ~ Year, data = GrowthMonth %>% filter(Site == "SLC"), perm = "",  nperm = 10000)
+MonthRate_CRE <- aovp(Growth_rate ~ Year, data = GrowthMonth %>% filter(Site == "CRE"), perm = "",  nperm = 10000)
+MonthRate_CRW <- aovp(Growth_rate ~ Year, data = GrowthMonth %>% filter(Site == "CRW" & Year != "2017"), perm = "",  nperm = 10000)
+#
+(Annual_growMon_tidy <- rbind(rbind(tidy(MonthRate_LXN) %>% mutate(Site = "LXN"), tidy(MonthRate_SLC) %>% mutate(Site = "SLC")), 
+                           rbind(tidy(MonthRate_CRE) %>% mutate(Site = "CRE"), tidy(MonthRate_CRW) %>% mutate(Site = "CRW"))) %>% dplyr::select(Site, everything()))
+names(Annual_growMon_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
+
+(Annual_growMon_tab <- rbind(as.data.frame(GrowthMonth) %>% filter(Site == "LXN") %>% pairwise_t_test(Growth_rate ~ Year, p.adjust.method = "holm")%>% 
+                            dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "LXN", Comparison = paste(group1, group2, sep = "-")) %>%
+                            dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj), 
+                          as.data.frame(GrowthMonth) %>% filter(Site == "SLC") %>% pairwise_t_test(Growth_rate ~ Year, p.adjust.method = "holm")%>% 
+                            dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "SLC", Comparison = paste(group1, group2, sep = "-")) %>%
+                            dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)))
+#
+#
+(Annual_growMon_comps <- left_join(GrowthMonth %>% group_by(Site, Year) %>% rstatix::get_summary_stats(Growth_rate , type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
+                                rbind(make_cld(Annual_growMon_tab %>% filter(Site == "LXN")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "LXN") %>% rename(Year = group, Letters = cld),
+                                      make_cld(Annual_growMon_tab %>% filter(Site == "SLC")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "SLC") %>% rename(Year = group, Letters = cld))) %>%
+    arrange(Site, Year))
+#
+Annual_growMon_comps %>% 
+  ggplot(aes(Year, mean, group = 1))+
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25, size = 1)+
+  geom_point(aes(color = Site), size = 5)+
+  geom_line(aes(color = Site), size = 1)+
+  lemon::facet_rep_grid(Site~.)+
+  geom_text(aes(y = upper+3, label = Letters), size = 5) +
+  scale_y_continuous("Mean growth rate (mm/month)", expand = c(0,0), limits= c(-5, 20), breaks = seq(-5, 20, by = 5))+
+  scale_color_manual(values = SiteColor)+
+  geom_hline(yintercept = 0, linetype = "dotted")+
+  preztheme + axistheme + facettheme + theme(legend.position = "none")
+#
+#
+Annual_growMon_comps %>% 
+  ggplot(aes(Year, mean, group = 1))+
+  #geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.25, size = 1)+
+  geom_point(aes(color = Site), size = 6)+
+  geom_line(aes(color = Site), size = 1.5)+
+  lemon::facet_rep_grid(Site~.)+
+  #geom_text(aes(y = upper+3, label = Letters), size = 5) +
+  scale_y_continuous("Mean growth rate (mm/month)", expand = c(0,0), limits= c(0, 15), breaks = seq(0, 15, by = 5))+
+  scale_color_manual(values = SiteColor)+
+  geom_hline(yintercept = 0, linetype = "dotted")+
+  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines"))
+#
+###Presentation fig: Site_growth_mmmonth_annual -- 1000
+#
+#
+###De-meaning
+(GrowthMon_demean <- left_join(GrowthMonth %>% group_by(Site, Year) %>% summarise(AnnualMean_Growth = mean(Growth_rate, na.rm = T)), #annual within group means
+                            GrowthMonth %>% group_by(Site) %>% summarise(AllMean_Growth = mean(Growth_rate, na.rm = T))) %>% #group means
+    mutate(Demeaning = AnnualMean_Growth - AllMean_Growth))
+
+GrowthMon_demean %>%
+  ggplot(aes(Year, Demeaning, fill = Site))+
+  geom_col()+
+  scale_fill_manual(values = SiteColor)+
+  lemon::facet_rep_grid(Site~.)+
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1)+
+  scale_y_continuous("Difference mean growth rate (mm/month)", limits = c(-4, 4), expand = c(0,0), breaks = seq(-4, 4, by = 2))+
+  preztheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines")) + facettheme
+#
+###Presentation fig: Site_growth_mmmonth_annual_demean -- 1000
 #
 #END OF SECTION
 #
