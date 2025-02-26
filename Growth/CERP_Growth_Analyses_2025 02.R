@@ -13,7 +13,7 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
                zoo, lubridate, forecast, #Dates and times
                readxl, #Reading excel files
                car, emmeans, multcomp, #Basic analyses
-               lmPerm,  
+               lmPerm, stats,  
                install = TRUE)
 #
 #
@@ -48,26 +48,26 @@ glimpse(Cage_WQ_raw)
 #
 #CRE
 CR_WQ_raw <- read_excel("Data/CR_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
-                     skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
-                     na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
-                     .name_repair = "unique")
+                        skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+                        na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                        .name_repair = "unique")
 glimpse(CR_WQ_raw)
 (CR_WQ <- CR_WQ_raw %>% dplyr::select(MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, ActivityStartDate, CharacteristicName, ResultMeasureValue, Result_Unit) %>%
-  mutate(MonYr = as.yearmon(as.Date(ActivityStartDate, format = "%Y-%m-%d"))) %>%
-  group_by(MonYr, MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, CharacteristicName, Result_Unit) %>%
-  summarise(MeanValue = mean(ResultMeasureValue, na.rm = T)) %>%
-  mutate(FixedLocationID = case_when(grepl(paste(c("WQX-CES10SUR", "WQX-CES07"), collapse = "|"), MonitoringLocationIdentifier) ~ "0231",
-                          grepl(paste(c("WQX-62-SEAS500", "WQX-PI-02", "WQX-PI-01", "WQX-GSD0108", "4607", "CES08", "NSF04", "CLEW10"), collapse = "|"), MonitoringLocationIdentifier) ~ "0232", 
-                          TRUE ~ NA)) %>%
-  left_join(Locations))
+    mutate(MonYr = as.yearmon(as.Date(ActivityStartDate, format = "%Y-%m-%d"))) %>%
+    group_by(MonYr, MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, CharacteristicName, Result_Unit) %>%
+    summarise(MeanValue = mean(ResultMeasureValue, na.rm = T)) %>%
+    mutate(FixedLocationID = case_when(grepl(paste(c("WQX-CES10SUR", "WQX-CES07"), collapse = "|"), MonitoringLocationIdentifier) ~ "0231",
+                                       grepl(paste(c("WQX-62-SEAS500", "WQX-PI-02", "WQX-PI-01", "WQX-GSD0108", "4607", "CES08", "NSF04", "CLEW10"), collapse = "|"), MonitoringLocationIdentifier) ~ "0232", 
+                                       TRUE ~ NA)) %>%
+    left_join(Locations))
 CRE_WQ <- CR_WQ %>% subset(FixedLocationID == "0231") %>% subset(MonYr > as.yearmon("03-31-2019", format = "%m-%d-%Y"))
 CRW_WQ <- CR_WQ %>% subset(FixedLocationID == "0232") %>% subset(MonYr > as.yearmon("12-31-2017", format = "%m-%d-%Y"))
 #
 #LXN
 LXN_WQ_raw <- read_excel("Data/LX_Portal_selected_Cage_2015_2024.xlsx", #File name and sheet name
-                        skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
-                        na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
-                        .name_repair = "unique")
+                         skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+                         na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                         .name_repair = "unique")
 glimpse(LXN_WQ_raw)
 (LXN_WQ <- LXN_WQ_raw %>% dplyr::select(MonitoringLocationIdentifier, Estuary, LatitudeMeasure, LongitudeMeasure, ActivityStartDate, CharacteristicName, ResultMeasureValue, Result_Unit) %>%
     mutate(MonYr = as.yearmon(as.Date(ActivityStartDate, format = "%Y-%m-%d"))) %>%
@@ -184,18 +184,18 @@ rm(t)
 #
 unique(CRE_WQ$CharacteristicName)
 (CRE_WQ_all <- full_join(Cage_WQ %>% filter(Site == "CRE") %>% dplyr::select(-SampleEventID_Coll, -SectionName, -SampleEventID, -CollectionTime) %>%
-            dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, SampleEventWQID, everything()) %>%
-            mutate(PercentDissolvedOxygen = as.numeric(PercentDissolvedOxygen), pH = as.numeric(pH)) %>% rename("StationID" = SampleEventWQID),
-          CRE_WQ %>% ungroup() %>% dplyr::select(-SectionName, -LatitudeMeasure, -LongitudeMeasure, -Result_Unit) %>%
-            dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, MonitoringLocationIdentifier, everything()) %>%
-            mutate(CharacteristicName = case_when(CharacteristicName == "Depth, Secchi disk depth" ~ "Secchi",
-                                                  CharacteristicName == "Temperature, water" ~ "Temperature",
-                                                  CharacteristicName == "Dissolved oxygen (DO)" ~ "DissolvedOxygen",
-                                                  CharacteristicName == "Dissolved oxygen saturation" ~ "PercentDissolvedOxygen",
-                                                  CharacteristicName == "Total suspended solids" ~ "TSS",
-                                                  TRUE ~ CharacteristicName)) %>%
-            filter(CharacteristicName != "Chlorophyll a, corrected for pheophytin" & CharacteristicName != "Specific conductance") %>% 
-            spread(CharacteristicName, MeanValue) %>% rename("StationID" = MonitoringLocationIdentifier)))
+                           dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, SampleEventWQID, everything()) %>%
+                           mutate(PercentDissolvedOxygen = as.numeric(PercentDissolvedOxygen), pH = as.numeric(pH)) %>% rename("StationID" = SampleEventWQID),
+                         CRE_WQ %>% ungroup() %>% dplyr::select(-SectionName, -LatitudeMeasure, -LongitudeMeasure, -Result_Unit) %>%
+                           dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, MonitoringLocationIdentifier, everything()) %>%
+                           mutate(CharacteristicName = case_when(CharacteristicName == "Depth, Secchi disk depth" ~ "Secchi",
+                                                                 CharacteristicName == "Temperature, water" ~ "Temperature",
+                                                                 CharacteristicName == "Dissolved oxygen (DO)" ~ "DissolvedOxygen",
+                                                                 CharacteristicName == "Dissolved oxygen saturation" ~ "PercentDissolvedOxygen",
+                                                                 CharacteristicName == "Total suspended solids" ~ "TSS",
+                                                                 TRUE ~ CharacteristicName)) %>%
+                           filter(CharacteristicName != "Chlorophyll a, corrected for pheophytin" & CharacteristicName != "Specific conductance") %>% 
+                           spread(CharacteristicName, MeanValue) %>% rename("StationID" = MonitoringLocationIdentifier)))
 (CRW_WQ_all <- full_join(Cage_WQ %>% filter(Site == "CRW") %>% dplyr::select(-SampleEventID_Coll, -SectionName, -SampleEventID, -CollectionTime) %>%
                            dplyr::select(MonYr, Estuary, StationNumber, Site, FixedLocationID, SampleEventWQID, everything()) %>%
                            mutate(PercentDissolvedOxygen = as.numeric(PercentDissolvedOxygen), pH = as.numeric(pH)) %>% rename("StationID" = SampleEventWQID),
@@ -447,7 +447,7 @@ ShellHeights %>% group_by(Site) %>%
               DeadRate = mean(DeadRate, na.rm = T),
               DeadCountRate = mean(DeadCountRate, na.rm = T),
               MissPct = (MissCount/DepCount)*100) %>% 
-              mutate(Year = as.factor(format(MonYr, "%Y")), Month = as.factor(format(MonYr, "%m"))))
+    mutate(Year = as.factor(format(MonYr, "%Y")), Month = as.factor(format(MonYr, "%m"))))
 #
 ##Summary by site/station per MonYr and by Site overall
 (Dead_summ <- Counts_cages %>% group_by(MonYr, Year, Site, CageCountID) %>%  summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)))
@@ -763,8 +763,8 @@ Annual_grow_tab %>% filter(Site == "SLC" & p.adjust < 0.06)
 #
 ###De-meaning
 (Growth_demean <- left_join(GrowthRates %>% group_by(Site, Year) %>% summarise(AnnualMean_Growth = mean(Growth_rate, na.rm = T)), #annual within group means
-                           GrowthRates %>% group_by(Site) %>% summarise(AllMean_Growth = mean(Growth_rate, na.rm = T))) %>% #group means
-  mutate(Demeaning = AnnualMean_Growth - AllMean_Growth))
+                            GrowthRates %>% group_by(Site) %>% summarise(AllMean_Growth = mean(Growth_rate, na.rm = T))) %>% #group means
+    mutate(Demeaning = AnnualMean_Growth - AllMean_Growth))
 
 Growth_demean %>%
   ggplot(aes(Year, Demeaning, fill = Site))+
@@ -804,20 +804,20 @@ MonthRate_CRE <- aovp(Growth_rate ~ Year, data = GrowthMonth %>% filter(Site == 
 MonthRate_CRW <- aovp(Growth_rate ~ Year, data = GrowthMonth %>% filter(Site == "CRW" & Year != "2017"), perm = "",  nperm = 10000)
 #
 (Annual_growMon_tidy <- rbind(rbind(tidy(MonthRate_LXN) %>% mutate(Site = "LXN"), tidy(MonthRate_SLC) %>% mutate(Site = "SLC")), 
-                           rbind(tidy(MonthRate_CRE) %>% mutate(Site = "CRE"), tidy(MonthRate_CRW) %>% mutate(Site = "CRW"))) %>% dplyr::select(Site, everything()))
+                              rbind(tidy(MonthRate_CRE) %>% mutate(Site = "CRE"), tidy(MonthRate_CRW) %>% mutate(Site = "CRW"))) %>% dplyr::select(Site, everything()))
 names(Annual_growMon_tidy) <- c("Site", "Factors", "df", "SS", "MS", "F", "Pr")
 
 (Annual_growMon_tab <- rbind(as.data.frame(GrowthMonth) %>% filter(Site == "LXN") %>% pairwise_t_test(Growth_rate ~ Year, p.adjust.method = "holm")%>% 
-                            dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "LXN", Comparison = paste(group1, group2, sep = "-")) %>%
-                            dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj), 
-                          as.data.frame(GrowthMonth) %>% filter(Site == "SLC") %>% pairwise_t_test(Growth_rate ~ Year, p.adjust.method = "holm")%>% 
-                            dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "SLC", Comparison = paste(group1, group2, sep = "-")) %>%
-                            dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)))
+                               dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "LXN", Comparison = paste(group1, group2, sep = "-")) %>%
+                               dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj), 
+                             as.data.frame(GrowthMonth) %>% filter(Site == "SLC") %>% pairwise_t_test(Growth_rate ~ Year, p.adjust.method = "holm")%>% 
+                               dplyr::select(c("group1", "group2", "p", "p.adj")) %>% mutate(Site = "SLC", Comparison = paste(group1, group2, sep = "-")) %>%
+                               dplyr::select("Site", "Comparison", everything()) %>% dplyr::select(-c("group1", "group2")) %>% rename(p.value = p, p.adjust = p.adj)))
 #
 #
 (Annual_growMon_comps <- left_join(GrowthMonth %>% group_by(Site, Year) %>% rstatix::get_summary_stats(Growth_rate , type = "mean_sd") %>% dplyr::select(-c("variable")) %>% transform(lower = mean-sd, upper = mean+sd),
-                                rbind(make_cld(Annual_growMon_tab %>% filter(Site == "LXN")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "LXN") %>% rename(Year = group, Letters = cld),
-                                      make_cld(Annual_growMon_tab %>% filter(Site == "SLC")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "SLC") %>% rename(Year = group, Letters = cld))) %>%
+                                   rbind(make_cld(Annual_growMon_tab %>% filter(Site == "LXN")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "LXN") %>% rename(Year = group, Letters = cld),
+                                         make_cld(Annual_growMon_tab %>% filter(Site == "SLC")) %>% dplyr::select(-c("spaced_cld")) %>% mutate(Site = "SLC") %>% rename(Year = group, Letters = cld))) %>%
     arrange(Site, Year))
 #
 Annual_growMon_comps %>% 
@@ -850,7 +850,7 @@ Annual_growMon_comps %>%
 #
 ###De-meaning
 (GrowthMon_demean <- left_join(GrowthMonth %>% group_by(Site, Year) %>% summarise(AnnualMean_Growth = mean(Growth_rate, na.rm = T)), #annual within group means
-                            GrowthMonth %>% group_by(Site) %>% summarise(AllMean_Growth = mean(Growth_rate, na.rm = T))) %>% #group means
+                               GrowthMonth %>% group_by(Site) %>% summarise(AllMean_Growth = mean(Growth_rate, na.rm = T))) %>% #group means
     mutate(Demeaning = AnnualMean_Growth - AllMean_Growth))
 
 GrowthMon_demean %>%
@@ -943,8 +943,8 @@ Annual_PctMort_comps %>%
 #
 ###De-meaning
 (DeadRate_demean <- left_join(Counts_cages %>% group_by(Site, Year) %>% summarise(AnnualMean_DeadRate = mean(DeadRate, na.rm = T)), #annual within group means
-                            Counts_cages %>% group_by(Site) %>% summarise(AllMean_DeadRate = mean(DeadRate, na.rm = T))) %>% #group means
-  mutate(Demeaning = AnnualMean_DeadRate - AllMean_DeadRate))
+                              Counts_cages %>% group_by(Site) %>% summarise(AllMean_DeadRate = mean(DeadRate, na.rm = T))) %>% #group means
+    mutate(Demeaning = AnnualMean_DeadRate - AllMean_DeadRate))
 
 DeadRate_demean %>%
   ggplot(aes(Year, Demeaning, fill = Site))+
@@ -1022,8 +1022,8 @@ Annual_PctDead_comps %>%
 #
 ###De-meaning
 (DeadCount_demean <- left_join(Counts_cages %>% group_by(Site, Year) %>% summarise(AnnualMean_DeadCount = mean(DeadCountRate, na.rm = T)), #annual within group means
-                              Counts_cages %>% group_by(Site) %>% summarise(AllMean_DeadCount = mean(DeadCountRate, na.rm = T))) %>% #group means
-  mutate(Demeaning = AnnualMean_DeadCount - AllMean_DeadCount))
+                               Counts_cages %>% group_by(Site) %>% summarise(AllMean_DeadCount = mean(DeadCountRate, na.rm = T))) %>% #group means
+    mutate(Demeaning = AnnualMean_DeadCount - AllMean_DeadCount))
 
 DeadCount_demean %>%
   ggplot(aes(Year, Demeaning, fill = Site))+
@@ -1041,276 +1041,71 @@ DeadCount_demean %>%
 #
 #
 #
-####Water quality####
+####Water quality - all estuaries####
 #
-(Site_WQ_means <- All_data %>% group_by(Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), list(Mean = mean), na.rm = T)))
+###Sites are different enough to consider water quality individually but considering as one data set first
+#Seasonal trends are know so detrending data
 #
-###Data for all Sites
-(All_data <- left_join(GrowthRates %>% mutate(Growth_rate = as.numeric(case_when(Growth_rate < 0 ~ 0, TRUE ~ Growth_rate))),
-                       Counts_cages %>% group_by(MonYr, Year, Month, Site, CageCountID) %>% summarise(DepCount = mean(DepCount), AssumeDead = mean(AssumeDead), DeadCount = mean(DeadCount), DeadRate = mean(DeadRate, na.rm = T), DeadCountRate = mean(DeadCountRate, na.rm = T))) %>%
-   ungroup() %>% dplyr::select(-CageCountID) %>% mutate(Month = case_when(is.na(Month) ~ as.factor(format(MonYr, "%m")), TRUE ~ Month)) %>%
-   left_join(rbind(CRE_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), mean, na.rm = T)) %>% ungroup(), 
-                   CRW_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), mean, na.rm = T)) %>% ungroup()) %>% 
-               rbind(LXN_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), mean, na.rm = T)) %>% ungroup()) %>% 
-               rbind(SLC_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH, Turbidity), mean, na.rm = T)) %>% ungroup()) %>%
-               mutate(stTemp = scale(Temperature)[,1], stSal = scale(Salinity)[,1], stDO = scale(DissolvedOxygen)[,1], stpH = scale(pH)[,1], stTurb = scale(Turbidity)[,1]) %>%
-               mutate(Year = as.factor(format(MonYr, "%Y")), Year_c = as.integer(format(MonYr, "%Y")))) %>%
-   left_join(Site_WQ_means) %>% mutate(Temp_diff = Temperature - Temperature_Mean, Salinity_diff = Salinity - Salinity_Mean,
-                                       DO_diff = DissolvedOxygen - DissolvedOxygen_Mean, pH_diff = pH - pH_Mean, 
-                                       Turbidity_diff = Turbidity - Turbidity_Mean) %>% 
-    dplyr::select(-contains("Mean")) %>% 
-   dplyr::select(MonYr, Year, Site, everything()))
+###Detrend each parameter - additive
+detrending <- function(df, param){
+  temp <- df %>% ungroup() %>% dplyr::select(c("MonYr", param))
+  #temp$MonYr <- as.yearmon(temp$MonYr, format = "%m/%Y")
+  temp <- na.interp(as.ts(read.zoo(temp, FUN = as.yearmon)))
+  temp %>% decompose("additive") -> decompTemp
+  tempAdj <- temp-decompTemp$seasonal
+  return(tempAdj)
+}
 #
-All_data %>% dplyr::select(-contains("st"), -DepCount, -contains("diff"), -Turbidity) %>%
-  gather(Parameter, Value, -MonYr, -Year, -Year_c, -Site, -Month) %>% 
-  ggplot(aes(MonYr, Value))+
-  geom_point()+
-  facet_grid(Parameter~Site, scales = "free")
-  
+(All_WQ_clean <- rbind(CRE_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH), mean, na.rm = T)) %>% ungroup(), 
+                       CRW_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH), mean, na.rm = T)) %>% ungroup()) %>% 
+    rbind(LXN_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH), mean, na.rm = T)) %>% ungroup()) %>% 
+    rbind(SLC_WQ_all %>% group_by(MonYr, Site) %>% summarise(across(c(Temperature, Salinity, DissolvedOxygen, pH), mean, na.rm = T)) %>% ungroup()))
 #
-##Plots for initial comparisons
-ggarrange(
-  All_data %>% group_by(Year, Site) %>% summarise(across(c(Temperature), mean, na.rm = T)) %>%
-    ggplot(aes(Year, Temperature))+ 
-    geom_point()+
-    lemon::facet_rep_grid(Site~.) + theme_classic(),
-  All_data %>% group_by(Year, Site) %>% summarise(across(c(Temp_diff), mean, na.rm = T)) %>% 
-    ggplot(aes(Year, Temp_diff))+ 
-    geom_point()+ geom_hline(yintercept = 0, linetype = "dashed")+
-    lemon::facet_rep_grid(Site~.) + theme_classic(),
-  ncol = 2)
+(AllWQ_adj <- data.frame(MonYr = unique(All_WQ_clean$MonYr),
+                        TempAdj = detrending(All_WQ_clean %>% group_by(MonYr) %>% summarise(Temperature = mean(Temperature, na.rm = T)), "Temperature"),
+                        SalAdj  = detrending(All_WQ_clean %>% group_by(MonYr) %>% summarise(Salinity = mean(Salinity, na.rm = T)), "Salinity"),
+                        DOAdj = detrending(All_WQ_clean %>% group_by(MonYr) %>% summarise(DissolvedOxygen = mean(DissolvedOxygen, na.rm = T)), "DissolvedOxygen"),
+                        pHAdj = detrending(All_WQ_clean %>% group_by(MonYr) %>% summarise(pH = mean(pH, na.rm = T)), "pH")))
 #
-ggarrange(
-  All_data %>% group_by(Year, Site) %>% summarise(across(c(Salinity), mean, na.rm = T)) %>%
-    ggplot(aes(Year, Salinity))+ 
-    geom_point()+
-    lemon::facet_rep_grid(Site~.) + theme_classic(),
-  All_data %>% group_by(Year, Site) %>% summarise(across(c(Salinity_diff), mean, na.rm = T)) %>% 
-    ggplot(aes(Year, Salinity_diff))+ 
-    geom_point()+ geom_hline(yintercept = 0, linetype = "dashed")+
-    lemon::facet_rep_grid(Site~.) + theme_classic(),
-  ncol = 2)
-#
-ggarrange(
-  All_data %>% group_by(Year, Site) %>% summarise(across(c(DissolvedOxygen), mean, na.rm = T)) %>%
-    ggplot(aes(Year, DissolvedOxygen))+ 
-    geom_point()+
-    lemon::facet_rep_grid(Site~.) + theme_classic(),
-  All_data %>% group_by(Year, Site) %>% summarise(across(c(DO_diff), mean, na.rm = T)) %>% 
-    ggplot(aes(Year, DO_diff))+ 
-    geom_point()+ geom_hline(yintercept = 0, linetype = "dashed")+
-    lemon::facet_rep_grid(Site~.) + theme_classic(),
-  ncol = 2)
-#
-ggarrange(
-  All_data %>% group_by(Year, Site) %>% summarise(across(c(pH), mean, na.rm = T)) %>%
-    ggplot(aes(Year, pH))+ 
-    geom_point()+
-    lemon::facet_rep_grid(Site~.) + theme_classic(),
-  All_data %>% group_by(Year, Site) %>% summarise(across(c(pH_diff), mean, na.rm = T)) %>% 
-    ggplot(aes(Year, pH_diff))+ 
-    geom_point()+ geom_hline(yintercept = 0, linetype = "dashed")+
-    lemon::facet_rep_grid(Site~.) + theme_classic(),
-  ncol = 2)
-#
-ggarrange(
-  All_data %>% group_by(Year, Site) %>% summarise(across(c(Turbidity), mean, na.rm = T)) %>%
-    ggplot(aes(Year, Turbidity))+ 
-    geom_point()+
-    lemon::facet_rep_grid(Site~.) + theme_classic(),
-  All_data %>% group_by(Year, Site) %>% summarise(across(c(Turbidity_diff), mean, na.rm = T)) %>% 
-    ggplot(aes(Year, Turbidity_diff))+ 
-    geom_point()+ geom_hline(yintercept = 0, linetype = "dashed")+
-    lemon::facet_rep_grid(Site~.) + theme_classic(),
-  ncol = 2)
+Alldata <- left_join(AllWQ_adj, GrowthMonth %>% group_by(MonYr) %>% summarise(MeanMonthly = mean(Growth_rate, na.rm = T))) %>% 
+  drop_na() %>% mutate(Year = as.integer(format(MonYr, "%Y")))
+##Vizualize data##
+#Get summary mean/sd per grouping Quarter x Bay x IvO
+Alldata %>% group_by(Year) %>% rstatix::get_summary_stats(MeanMonthly, type = "mean_sd")
+ggboxplot(Alldata, x = "Year", y = "MeanMonthly")
+Alldata %>% ggplot(aes(x = MeanMonthly))+ geom_histogram(aes(y = ..count..)) #Has zeros, add constant for comparison
+Alldata <- Alldata %>% mutate(MeanMonthly1 = MeanMonthly + 1)
+Alldata %>% ggplot(aes(x = MeanMonthly1))+ geom_histogram(aes(y = ..count..)) #Has zeros, add constant for comparison
 #
 #
-#
-All_data %>% ggplot(aes(x = Growth_rate)) + geom_histogram(aes(y = ..count..)) + 
-  stat_function(data = All_data %>% filter(Site == "CRE"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "CRE"))$Growth_rate, na.rm = T), sd = sd((All_data %>% filter(Site == "CRE"))$Growth_rate, na.rm = T)), color = "red") + 
-  stat_function(data = All_data %>% filter(Site == "CRW"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "CRW"))$Growth_rate, na.rm = T), sd = sd((All_data %>% filter(Site == "CRW"))$Growth_rate, na.rm = T)), color = "red") + 
-  stat_function(data = All_data %>% filter(Site == "LXN"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "LXN"))$Growth_rate, na.rm = T), sd = sd((All_data %>% filter(Site == "LXN"))$Growth_rate, na.rm = T)), color = "red") + 
-  stat_function(data = All_data %>% filter(Site == "SLC"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "SLC"))$Growth_rate, na.rm = T), sd = sd((All_data %>% filter(Site == "SLC"))$Growth_rate, na.rm = T)), color = "red") +
-  lemon::facet_rep_grid(Site~., scales = "free_y") #CRE/SLC skewed slightly
-All_data %>% ggplot(aes(x = DeadCountRate)) + geom_histogram(aes(y = ..count..)) + lemon::facet_rep_grid(Site~.) #skewed
-#
-#
-#
-#
-###Growth_rate
-Sig_growth <- All_data %>% filter(Site == "LXN" | Site == "SLC") %>% dplyr::select(MonYr, Year_c, Site, Growth_rate, stTemp:stpH, Temp_diff:pH_diff) %>% drop_na() %>% droplevels()
-#Initial glm
+##Initial MLR - all dat, growth
 set.seed(54321)
-LXNmodel_growth <- glm(Growth_rate ~ Year_c * stTemp * stSal * stDO * stpH, family = "gaussian", data = Sig_growth %>% filter(Site == "LXN")) 
-LXNmodel_growth_tab <- tidy(LXNmodel_growth)
-names(LXNmodel_growth_tab) <- c("term", "Est.", "SE", "t", "p-value")
-LXNmodel_growth_sum <- glance(LXNmodel_growth) 
-names(LXNmodel_growth_sum) <- c("Null_dev", "Null_df", "LL", "AIC", "BIC", "Mod_dev", "Resid_df", "N")
-summary(LXNmodel_growth); LXNmodel_growth_sum
-par(mfrow = c(2,2))
-plot(LXNmodel_growth)
-par(mfrow = c(1,1))
+All_growth <- lm(MeanMonthly1 ~ ., data = Alldata %>% dplyr::select(-MonYr, -MeanMonthly))
+All_growth_tab <- tidy(All_growth)
+names(All_growth_tab) <- c("term", "Est.", "SE", "t", "p-value")
+All_growth_sum <- glance(All_growth) %>% dplyr::select(r.squared:df, deviance:df.residual)
+names(All_growth_sum) <- c("R2", "adjR2", "RSE", "F", "p-value", "df", "RSS", "Resid.df")
+All_growth_tab; All_growth_sum
 ##AIC - Model selection for final model - including YEAR
-anova(LXNmodel_growth, test = "Chisq")
-#
-ggarrange(
-  Sig_growth %>% filter(Site == "LXN") %>%
-    ggplot(aes(Year_c, Growth_rate))+
-    geom_point()+
-    geom_point(data = Sig_growth %>% filter(Site == "LXN") %>% group_by(Year_c) %>% summarise(Growth_rate = mean(Growth_rate, na.rm = T)), 
-               aes(Year_c, Growth_rate), color = "red", size = 6),
-  All_data %>% filter(Site == "LXN") %>%
-    ggplot(aes(Year_c, Temperature))+
-    geom_point()+
-    geom_point(data = All_data %>% filter(Site == "LXN") %>% group_by(Year_c) %>% summarise(Temperature = mean(Temperature, na.rm = T)), 
-               aes(Year_c, Temperature), color = "red", size = 6),
-  ncol = 2)
-#
-#
-#Initial glm
+All_growth_step <- stepAIC(All_growth, direction = "backward")
 set.seed(54321)
-SLCmodel_growth <- glm(Growth_rate ~ Year_c * stTemp * stSal * stDO * stpH, family = "gaussian", data = Sig_growth %>% filter(Site == "SLC")) 
-SLCmodel_growth_tab <- tidy(SLCmodel_growth)
-names(SLCmodel_growth_tab) <- c("term", "Est.", "SE", "t", "p-value")
-SLCmodel_growth_sum <- glance(SLCmodel_growth) 
-names(SLCmodel_growth_sum) <- c("Null_dev", "Null_df", "LL", "AIC", "BIC", "Mod_dev", "Resid_df", "N")
-summary(SLCmodel_growth); SLCmodel_growth_sum
-par(mfrow = c(2,2))
-plot(SLCmodel_growth)
-par(mfrow = c(1,1))
-##AIC - Model selection for final model - including YEAR
-anova(SLCmodel_growth, test = "Chisq")
+All_growth_final <- update(All_growth, .~. -SalAdj, data = Alldata %>% dplyr::select(-MonYr, -MeanMonthly))
+tidy(All_growth_final)
+glance(All_growth_final) %>% dplyr::select(r.squared:df, deviance:df.residual)
 #
-ggarrange(
-  Sig_growth %>% filter(Site == "SLC") %>%
-    ggplot(aes(Year_c, Growth_rate))+
-    geom_point()+
-    geom_point(data = Sig_growth %>% filter(Site == "SLC") %>% group_by(Year_c) %>% summarise(Growth_rate = mean(Growth_rate, na.rm = T)), 
-               aes(Year_c, Growth_rate), color = "red", size = 6),
-  All_data %>% filter(Site == "SLC") %>%
-    ggplot(aes(Year_c, Temperature))+
-    geom_point()+
-    geom_point(data = All_data %>% filter(Site == "SLC") %>% group_by(Year_c) %>% summarise(Temperature = mean(Temperature, na.rm = T)), 
-               aes(Year_c, Temperature), color = "red", size = 6),
-  ncol = 2)
+(All_growth_modeldata <- cbind(data.frame(Growth_p = predict(All_growth_final, (Alldata %>% dplyr::select(-MonYr, -MeanMonthly)))-1, Year = Alldata$Year),
+                        predict(All_growth_final, interval = "confidence")-1) %>% dplyr::select(-fit) %>% dplyr::select(Year, Growth_p, everything()) %>%
+    group_by(Year) %>% dplyr::summarise(Growth_p = mean(Growth_p, na.rm = T), Growth_lwr = mean(lwr), Growth_upr = mean(upr)))
 #
-#
-#
-#
-#
-###DeadRate
-All_data %>% ggplot(aes(x = DeadRate)) + geom_histogram(aes(y = ..count..)) + 
-  stat_function(data = All_data %>% filter(Site == "CRE"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "CRE"))$DeadRate, na.rm = T), sd = sd((All_data %>% filter(Site == "CRE"))$DeadRate, na.rm = T)), color = "red") + 
-  stat_function(data = All_data %>% filter(Site == "CRW"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "CRW"))$DeadRate, na.rm = T), sd = sd((All_data %>% filter(Site == "CRW"))$DeadRate, na.rm = T)), color = "red") + 
-  stat_function(data = All_data %>% filter(Site == "LXN"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "LXN"))$DeadRate, na.rm = T), sd = sd((All_data %>% filter(Site == "LXN"))$DeadRate, na.rm = T)), color = "red") + 
-  stat_function(data = All_data %>% filter(Site == "SLC"), fun = dnorm, args = list(mean = mean((All_data %>% filter(Site == "SLC"))$DeadRate, na.rm = T), sd = sd((All_data %>% filter(Site == "SLC"))$DeadRate, na.rm = T)), color = "red") +
-  lemon::facet_rep_grid(Site~., scales = "free_y") #CRE/SLC skewed slightly
-#
-Sig_dead <- All_data %>% filter(Site != "CRE") %>% dplyr::select(MonYr, Year_c, Site, DeadRate, stTemp:stpH, Temp_diff:pH_diff) %>% mutate(DepRate = 1) %>% drop_na() %>% droplevels()
-#Initial glm
-set.seed(54321)
-LXNmodel_dead <- glm(DeadRate ~ Year_c * stTemp * stSal * stDO * stpH, family = "binomial", data = Sig_dead %>% filter(Site == "LXN"), weights = DepRate) 
-LXNmodel_dead_tab <- tidy(LXNmodel_dead)
-names(LXNmodel_dead_tab) <- c("term", "Est.", "SE", "t", "p-value")
-LXNmodel_dead_sum <- glance(LXNmodel_dead) 
-names(LXNmodel_dead_sum) <- c("Null_dev", "Null_df", "LL", "AIC", "BIC", "Mod_dev", "Resid_df", "N")
-summary(LXNmodel_dead); LXNmodel_dead_sum
-par(mfrow = c(2,2))
-plot(LXNmodel_dead)
-par(mfrow = c(1,1))
-##AIC - Model selection for final model - including YEAR
-anova(LXNmodel_dead, test = "Chisq")
-#
-Sig_dead %>% filter(Site == "LXN") %>%
-    ggplot(aes(Year_c, DeadRate))+
-    geom_point()+
-    geom_point(data = Sig_dead %>% filter(Site == "LXN") %>% group_by(Year_c) %>% summarise(DeadRate = mean(DeadRate, na.rm = T)), 
-               aes(Year_c, DeadRate), color = "red", size = 6)
-#
-#
-#
-#
-#Initial glm
-set.seed(54321)
-SLCmodel_dead <- glm(DeadRate ~ Year_c * stTemp * stSal * stDO * stpH, family = "binomial", data = Sig_dead %>% filter(Site == "SLC"), weights = DepRate) 
-SLCmodel_dead_tab <- tidy(SLCmodel_dead)
-names(SLCmodel_dead_tab) <- c("term", "Est.", "SE", "t", "p-value")
-SLCmodel_dead_sum <- glance(SLCmodel_dead) 
-names(SLCmodel_dead_sum) <- c("Null_dev", "Null_df", "LL", "AIC", "BIC", "Mod_dev", "Resid_df", "N")
-summary(SLCmodel_dead); SLCmodel_dead_sum
-par(mfrow = c(2,2))
-plot(SLCmodel_dead)
-par(mfrow = c(1,1))
-##AIC - Model selection for final model - including YEAR
-anova(SLCmodel_dead, test = "Chisq")
-#
-Sig_dead %>% filter(Site == "SLC") %>%
-  ggplot(aes(Year_c, DeadRate))+
-  geom_point()+
-  geom_point(data = Sig_dead %>% filter(Site == "SLC") %>% group_by(Year_c) %>% summarise(DeadRate = mean(DeadRate, na.rm = T)), 
-             aes(Year_c, DeadRate), color = "red", size = 6)
-#
-#
-#
-#Initial glm
-set.seed(54321)
-CRWmodel_dead <- glm(DeadRate ~ Year_c * stTemp * stSal * stDO * stpH, family = "binomial", data = Sig_dead %>% filter(Site == "CRW"), weights = DepRate) 
-CRWmodel_dead_tab <- tidy(CRWmodel_dead)
-names(CRWmodel_dead_tab) <- c("term", "Est.", "SE", "t", "p-value")
-CRWmodel_dead_sum <- glance(CRWmodel_dead) 
-names(CRWmodel_dead_sum) <- c("Null_dev", "Null_df", "LL", "AIC", "BIC", "Mod_dev", "Resid_df", "N")
-summary(CRWmodel_dead); CRWmodel_dead_sum
-par(mfrow = c(2,2))
-plot(CRWmodel_dead)
-par(mfrow = c(1,1))
-##AIC - Model selection for final model - including YEAR
-anova(CRWmodel_dead, test = "Chisq")
-#
-Sig_dead %>% filter(Site == "CRW") %>%
-  ggplot(aes(Year_c, DeadRate))+
-  geom_point()+
-  geom_point(data = Sig_dead %>% filter(Site == "CRW") %>% group_by(Year_c) %>% summarise(DeadRate = mean(DeadRate, na.rm = T)), 
-             aes(Year_c, DeadRate), color = "red", size = 6)
-#
-#
-#
-####MLR####
-###Working by Site
-##Create df of all data, Scale continuous WQ parameters
-(CRE_data <- All_data %>% filter(Site == "CRE"))
-#Check spread of response
-CRE_data %>% ggplot(aes(x = Growth_rate)) + geom_histogram(aes(y = ..count..)) 
-CRE_data %>% ggplot(aes(x = DeadRate)) + geom_histogram(aes(y = ..count..)) 
-CRE_data %>% ggplot(aes(x = DeadCountRate)) + geom_histogram(aes(y = ..count..)) #
-##Initial MLR - all factors
-(CRE_growth <- (CRE_data %>% dplyr::select(Year_c, Growth_rate, stTemp:stTurb))[complete.cases((CRE_data %>% dplyr::select(Year_c, Growth_rate, stTemp:stTurb))),] %>% droplevels())
-set.seed(54321)
-fullCRE_growth <- lm(Growth_rate ~ ., data = CRE_growth)
-fullCRE_growth_tab <- tidy(fullCRE_growth)
-names(fullCRE_growth_tab) <- c("term", "Est.", "SE", "t", "p-value")
-fullCRE_growth_sum <- glance(fullCRE_growth) %>% dplyr::select(r.squared:df, deviance:df.residual)
-names(fullCRE_growth_sum) <- c("R2", "adjR2", "RSE", "F", "p-value", "df", "RSS", "Resid.df")
-##AIC - Model selection for final model - including YEAR
-CRE_growth_step <- stepAIC(fullCRE_growth, direction = "backward")
-set.seed(54321)
-CRE_growth_final <- update(fullCRE_growth, .~. -stTemp -stSal -stpH -stTurb, data = CRE_growth)
-tidy(CRE_growth_final)
-glance(CRE_growth_final) %>% dplyr::select(r.squared:df, deviance:df.residual)
-#
-(CRE_modeldata <- cbind(data.frame(Growth_p = predict(CRE_growth_final, CRE_growth), Year_c = CRE_growth$Year_c),
-      predict(CRE_growth_final, interval = "confidence")) %>% dplyr::select(-fit) %>% dplyr::select(Year_c, Growth_p, everything()) %>%
-  group_by(Year_c) %>% dplyr::summarise(Growth_p = mean(Growth_p, na.rm = T), Growth_lwr = mean(lwr), Growth_upr = mean(upr)))
-#
-predict(fullCRE_growth, CRE_growth)
-#
-ggplot(CRE_growth %>% group_by(Year_c) %>% summarise(mean = mean(Growth_rate, na.rm = T)))+
-  geom_point(aes(Year_c, mean, color = "Mean"))+
-  geom_line(data = CRE_modeldata, aes(Year_c, Growth_p, color = "Predict"))+
-  geom_line(data = CRE_modeldata, aes(Year_c, Growth_lwr, color = "95% CI"), linetype = "dashed")+
-  geom_line(data = CRE_modeldata, aes(Year_c, Growth_upr, color = "95% CI"), linetype = "dashed")+
-  preztheme + theme(legend.position = c(0.899, 0.91))+ axistheme +
-  ylab("Mean growth rate (mm/day)")+ 
-  scale_y_continuous(expand = c(0,0), limits = c(0,0.5)) +
+ggplot(Alldata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm = T)))+
+  geom_point(aes(Year, mean, color = "Mean"), size = 4)+
+  geom_line(data = All_growth_modeldata, aes(Year, Growth_p, color = "Predict"), size = 1.25)+
+  geom_line(data = All_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  geom_line(data = All_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16))+ axistheme +
+  ylab("Mean growth rate (mm/month)")+ 
+  scale_x_continuous(expand = c(0.1,0), limits = c(2015, 2024), breaks = seq(2015, 2024, 1))+
+  scale_y_continuous(expand = c(0,0), limits = c(0,8)) +
   scale_color_manual(name = "",
                      breaks = c("Mean", "Predict", "95% CI"),
                      values = c("#000000", "#FF0000", "#999999"),
@@ -1319,168 +1114,49 @@ ggplot(CRE_growth %>% group_by(Year_c) %>% summarise(mean = mean(Growth_rate, na
                        linetype = c("blank", "solid", "dashed"),
                        shape = c(19, NA, NA))))
 #
-CRE_data %>% dplyr::select(Year, Temperature:Turbidity) %>% gather(Parameter, Measure, -Year) %>%
-  ggplot(aes(Year, Measure))+ 
-  geom_boxplot(fill = "#666666")+
-  lemon::facet_rep_grid(Parameter~., scales = "free_y")+
-  preztheme + facettheme
-#
-###END OF SECTION
+###Presentation fig: Annual_growth_model -- 1000
 #
 #
-####Example code####
+###Predictions###
 #
+#predictions: WQ stay same as average of previous 5 years, or temp increase by 0.006C per year (0.06C/decade)
+predAll_same <- data.frame()
+#data.frame(Year = 2025:2030, Alldata %>% filter(Year > 2019) %>% summarise(across(c(TempAdj, SalAdj, DOAdj, pHAdj), list(mean = mean), na.rm = T))
+           for (year in 2025:2030) {
+             summarized_data <- data.frame(Year = 2025:2030, Alldata %>% filter(Year > 2019) %>% summarise(across(c(TempAdj, SalAdj, DOAdj, pHAdj), list(mean = mean), na.rm = T)))
+             # Create a temporary data frame for the current year
+             temp_data <- summarized_data %>% mutate(Year = year)  # Add the Year column
+             # Bind the temporary data frame to the new data frame
+             predAll_same <- rbind(predAll_same, temp_data)
+           }
+(predAll_same <- predAll_same %>% distinct() %>% rename_with(~ gsub("_mean", "", .)))           #df of no change
+(predAll_inc <- predAll_same %>% mutate(TempAdj = TempAdj + (row_number()-1)*0.006)) #df of increased change
+
+(predAll_same <- left_join(predAll_same,
+  cbind(data.frame(Growth_p = predict(All_growth_final, predAll_same)-1, Year = predAll_same$Year),
+      predict(All_growth_final, predAll_same, interval = "confidence")-1) %>% dplyr::select(-fit) %>% dplyr::select(Year, Growth_p, everything()) %>%
+  group_by(Year) %>% dplyr::summarise(Growth_p = mean(Growth_p, na.rm = T), Growth_lwr = mean(lwr), Growth_upr = mean(upr))))
 #
-#Change in proportions over time (Year)
-set.seed(5432)
-Prop_mod1 <- glmmTMB(sProp ~ Year * Final_Stage, data = Overall_counts, family = "beta_family")
-summary(Prop_mod1)
-plot(simulateResiduals(Prop_mod1)) #No issues
-testZeroInflation(Prop_mod1) #Not sig 
-testDispersion(Prop_mod1) #Not Sig
-testOutliers(Prop_mod1) #some
-testQuantiles(Prop_mod1)
-testCategorical(Prop_mod1, catPred = Overall_counts$Year)
-testCategorical(Prop_mod1, catPred = Overall_counts$Final_Stage)
+(predAll_inc <- left_join(predAll_inc,
+                           cbind(data.frame(Growth_p = predict(All_growth_final, predAll_inc)-1, Year = predAll_inc$Year),
+                                 predict(All_growth_final, predAll_inc, interval = "confidence")-1) %>% dplyr::select(-fit) %>% dplyr::select(Year, Growth_p, everything()) %>%
+                             group_by(Year) %>% dplyr::summarise(Growth_p = mean(Growth_p, na.rm = T), Growth_lwr = mean(lwr), Growth_upr = mean(upr))))
 #
-Anova(Prop_mod1)
-(Prop_yr_summ <- tidy(Anova(Prop_mod1)) %>% rename("F" = statistic) %>% mutate_if(is.numeric,round, digits = 3))
-(Prop_m1_em <- emmeans(Prop_mod1, ~Year*Final_Stage, type = "response"))
-(Prop_m1_pairs <- pairs(Prop_m1_em, simple = "Year", adjust = "tukey") %>% as.data.frame() %>% dplyr::select(-df, -null) %>%
-    mutate(contrast = gsub("Year", "", contrast)))
-#
-(Prop_means <- Overall_counts %>% group_by(Year, Final_Stage) %>%
-    summarise(meanProp = round(mean(Prop), 3),
-              sdProp = round(sd(Prop), 3),
-              minProp = round(min(Prop), 3),
-              maxProp = round(max(Prop), 3)))
-#
-#
-####Extra code####
-#From Cage Shell Heights
-SH_summ %>%
-  ggplot(aes(MonYr, Mean_growth_mean, group = 1))+
-  geom_line()+
-  geom_line(aes(MonYr, Min_growth_mean, group = 1), color = "red")+
-  geom_line(aes(MonYr, Max_growth_mean, group = 1), color = "blue")+
-  geom_hline(yintercept = 0, linetype = "dotted")+
-  lemon::facet_rep_grid(Site~.)+
-  basetheme + axistheme
-SH_summ %>% 
-  ggplot(aes(MonYr, Dep_MeanSH_mean, group = 1))+
-  geom_line()+
-  geom_line(aes(MonYr, Dep_MinSH_mean, group = 1), color = "red")+
-  geom_line(aes(MonYr, Dep_MaxSH_mean, group = 1), color = "blue")+
-  geom_hline(data = SH_Site_summ, aes(yintercept = Dep_MeanSH_mean), linetype = "dashed")+
-  geom_hline(data = SH_Site_summ, aes(yintercept = Dep_MinSH_mean), linetype = "dashed", color = "red")+
-  geom_hline(data = SH_Site_summ, aes(yintercept = Dep_MaxSH_mean), linetype = "dashed", color = "blue")+
-  lemon::facet_rep_grid(Site~.)+
-  basetheme + axistheme
-#
-##From Growth - monthly comparisons
-###Does each site have different variability among Months?
-ggarrange(Cage_growth %>% ggplot(aes(x = MeanGrowth)) + geom_histogram(), #normal but negative so add 10 to all values to make non-negative, continuous, normal dist
-          Cage_growth %>% mutate(Growth1 = MeanGrowth + 10) %>% ggplot(aes(x = Growth1)) + geom_histogram(), nrow = 2)
-(Growth_final$Growth_1 <- Growth_final$MeanGrowth + 10)
-#
-##Permutation based ANOVA - Month, Site##
-set.seed(54321)
-Growth_mon <- aovp(Growth_1 ~ Month * Site, data = Growth_final, perm = "",  nperm = 10000)
-(Growth_mon_summ <- summary(Growth_mon))
-Growth_mon_tidy <- tidy(Growth_mon)
-names(Growth_mon_tidy) <- c("Factors", "df", "SS", "MS", "F", "Pr")
-Growth_mon_tidy
-#Significant difference among Months within Sites - detrend each Site by month -- additive since pattern is theoretically the same each time period (i.e. year)
-#
-Growth_final %>% group_by(Month, Site) %>% summarise(meanGrowth = mean(MeanGrowth, na.rm = T), se = sd(MeanGrowth, na.rm = T)/sqrt(length(MeanGrowth))) %>%
-  ggplot(aes(Month, meanGrowth, group = 1, color = Site)) + 
-  geom_line() +
-  geom_errorbar(aes(ymin = meanGrowth - se, ymax = meanGrowth+se), width = 0.25)+
-  geom_hline(data = Growth_final %>% group_by(Site) %>% summarise(Mean = mean(MeanGrowth)), aes(yintercept = Mean), linetype = "dashed")+
-  lemon::facet_rep_grid(Site~.)+
-  scale_y_continuous(limits = c(0, 15), expand = c(0,0))+
-  basetheme + axistheme
-#
-###Detrend each parameter - additive - function "detrending"
-detrending <- function(df, param){
-  temp <- df %>% ungroup() %>% dplyr::select(c("MonYr", all_of(param)))
-  #temp$MonYr <- as.yearmon(temp$MonYr, format = "%m/%Y")
-  temp <- na.interp(as.ts(read.zoo(temp, FUN = as.yearmon)))
-  temp %>% decompose("additive") -> decompTemp
-  tempAdj <- temp-decompTemp$seasonal #Removes seasonal component, leaves trend and random components in final output values
-  return(tempAdj)
-}
-#
-(LXN_de <- detrending(Cage_growth %>% filter(Site == "LXN"), "MeanGrowth"))
-(SLC_de <- detrending(Cage_growth %>% filter(Site == "SLC"), "MeanGrowth"))
-(CRE_de <- detrending(Cage_growth %>% filter(Site == "CRE"), "MeanGrowth"))
-(CRW_de <- detrending(Cage_growth %>% filter(Site == "CRW"), "MeanGrowth"))
-(LXN_da <- detrending(Cage_growth %>% filter(Site == "LXN"), "MeanDaily"))
-(SLC_da <- detrending(Cage_growth %>% filter(Site == "SLC"), "MeanDaily"))
-(CRE_da <- detrending(Cage_growth %>% filter(Site == "CRE"), "MeanDaily"))
-(CRW_da <- detrending(Cage_growth %>% filter(Site == "CRW"), "MeanDaily"))
-#
-#Get dataframe of detrended data and add to growth data for final data frame
-(Growth_detrended <- left_join(
-  left_join(data.frame(MonYr = as.yearmon(time(LXN_de)), LXN_de, SLC_de),
-            data.frame(MonYr = as.yearmon(time(CRE_de)), CRE_de)),
-  data.frame(MonYr = as.yearmon(time(CRW_de)), CRW_de)) %>% rename(LXN = LXN_de, SLC = SLC_de, CRE = CRE_de, CRW = CRW_de) %>%
-    gather("Site", "Growth_de", -MonYr))
-(Daily_detrended <- left_join(
-  left_join(data.frame(MonYr = as.yearmon(time(LXN_de)), LXN_da, SLC_da),
-            data.frame(MonYr = as.yearmon(time(CRE_de)), CRE_da)),
-  data.frame(MonYr = as.yearmon(time(CRW_da)), CRW_da)) %>% rename(LXN = LXN_da, SLC = SLC_da, CRE = CRE_da, CRW = CRW_da) %>%
-    gather("Site", "Growth_da", -MonYr))
-(Growth_final <- left_join(Cage_growth, Growth_detrended) %>% left_join(Daily_detrended) %>% mutate(Site = as.factor(Site)))
-#
-ggarrange(
-  Growth_final %>% 
-    ggplot(aes(MonYr, MeanGrowth, group = 1))+
-    geom_line()+
-    geom_hline(yintercept = 0, linetype = "dashed")+
-    geom_smooth()+
-    lemon::facet_rep_grid(Site~.)+
-    basetheme + axistheme,
-  Growth_final %>% 
-    ggplot(aes(MonYr, Growth_de, group = 1))+
-    geom_line()+
-    geom_hline(yintercept = 0, linetype = "dashed")+
-    geom_smooth()+
-    lemon::facet_rep_grid(Site~.)+
-    basetheme + axistheme,
-  Growth_final %>% 
-    ggplot(aes(MonYr, Growth_da, group = 1))+
-    geom_line()+
-    geom_hline(yintercept = 0, linetype = "dashed")+
-    geom_smooth()+
-    lemon::facet_rep_grid(Site~.)+
-    basetheme + axistheme,
-  nrow = 1, ncol = 3)
-#
-ggarrange(
-  Growth_final %>% 
-    ggplot(aes(MonYr, Growth_de, group = 1))+
-    geom_line()+
-    geom_hline(yintercept = 0, linetype = "dashed")+
-    geom_smooth()+
-    lemon::facet_rep_grid(Site~.)+
-    basetheme + axistheme,
-  Growth_final %>% group_by(Site, Year) %>% summarise(MeanDe = mean(Growth_de, na.rm = T)) %>%
-    ggplot(aes(Year, MeanDe, group = 1))+
-    geom_line()+
-    geom_hline(yintercept = 0, linetype = "dashed")+
-    geom_smooth()+
-    lemon::facet_rep_grid(Site~.)+
-    basetheme + axistheme,
-  Growth_final %>% group_by(Site, Month) %>% summarise(MeanDe = mean(Growth_de, na.rm = T)) %>% 
-    ggplot(aes(Month, MeanDe, group = 1))+
-    geom_line()+
-    geom_hline(yintercept = 0, linetype = "dashed")+
-    geom_smooth()+
-    lemon::facet_rep_grid(Site~.)+
-    basetheme + axistheme,
-  nrow = 1, ncol = 3)
-#
-(Growth_final$Growth_de1 <- Growth_final$Growth_de + 10)
-#
-#
+ggplot(Alldata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm = T)))+
+  geom_point(aes(Year, mean, color = "Mean"))+
+  geom_line(data = All_growth_modeldata, aes(Year, Growth_p, color = "Predict"))+
+  geom_line(data = All_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed")+
+  geom_line(data = All_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed")+
+  geom_point(data = predAll_same, aes(Year, Growth_p), color = "blue")+
+  geom_point(data = predAll_inc, aes(Year, Growth_p), color = "green")+
+preztheme + theme(legend.position = c(0.899, 0.91))+ axistheme +
+  ylab("Mean growth rate (mm/month)")+ 
+  scale_x_continuous(expand = c(0.1,0), limits = c(2015, 2030), breaks = seq(2015, 2030, 1))+
+  scale_y_continuous(expand = c(0,0), limits = c(0,8)) +
+  scale_color_manual(name = "",
+                     breaks = c("Mean", "Predict", "95% CI"),
+                     values = c("#000000", "#FF0000", "#999999"),
+                     labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
+                     guide = guide_legend(override.aes = list(
+                       linetype = c("blank", "solid", "dashed"),
+                       shape = c(19, NA, NA))))
