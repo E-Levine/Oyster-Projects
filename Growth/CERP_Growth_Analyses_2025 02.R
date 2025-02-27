@@ -282,6 +282,11 @@ ShellHeights %>% group_by(Site) %>%
   ggtitle("Cage data through December 2024")+
   basetheme + axistheme
 #
+SH_summ %>% group_by(Site, Year) %>% summarize(DepMean = mean(Dep_MeanSH_mean, na.rm = T)) %>%
+  ggplot(aes(Year, DepMean))+
+  geom_line(aes(group = 1))+
+  lemon::facet_rep_grid(Site~.)+
+  scale_y_continuous(expand = c(0,0), limits = c(0, 70))
 #
 #
 #Compare deployed shell heights among Sites
@@ -349,7 +354,7 @@ ShellHeights %>% group_by(Site) %>% dplyr::select(MonYr:CageColor, Dep_MeanSH, R
   geom_boxplot_pattern(color = "black",  fill = c("#56B4E9", "#56B4E9", "#009E73", "#009E73", "#E69F00", "#E69F00", "#CC79A7", "#CC79A7"), linewidth = 0.75, pattern_key_scale_factor=.25)+ scale_pattern_manual(values = c("none", "weave"))+
   scale_y_continuous("Mean shell height (mm)", expand = c(0,0), limits = c(0,100))+
   preztheme + axistheme + theme(legend.position = "top", legend.text = element_text(size = 14), legend.title = element_text(size = 15)) +
-  guides(fill = "none", pattern = guide_legend(override.aes = list(size = 10, pattern_density = 0.5)))
+  guides(fill = "none", pattern = guide_legend(override.aes = list(size = 14, pattern_density = 0.5)))
 #
 ###Presentation fig: Site_SH_ave -- 1000
 #
@@ -1069,11 +1074,11 @@ detrending <- function(df, param){
 #
 All_WQ_clean %>% rename("DO" = DissolvedOxygen) %>% gather(Parameter, Value, -MonYr, -Site) %>%
   ggplot(aes(MonYr, Value))+
-  geom_line(aes(group = Site, color = Site), size = 1.5)+
+  geom_line(aes(group = Site, color = Site), size = 2.5)+
   lemon::facet_rep_grid(Parameter~., scales = "free_y", switch = "y")+
   scale_color_manual(values = SiteColor)+ xlab("Year")+
   scale_x_yearmon(expand = c(0.01,0), limits = c(as.yearmon("Jul 2015", format = "%b %Y"), as.yearmon("Dec 2024", format = "%b %Y")))+
-  preztheme + facettheme + theme(legend.position = "bottom", legend.title = element_blank(), legend.text = element_text(size = 14), panel.spacing.y = unit(1, "lines"))
+  preztheme + facettheme + theme(legend.position = "bottom", legend.title = element_blank(), legend.text = element_text(size = 12), panel.spacing.y = unit(-1, "lines"))
 #
 ###Presentation fig: All_WQ_patterns -- 1000
 #
