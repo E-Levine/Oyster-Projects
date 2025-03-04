@@ -43,7 +43,8 @@ glimpse(Cage_WQ_raw)
     rename("SampleEventID_Coll" = SampleEventID) %>%
     mutate(SampleEventID = str_replace_all(SampleEventID_Coll, "COLL", "CAGE"),
            MonYr = as.yearmon(as.Date(substring(SampleEventID, 8, 15), format = "%Y%m%d")),
-           FixedLocationID = substring(SampleEventID, 19, 22)) %>%
+           FixedLocationID = substring(SampleEventID, 19, 22),
+           pH = as.numeric(case_when(pH < 6 ~ NA, TRUE ~ pH))) %>%
     left_join(Locations) %>% filter(FixedLocationID %in% Locations$FixedLocationID & MonYr < as.yearmon(as.Date("2025-01-01", format = "%Y-%m-%d"))))
 #
 #CRE
@@ -1081,7 +1082,8 @@ All_WQ_clean %>% rename("DO" = DissolvedOxygen) %>% gather(Parameter, Value, -Mo
   lemon::facet_rep_grid(Parameter~., scales = "free_y", switch = "y")+
   scale_color_manual(values = SiteColor)+ xlab("Year")+
   scale_x_yearmon(expand = c(0.01,0), limits = c(as.yearmon("Jul 2015", format = "%b %Y"), as.yearmon("Dec 2024", format = "%b %Y")))+
-  preztheme + facettheme + theme(legend.position = "bottom", legend.title = element_blank(), legend.text = element_text(size = 12), panel.spacing.y = unit(-1, "lines"))
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4))+
+  preztheme + facettheme + theme(legend.position = "bottom", legend.title = element_blank(), legend.text = element_text(size = 12), panel.spacing.y = unit(-1, "lines"), plot.margin = margin(t = 10, l = 2, r = 2))
 #
 ###Presentation fig: All_WQ_patterns -- 1000
 #
@@ -1107,7 +1109,7 @@ All_growth_tab; All_growth_sum
 ##AIC - Model selection for final model - including YEAR
 All_growth_step <- stepAIC(All_growth, direction = "backward")
 set.seed(54321)
-All_growth_final <- update(All_growth, .~. -SalAdj, data = Alldata %>% dplyr::select(-MonYr, -MeanMonthly))
+All_growth_final <- update(All_growth, .~. -SalAdj - pHAdj, data = Alldata %>% dplyr::select(-MonYr, -MeanMonthly))
 tidy(All_growth_final)
 glance(All_growth_final) %>% dplyr::select(r.squared:df, deviance:df.residual)
 #
@@ -1120,7 +1122,7 @@ ggplot(Alldata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm =
   geom_line(data = All_growth_modeldata, aes(Year, Growth_p, color = "Predict"), size = 1.25)+
   geom_line(data = All_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
   geom_line(data = All_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
-  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16))+ axistheme +
+  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16), plot.margin = margin(t = 10, l = 2, r = 2))+ axistheme +
   ylab("Mean growth rate (mm/month)")+ 
   scale_x_continuous(expand = c(0.1,0), limits = c(2015, 2024), breaks = seq(2015, 2024, 1))+
   scale_y_continuous(expand = c(0,0), limits = c(0,8)) +
@@ -1234,7 +1236,7 @@ ggplot(CREdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm =
   geom_line(data = CRE_growth_modeldata, aes(Year, Growth_p, color = "Predict"), size = 1.25)+
   geom_line(data = CRE_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
   geom_line(data = CRE_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
-  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16))+ axistheme +
+  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16), plot.margin = margin(t = 10, l = 2, r = 2))+ axistheme +
   ylab("Mean growth rate (mm/month)")+ 
   scale_x_continuous(expand = c(0.1,0), limits = c(2019, 2024), breaks = seq(2019, 2024, 1))+
   scale_y_continuous(expand = c(0,0), limits = c(0,20)) +
@@ -1296,7 +1298,7 @@ ggplot(CRWdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm =
   geom_line(data = CRW_growth_modeldata, aes(Year, Growth_p, color = "Predict"), size = 1.25)+
   geom_line(data = CRW_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
   geom_line(data = CRW_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
-  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16))+ axistheme +
+  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16), plot.margin = margin(t = 10, l = 2, r = 2))+ axistheme +
   ylab("Mean growth rate (mm/month)")+ 
   scale_x_continuous(expand = c(0.1,0), limits = c(2018, 2024), breaks = seq(2018, 2024, 1))+
   scale_y_continuous(expand = c(0,0), limits = c(0,10)) +
@@ -1345,7 +1347,7 @@ LXN_growth_tab; LXN_growth_sum
 ##AIC - Model selection for final model - including YEAR
 LXN_growth_step <- stepAIC(LXN_growth, direction = "backward")
 set.seed(54321)
-LXN_growth_final <- update(LXN_growth, .~. -TempAdj -DOAdj, data = LXNdata %>% dplyr::select(-MonYr))
+LXN_growth_final <- update(LXN_growth, .~. -TempAdj -DOAdj -pHAdj, data = LXNdata %>% dplyr::select(-MonYr))
 tidy(LXN_growth_final)
 glance(LXN_growth_final) %>% dplyr::select(r.squared:df, deviance:df.residual)
 #
@@ -1358,7 +1360,7 @@ ggplot(LXNdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm =
   geom_line(data = LXN_growth_modeldata, aes(Year, Growth_p, color = "Predict"), size = 1.25)+
   geom_line(data = LXN_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
   geom_line(data = LXN_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
-  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16))+ axistheme +
+  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16), plot.margin = margin(t = 10, l = 2, r = 2))+ axistheme +
   ylab("Mean growth rate (mm/month)")+ 
   scale_x_continuous(expand = c(0.1,0), limits = c(2015, 2024), breaks = seq(2015, 2024, 1))+
   scale_y_continuous(expand = c(0,0), limits = c(0,10)) +
@@ -1421,7 +1423,7 @@ ggplot(SLCdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm =
   geom_line(data = SLC_growth_modeldata, aes(Year, Growth_p, color = "Predict"), size = 1.25)+
   geom_line(data = SLC_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
   geom_line(data = SLC_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
-  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16))+ axistheme +
+  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16), plot.margin = margin(t = 10, l = 2, r = 2))+ axistheme +
   ylab("Mean growth rate (mm/month)")+ 
   scale_x_continuous(expand = c(0.1,0), limits = c(2015, 2024), breaks = seq(2015, 2024, 1))+
   scale_y_continuous(expand = c(0,0), limits = c(0,10)) +
