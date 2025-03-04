@@ -618,7 +618,7 @@ Annual_dep_comps %>%
   #geom_text(aes(y = upper+10, label = Letters), size = 5) +
   scale_y_continuous("Mean deployed shell height (mm)", expand = c(0,0), limits= c(0, 75), breaks = seq(0, 75, by = 25))+
   scale_color_manual(values = SiteColor)+
-  preztheme + axistheme + theme(legend.position = "none") + facettheme
+  preztheme + axistheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t = 10, r = 2, l = 2)) + facettheme
 #
 ###Presentation fig: Site_dep_SH_annual -- 1000
 #
@@ -651,7 +651,7 @@ DepSH_demean %>%
   lemon::facet_rep_grid(Site~.)+
   geom_hline(yintercept = 0, linetype = "dashed", linewidth =1)+
   scale_y_continuous("Difference from mean shell height", limits = c(-8, 8), expand = c(0,0), breaks = seq(-8, 8, by = 4))+
-  preztheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines")) + facettheme 
+  preztheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t= 10, l = 2, r = 2)) + facettheme 
 #
 ###Presentation fig: Site_dep_SH_annual_demean -- 1000
 #
@@ -851,7 +851,7 @@ Annual_growMon_comps %>%
   scale_y_continuous("Mean growth rate (mm/month)", expand = c(0,0), limits= c(0, 15), breaks = seq(0, 15, by = 5))+
   scale_color_manual(values = SiteColor)+
   geom_hline(yintercept = 0, linetype = "dotted")+
-  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines"))
+  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t = 10, l = 2, r = 2))
 #
 ###Presentation fig: Site_growth_mmmonth_annual -- 1000
 #
@@ -868,7 +868,7 @@ GrowthMon_demean %>%
   lemon::facet_rep_grid(Site~.)+
   geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1)+
   scale_y_continuous("Difference mean growth rate (mm/month)", limits = c(-4, 4), expand = c(0,0), breaks = seq(-4, 4, by = 2))+
-  preztheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines")) + facettheme
+  preztheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t = 10, r = 2, l= 2)) + facettheme
 #
 ###Presentation fig: Site_growth_mmmonth_annual_demean -- 1000
 #
@@ -892,7 +892,7 @@ ggarrange(
     basetheme +axistheme
 )
 #
-##Permu1tation based ANOVA - Year for each site percent mortality
+##Permutation based ANOVA - Year for each site percent mortality
 set.seed(54321)
 PctMort_LXN <- aovp(DeadRate ~ Year, data = Counts_cages %>% filter(Site == "LXN"), perm = "",  nperm = 10000)
 PctMort_SLC <- aovp(DeadRate ~ Year, data = Counts_cages %>% filter(Site == "SLC"), perm = "",  nperm = 10000)
@@ -944,9 +944,9 @@ Annual_PctMort_comps %>%
   lemon::facet_rep_grid(Site~.)+
   #geom_text(aes(y = upper+0.2, label = Letters), size = 5) +
   #geom_hline(yintercept = 0, linetype = "dashed")+
-  scale_y_continuous("Mean mortality rate", expand = c(0,0), limits= c(0, 1.1))+
+  scale_y_continuous("Mean percent mortality", expand = c(0,0), limits= c(0, 1.1), labels = percent_format())+
   scale_color_manual(values = SiteColor)+
-  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines"))
+  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t = 10, r = 2, l= 2))
 ###Presentation fig: Site_mortality_annual -- 1000
 #
 ###De-meaning
@@ -960,8 +960,8 @@ DeadRate_demean %>%
   scale_fill_manual(values = SiteColor)+
   lemon::facet_rep_grid(Site~.)+
   geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1)+
-  scale_y_continuous("Difference from mean mortality rate", limits = c(-0.4, 0.4), expand = c(0,0), breaks = seq(-0.4, 0.4, by = 0.2))+
-  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines"))
+  scale_y_continuous("Difference from mean mortality", limits = c(-0.4, 0.4), labels = percent_format(), expand = c(0,0), breaks = seq(-0.4, 0.4, by = 0.2))+
+  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t = 10, l = 2, r = 2))
 #
 ###Presentation fig: Site_mortality_annual_demean -- 1000
 #
@@ -1022,9 +1022,9 @@ Annual_PctDead_comps %>%
   lemon::facet_rep_grid(Site~.)+
   #geom_text(aes(y = upper+0.1, label = Letters), size = 5) +
   #geom_hline(yintercept = 0, linetype = "dashed")+
-  scale_y_continuous("Mean dead rate", expand = c(0,0), limits= c(0, 0.15), breaks = seq(0, 0.15, 0.05))+
+  scale_y_continuous("Mean percent dead", expand = c(0,0), limits= c(0, 0.15), labels = percent_format(), breaks = seq(0, 0.15, 0.05))+
   scale_color_manual(values = SiteColor)+
-  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines"))
+  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t = 10, l = 2, r = 2))
 #
 ###Presentation fig: Site_mortality_dead_annual -- 1000
 #
@@ -1039,8 +1039,8 @@ DeadCount_demean %>%
   scale_fill_manual(values = SiteColor)+
   lemon::facet_rep_grid(Site~.)+
   geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1)+
-  scale_y_continuous("Difference from mean dead rate", limits = c(-0.05, 0.1), expand = c(0,0), breaks = seq(-0.05, 0.1, by = 0.05))+
-  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines"))
+  scale_y_continuous("Difference from mean dead", limits = c(-0.05, 0.1), labels = percent_format(), expand = c(0,0), breaks = seq(-0.05, 0.1, by = 0.05))+
+  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t = 10, l = 2, r = 2))
 # 
 ###Presentation fig: Site_mortality_count_annual_demean -- 1000
 #
