@@ -155,8 +155,8 @@ basetheme <- theme_bw()+
         axis.ticks.length = unit(-0.15, "cm"))
 #
 preztheme <- theme_bw()+
-  theme(axis.title.x = element_text(size = 18, face = "bold", color = "black"), axis.text.x = element_text(size = 16, margin = unit(c(0.5, 0.5, 0, 0.5), "cm")),
-        axis.title.y = element_text(size = 18, face = "bold", color = "black"), axis.text.y = element_text(size = 16, margin = unit(c(0, 0.5, 0, 0), "cm")),
+  theme(axis.title.x = element_text(size = 20, face = "bold", color = "black"), axis.text.x = element_text(size = 18, margin = unit(c(0.5, 0.5, 0, 0.5), "cm")),
+        axis.title.y = element_text(size = 20, face = "bold", color = "black"), axis.text.y = element_text(size = 18, margin = unit(c(0, 0.5, 0, 0), "cm")),
         panel.grid = element_blank(), panel.border = element_blank(), axis.line = element_line(color = "black"),
         axis.ticks.length = unit(-0.15, "cm"))
 #
@@ -311,7 +311,7 @@ ShellHeights %>% group_by(Site) %>%
   geom_point()+
   geom_boxplot(fill = SiteColor)+
   scale_y_continuous("Depolyed shell height (mm)", expand = c(0,0), limits = c(0,100))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(85, 62, 69, 75), label = c("a", "d", "c", "b"), fontface = "bold", size = 5)+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(85, 62, 69, 75), label = c("a", "d", "c", "b"), fontface = "bold", size = 7)+
   ggtitle("Cage data through December 2024") +
   preztheme + axistheme + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
 ###Presentation fig: Site_dep_SH_ave -- 1000
@@ -338,9 +338,10 @@ Site_ret_letters <- make_cld(Site_ret_tab) %>% dplyr::select(-c("spaced_cld")) %
 ShellHeights %>% group_by(Site) %>%
   ggplot(aes(Site, Ret_MeanSH))+
   geom_point()+
-  geom_boxplot(fill = SiteColor)+
+  #geom_boxplot(fill = SiteColor)+
+  geom_boxplot_pattern(color = "black", fill = SiteColor, linewidth = 0.75, pattern = "weave")+
   scale_y_continuous("Retrieved shell height (mm)", expand = c(0,0), limits = c(0,100))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(90, 72, 74, 77), label = c("a", "c", "b", "b"), fontface = "bold", size = 5)+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(90, 72, 74, 77), label = c("a", "c", "b", "b"), fontface = "bold", size = 7)+
   ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
 #
@@ -433,7 +434,7 @@ ShellHeights %>% group_by(Site) %>%
   geom_point()+
   geom_boxplot(fill = SiteColor)+
   scale_y_continuous("Growth rate (mm/month)", expand = c(0,0), limits = c(0,40))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(34, 23, 25, 22), label = c("a", "c", "b", "c"), fontface = "bold", size = 5)+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(34, 23, 25, 22), label = c("a", "c", "b", "c"), fontface = "bold", size = 7)+
   ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme  + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
 #
@@ -495,8 +496,9 @@ Mort_mod_letters <- make_cld(Mort_mod_tab) %>% dplyr::select(-c("spaced_cld")) %
 #
 Counts_cages %>% group_by(Site) %>%
   ggplot(aes(Site, DeadRate))+
+  geom_point()+
+  #geom_jitter(width = 0.15)+
   geom_boxplot(fill = SiteColor)+
-  geom_jitter(width = 0.15)+
   scale_y_continuous("Mean percent mortality", expand = c(0,0), labels = percent_format(), limits = c(0,1.15), breaks = seq(0, 1, by = 0.2))+
   annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(1.1, 1.1, 1.1, 1.1), label = c("ab", "a", "b", "b"), fontface = "bold", size = 5)+
   ggtitle("Cage data through Dec 2024")+
@@ -541,8 +543,9 @@ Dead_mod_letters <- make_cld(Dead_mod_tab) %>% dplyr::select(-c("spaced_cld")) %
 #
 Counts_cages %>% group_by(Site) %>%
   ggplot(aes(Site, DeadCountRate))+
+  geom_point()+
+  #geom_jitter(width = 0.15)+
   geom_boxplot(fill = SiteColor)+
-  geom_jitter(width = 0.15)+
   scale_y_continuous("Mean percent dead", expand = c(0,0), limits = c(0,0.5), labels = percent_format())+
   ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
