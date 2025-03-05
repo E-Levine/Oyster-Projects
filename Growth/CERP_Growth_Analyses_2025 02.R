@@ -43,7 +43,8 @@ glimpse(Cage_WQ_raw)
     rename("SampleEventID_Coll" = SampleEventID) %>%
     mutate(SampleEventID = str_replace_all(SampleEventID_Coll, "COLL", "CAGE"),
            MonYr = as.yearmon(as.Date(substring(SampleEventID, 8, 15), format = "%Y%m%d")),
-           FixedLocationID = substring(SampleEventID, 19, 22)) %>%
+           FixedLocationID = substring(SampleEventID, 19, 22),
+           pH = as.numeric(case_when(pH < 6 ~ NA, TRUE ~ pH))) %>%
     left_join(Locations) %>% filter(FixedLocationID %in% Locations$FixedLocationID & MonYr < as.yearmon(as.Date("2025-01-01", format = "%Y-%m-%d"))))
 #
 #CRE
@@ -155,8 +156,8 @@ basetheme <- theme_bw()+
         axis.ticks.length = unit(-0.15, "cm"))
 #
 preztheme <- theme_bw()+
-  theme(axis.title.x = element_text(size = 18, face = "bold", color = "black"), axis.text.x = element_text(size = 16, margin = unit(c(0.5, 0.5, 0, 0.5), "cm")),
-        axis.title.y = element_text(size = 18, face = "bold", color = "black"), axis.text.y = element_text(size = 16, margin = unit(c(0, 0.5, 0, 0), "cm")),
+  theme(axis.title.x = element_text(size = 20, face = "bold", color = "black"), axis.text.x = element_text(size = 18, margin = unit(c(0.5, 0.5, 0, 0.5), "cm")),
+        axis.title.y = element_text(size = 20, face = "bold", color = "black"), axis.text.y = element_text(size = 18, margin = unit(c(0, 0.5, 0, 0), "cm")),
         panel.grid = element_blank(), panel.border = element_blank(), axis.line = element_line(color = "black"),
         axis.ticks.length = unit(-0.15, "cm"))
 #
@@ -324,7 +325,7 @@ ShellHeights %>% group_by(Site) %>%
   geom_point()+
   geom_boxplot(fill = SiteColor)+
   scale_y_continuous("Depolyed shell height (mm)", expand = c(0,0), limits = c(0,100))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(85, 62, 69, 75), label = c("a", "d", "c", "b"), fontface = "bold", size = 5)+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(85, 62, 69, 75), label = c("a", "d", "c", "b"), fontface = "bold", size = 7)+
   ggtitle("Cage data through December 2024") +
   preztheme + axistheme + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
 ###Presentation fig: Site_dep_SH_ave -- 1000
@@ -351,9 +352,10 @@ Site_ret_letters <- make_cld(Site_ret_tab) %>% dplyr::select(-c("spaced_cld")) %
 ShellHeights %>% group_by(Site) %>%
   ggplot(aes(Site, Ret_MeanSH))+
   geom_point()+
-  geom_boxplot(fill = SiteColor)+
+  #geom_boxplot(fill = SiteColor)+
+  geom_boxplot_pattern(color = "black", fill = SiteColor, linewidth = 0.75, pattern = "weave")+
   scale_y_continuous("Retrieved shell height (mm)", expand = c(0,0), limits = c(0,100))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(90, 72, 74, 77), label = c("a", "c", "b", "b"), fontface = "bold", size = 5)+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(90, 72, 74, 77), label = c("a", "c", "b", "b"), fontface = "bold", size = 7)+
   ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
 #
@@ -446,7 +448,7 @@ ShellHeights %>% group_by(Site) %>%
   geom_point()+
   geom_boxplot(fill = SiteColor)+
   scale_y_continuous("Growth rate (mm/month)", expand = c(0,0), limits = c(0,40))+
-  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(34, 23, 25, 22), label = c("a", "c", "b", "c"), fontface = "bold", size = 5)+
+  annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(34, 23, 25, 22), label = c("a", "c", "b", "c"), fontface = "bold", size = 7)+
   ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme  + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
 #
@@ -508,8 +510,9 @@ Mort_mod_letters <- make_cld(Mort_mod_tab) %>% dplyr::select(-c("spaced_cld")) %
 #
 Counts_cages %>% group_by(Site) %>%
   ggplot(aes(Site, DeadRate))+
+  geom_point()+
+  #geom_jitter(width = 0.15)+
   geom_boxplot(fill = SiteColor)+
-  geom_jitter(width = 0.15)+
   scale_y_continuous("Mean percent mortality", expand = c(0,0), labels = percent_format(), limits = c(0,1.15), breaks = seq(0, 1, by = 0.2))+
   annotate("text", x = c("CRE", "CRW", "LXN", "SLC"), y = c(1.1, 1.1, 1.1, 1.1), label = c("ab", "a", "b", "b"), fontface = "bold", size = 5)+
   ggtitle("Cage data through Dec 2024")+
@@ -554,8 +557,9 @@ Dead_mod_letters <- make_cld(Dead_mod_tab) %>% dplyr::select(-c("spaced_cld")) %
 #
 Counts_cages %>% group_by(Site) %>%
   ggplot(aes(Site, DeadCountRate))+
+  geom_point()+
+  #geom_jitter(width = 0.15)+
   geom_boxplot(fill = SiteColor)+
-  geom_jitter(width = 0.15)+
   scale_y_continuous("Mean percent dead", expand = c(0,0), limits = c(0,0.5), labels = percent_format())+
   ggtitle("Cage data through Dec 2024")+
   preztheme + axistheme + theme(plot.title = element_text(margin = margin(0, 0, 15, 0)))
@@ -628,7 +632,7 @@ Annual_dep_comps %>%
   #geom_text(aes(y = upper+10, label = Letters), size = 5) +
   scale_y_continuous("Mean deployed shell height (mm)", expand = c(0,0), limits= c(0, 75), breaks = seq(0, 75, by = 25))+
   scale_color_manual(values = SiteColor)+
-  preztheme + axistheme + theme(legend.position = "none") + facettheme
+  preztheme + axistheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t = 10, r = 2, l = 2)) + facettheme
 #
 ###Presentation fig: Site_dep_SH_annual -- 1000
 #
@@ -661,7 +665,7 @@ DepSH_demean %>%
   lemon::facet_rep_grid(Site~.)+
   geom_hline(yintercept = 0, linetype = "dashed", linewidth =1)+
   scale_y_continuous("Difference from mean shell height", limits = c(-8, 8), expand = c(0,0), breaks = seq(-8, 8, by = 4))+
-  preztheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines")) + facettheme 
+  preztheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t= 10, l = 2, r = 2)) + facettheme 
 #
 ###Presentation fig: Site_dep_SH_annual_demean -- 1000
 #
@@ -861,7 +865,7 @@ Annual_growMon_comps %>%
   scale_y_continuous("Mean growth rate (mm/month)", expand = c(0,0), limits= c(0, 15), breaks = seq(0, 15, by = 5))+
   scale_color_manual(values = SiteColor)+
   geom_hline(yintercept = 0, linetype = "dotted")+
-  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines"))
+  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t = 10, l = 2, r = 2))
 #
 ###Presentation fig: Site_growth_mmmonth_annual -- 1000
 #
@@ -878,7 +882,7 @@ GrowthMon_demean %>%
   lemon::facet_rep_grid(Site~.)+
   geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1)+
   scale_y_continuous("Difference mean growth rate (mm/month)", limits = c(-4, 4), expand = c(0,0), breaks = seq(-4, 4, by = 2))+
-  preztheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines")) + facettheme
+  preztheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t = 10, r = 2, l= 2)) + facettheme
 #
 ###Presentation fig: Site_growth_mmmonth_annual_demean -- 1000
 #
@@ -902,7 +906,7 @@ ggarrange(
     basetheme +axistheme
 )
 #
-##Permu1tation based ANOVA - Year for each site percent mortality
+##Permutation based ANOVA - Year for each site percent mortality
 set.seed(54321)
 PctMort_LXN <- aovp(DeadRate ~ Year, data = Counts_cages %>% filter(Site == "LXN"), perm = "",  nperm = 10000)
 PctMort_SLC <- aovp(DeadRate ~ Year, data = Counts_cages %>% filter(Site == "SLC"), perm = "",  nperm = 10000)
@@ -954,9 +958,9 @@ Annual_PctMort_comps %>%
   lemon::facet_rep_grid(Site~.)+
   #geom_text(aes(y = upper+0.2, label = Letters), size = 5) +
   #geom_hline(yintercept = 0, linetype = "dashed")+
-  scale_y_continuous("Mean mortality rate", expand = c(0,0), limits= c(0, 1.1))+
+  scale_y_continuous("Mean percent mortality", expand = c(0,0), limits= c(0, 1.1), labels = percent_format())+
   scale_color_manual(values = SiteColor)+
-  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines"))
+  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t = 10, r = 2, l= 2))
 ###Presentation fig: Site_mortality_annual -- 1000
 #
 ###De-meaning
@@ -970,8 +974,8 @@ DeadRate_demean %>%
   scale_fill_manual(values = SiteColor)+
   lemon::facet_rep_grid(Site~.)+
   geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1)+
-  scale_y_continuous("Difference from mean mortality rate", limits = c(-0.4, 0.4), expand = c(0,0), breaks = seq(-0.4, 0.4, by = 0.2))+
-  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines"))
+  scale_y_continuous("Difference from mean mortality", limits = c(-0.4, 0.4), labels = percent_format(), expand = c(0,0), breaks = seq(-0.4, 0.4, by = 0.2))+
+  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t = 10, l = 2, r = 2))
 #
 ###Presentation fig: Site_mortality_annual_demean -- 1000
 #
@@ -1032,9 +1036,9 @@ Annual_PctDead_comps %>%
   lemon::facet_rep_grid(Site~.)+
   #geom_text(aes(y = upper+0.1, label = Letters), size = 5) +
   #geom_hline(yintercept = 0, linetype = "dashed")+
-  scale_y_continuous("Mean dead rate", expand = c(0,0), limits= c(0, 0.15), breaks = seq(0, 0.15, 0.05))+
+  scale_y_continuous("Mean percent dead", expand = c(0,0), limits= c(0, 0.15), labels = percent_format(), breaks = seq(0, 0.15, 0.05))+
   scale_color_manual(values = SiteColor)+
-  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines"))
+  preztheme + axistheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t = 10, l = 2, r = 2))
 #
 ###Presentation fig: Site_mortality_dead_annual -- 1000
 #
@@ -1049,8 +1053,8 @@ DeadCount_demean %>%
   scale_fill_manual(values = SiteColor)+
   lemon::facet_rep_grid(Site~.)+
   geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1)+
-  scale_y_continuous("Difference from mean dead rate", limits = c(-0.05, 0.1), expand = c(0,0), breaks = seq(-0.05, 0.1, by = 0.05))+
-  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(1, "lines"))
+  scale_y_continuous("Difference from mean dead", limits = c(-0.05, 0.1), labels = percent_format(), expand = c(0,0), breaks = seq(-0.05, 0.1, by = 0.05))+
+  preztheme + facettheme + theme(legend.position = "none", panel.spacing.y = unit(0.5, "lines"), plot.margin = margin(t = 10, l = 2, r = 2))
 # 
 ###Presentation fig: Site_mortality_count_annual_demean -- 1000
 #
@@ -1091,7 +1095,8 @@ All_WQ_clean %>% rename("DO" = DissolvedOxygen) %>% gather(Parameter, Value, -Mo
   lemon::facet_rep_grid(Parameter~., scales = "free_y", switch = "y")+
   scale_color_manual(values = SiteColor)+ xlab("Year")+
   scale_x_yearmon(expand = c(0.01,0), limits = c(as.yearmon("Jul 2015", format = "%b %Y"), as.yearmon("Dec 2024", format = "%b %Y")))+
-  preztheme + facettheme + theme(legend.position = "bottom", legend.title = element_blank(), legend.text = element_text(size = 12), panel.spacing.y = unit(-1, "lines"))
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4))+
+  preztheme + facettheme + theme(legend.position = "bottom", legend.title = element_blank(), legend.text = element_text(size = 12), panel.spacing.y = unit(-1, "lines"), plot.margin = margin(t = 10, l = 2, r = 2))
 #
 ###Presentation fig: All_WQ_patterns -- 1000
 #
@@ -1117,7 +1122,7 @@ All_growth_tab; All_growth_sum
 ##AIC - Model selection for final model - including YEAR
 All_growth_step <- stepAIC(All_growth, direction = "backward")
 set.seed(54321)
-All_growth_final <- update(All_growth, .~. -SalAdj, data = Alldata %>% dplyr::select(-MonYr, -MeanMonthly))
+All_growth_final <- update(All_growth, .~. -SalAdj - pHAdj, data = Alldata %>% dplyr::select(-MonYr, -MeanMonthly))
 tidy(All_growth_final)
 glance(All_growth_final) %>% dplyr::select(r.squared:df, deviance:df.residual)
 #
@@ -1130,7 +1135,7 @@ ggplot(Alldata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm =
   geom_line(data = All_growth_modeldata, aes(Year, Growth_p, color = "Predict"), size = 1.25)+
   geom_line(data = All_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
   geom_line(data = All_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
-  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16))+ axistheme +
+  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16), plot.margin = margin(t = 10, l = 2, r = 2))+ axistheme +
   ylab("Mean growth rate (mm/month)")+ 
   scale_x_continuous(expand = c(0.1,0), limits = c(2015, 2024), breaks = seq(2015, 2024, 1))+
   scale_y_continuous(expand = c(0,0), limits = c(0,8)) +
@@ -1244,7 +1249,7 @@ ggplot(CREdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm =
   geom_line(data = CRE_growth_modeldata, aes(Year, Growth_p, color = "Predict"), size = 1.25)+
   geom_line(data = CRE_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
   geom_line(data = CRE_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
-  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16))+ axistheme +
+  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16), plot.margin = margin(t = 10, l = 2, r = 2))+ axistheme +
   ylab("Mean growth rate (mm/month)")+ 
   scale_x_continuous(expand = c(0.1,0), limits = c(2019, 2024), breaks = seq(2019, 2024, 1))+
   scale_y_continuous(expand = c(0,0), limits = c(0,20)) +
@@ -1306,7 +1311,7 @@ ggplot(CRWdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm =
   geom_line(data = CRW_growth_modeldata, aes(Year, Growth_p, color = "Predict"), size = 1.25)+
   geom_line(data = CRW_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
   geom_line(data = CRW_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
-  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16))+ axistheme +
+  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16), plot.margin = margin(t = 10, l = 2, r = 2))+ axistheme +
   ylab("Mean growth rate (mm/month)")+ 
   scale_x_continuous(expand = c(0.1,0), limits = c(2018, 2024), breaks = seq(2018, 2024, 1))+
   scale_y_continuous(expand = c(0,0), limits = c(0,10)) +
@@ -1355,7 +1360,7 @@ LXN_growth_tab; LXN_growth_sum
 ##AIC - Model selection for final model - including YEAR
 LXN_growth_step <- stepAIC(LXN_growth, direction = "backward")
 set.seed(54321)
-LXN_growth_final <- update(LXN_growth, .~. -TempAdj -DOAdj, data = LXNdata %>% dplyr::select(-MonYr))
+LXN_growth_final <- update(LXN_growth, .~. -TempAdj -DOAdj -pHAdj, data = LXNdata %>% dplyr::select(-MonYr))
 tidy(LXN_growth_final)
 glance(LXN_growth_final) %>% dplyr::select(r.squared:df, deviance:df.residual)
 #
@@ -1368,7 +1373,7 @@ ggplot(LXNdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm =
   geom_line(data = LXN_growth_modeldata, aes(Year, Growth_p, color = "Predict"), size = 1.25)+
   geom_line(data = LXN_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
   geom_line(data = LXN_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
-  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16))+ axistheme +
+  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16), plot.margin = margin(t = 10, l = 2, r = 2))+ axistheme +
   ylab("Mean growth rate (mm/month)")+ 
   scale_x_continuous(expand = c(0.1,0), limits = c(2015, 2024), breaks = seq(2015, 2024, 1))+
   scale_y_continuous(expand = c(0,0), limits = c(0,10)) +
@@ -1431,7 +1436,7 @@ ggplot(SLCdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm =
   geom_line(data = SLC_growth_modeldata, aes(Year, Growth_p, color = "Predict"), size = 1.25)+
   geom_line(data = SLC_growth_modeldata, aes(Year, Growth_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
   geom_line(data = SLC_growth_modeldata, aes(Year, Growth_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
-  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16))+ axistheme +
+  preztheme + theme(legend.position = c(0.85, 0.92), legend.text = element_text(size = 16), plot.margin = margin(t = 10, l = 2, r = 2))+ axistheme +
   ylab("Mean growth rate (mm/month)")+ 
   scale_x_continuous(expand = c(0.1,0), limits = c(2015, 2024), breaks = seq(2015, 2024, 1))+
   scale_y_continuous(expand = c(0,0), limits = c(0,10)) +
