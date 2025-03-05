@@ -253,6 +253,19 @@ glimpse(SLC_WQ_all)
 #
 ####Overall - summary####
 #
+Cage_counts %>% mutate(Year = format(MonYr, "%Y")) %>% group_by(Site, Year) %>% 
+  summarise(MeanRet = mean(LiveCount, na.rm = T)) %>% 
+  ggplot(aes(Year, MeanRet, color = Site)) + 
+  geom_point(size = 6)+
+  geom_line(group = 1, size = 1.5)+
+  lemon::facet_rep_grid(Site~.)+
+  geom_hline(data = Cage_counts %>% group_by(Site) %>% summarise(MeanRet = mean(LiveCount, na.rm = T)), aes(yintercept = MeanRet), linetype = "dashed", size = 1.25)+
+  scale_y_continuous("Mean retrieved oysters", expand = c(0,0), limits= c(0, 30), breaks = seq(0, 30, by = 10))+
+  scale_color_manual(values = SiteColor)+
+  preztheme + axistheme + theme(legend.position = "none", plot.margin = margin(t = 10, l = 2, r = 2)) + facettheme
+
+###Presentation fig: Site_ret_count_annual -- 1000
+#
 ##Dep, Ret, Growth summary by cage 
 (ShellHeights <- Cage_SH %>% 
    group_by(MonYr, CageCountID, DataType, Site, CageColor, DaysDeployed) %>%
