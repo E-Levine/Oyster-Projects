@@ -13,7 +13,7 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
                zoo, lubridate, forecast, #Dates and times
                readxl, #Reading excel files
                car, emmeans, multcomp, #Basic analyses
-               lmPerm, stats,  
+               lmPerm, stats, betareg,  
                install = TRUE)
 #
 #
@@ -1340,7 +1340,6 @@ ggplot(CREdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm =
 #
 #
 ####Water quality v Mortality - CRE####
-library(betareg)
 #
 ##Working within estuary
 #
@@ -1368,7 +1367,7 @@ CREdata_mort %>% ggplot(aes(x = MeanMonthly))+ geom_histogram(aes(y = ..count..)
 #
 ##Initial MLR - all dat, mortality
 set.seed(54321)
-CRE_mort <- betareg(MeanMonthly ~ ., data = CREdata_mort %>% dplyr::select(-MonYr))
+CRE_mort <- betareg(MeanMonthly ~ ., data = CREdata_mort %>% dplyr::select(-MonYr), na.action = na.omit)
 #CRE_mort <- lm(MeanMonthly ~ ., data = CREdata_mort %>% dplyr::select(-MonYr))
 CRE_mort_tab <- tidy(CRE_mort) %>% dplyr::select(-component)
 names(CRE_mort_tab) <- c("term", "Est.", "SE", "t", "p-value")
@@ -1481,6 +1480,72 @@ ggplot(CRWdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm =
 #
 
 
+####Water quality v Mortality - CRW####
+#
+##Working within estuary
+#
+head(CRWWQ_adj)
+#
+#
+(CRWdata_mort <- left_join(CRWWQ_adj, Counts_cages %>% filter(Site == "CRW") %>% group_by(MonYr) %>% summarise(MeanMonthly = mean(DeadRate, na.rm = T))) %>% mutate(MeanMonthly = as.numeric(case_when(MeanMonthly == 1 ~ MeanMonthly-0.0005, TRUE ~ MeanMonthly))) %>%
+    drop_na() %>% mutate(Year = as.integer(format(MonYr, "%Y"))))
+##Vizualize data##
+#Get summary mean/sd
+CRWdata_mort %>% group_by(Year) %>% rstatix::get_summary_stats(MeanMonthly, type = "mean_sd")
+ggboxplot(CRWdata_mort, x = "Year", y = "MeanMonthly")
+CRWdata_mort %>% ggplot(aes(x = MeanMonthly))+ geom_histogram(aes(y = ..count..)) #Has NO zeros
+#
+#
+##Initial MLR - all dat, mortality
+set.seed(54321)
+CRW_mort <- betareg(MeanMonthly ~ ., data = CRWdata_mort %>% dplyr::select(-MonYr))
+CRW_mort_tab <- tidy(CRW_mort) %>% dplyr::select(-component)
+names(CRW_mort_tab) <- c("term", "Est.", "SE", "t", "p-value")
+CRW_mort_sum <- glance(CRW_mort) 
+names(CRW_mort_sum) <- c("PseudoR2", "dfN", "LL", "AIC", "BIC", "Resid.df", "N")
+CRW_mort_tab; CRW_mort_sum
+##AIC - Model selection for final model - including YEAR
+summary(CRW_mort)
+set.seed(54321)
+CRW_mort_final <- betareg(MeanMonthly ~ Year, data = CRWdata_mort %>% dplyr::select(-MonYr, -TempAdj, -SalAdj, -DOAdj, -pHAdj))
+tidy(CRW_mort_final); summary(CRW_mort_final)
+glance(CRW_mort_final) 
+#
+(CRW_mort_modeldata <- cbind(data.frame(Mort_p = predict(CRW_mort_final, (CRWdata_mort %>% dplyr::select(-MonYr, -TempAdj, -SalAdj, -DOAdj, -pHAdj)), type = "response"), Year = CRWdata_mort$Year),
+                             predict(CRW_mort_final, (CRWdata_mort %>% dplyr::select(-MonYr, -TempAdj, -SalAdj, -DOAdj, -pHAdj)), type = "quantile", at = c(0.05, 0.95))) %>% 
+    group_by(Year) %>% dplyr::summarise(Mort_p = mean(Mort_p, na.rm = T), Mort_lwr = mean(q_0.05), Mort_upr = mean(q_0.95)))
+#
+ggplot(CRWdata_mort %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm = T)))+
+  geom_point(aes(Year, mean, color = "Mean"), size = 4)+
+  geom_line(data = CRW_mort_modeldata, aes(Year, Mort_p, color = "Predict"), size = 1.25)+
+  geom_line(data = CRW_mort_modeldata, aes(Year, Mort_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  geom_line(data = CRW_mort_modeldata, aes(Year, Mort_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  preztheme + theme(legend.position = c(0.85, 0.850), legend.text = element_text(size = 16), plot.margin = margin(t = 10, l = 2, r = 2))+ axistheme +
+  ylab("Mean percent mortality")+ 
+  scale_x_continuous(expand = c(0.1,0), limits = c(2018, 2024), breaks = seq(2018, 2024, 1))+
+  scale_y_continuous(expand = c(0,0), limits = c(0,1), labels = percent_format()) +
+  scale_color_manual(name = "",
+                     breaks = c("Mean", "Predict", "95% CI"),
+                     values = c("#000000", "#FF0000", "#999999"),
+                     labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
+                     guide = guide_legend(override.aes = list(
+                       linetype = c("blank", "solid", "dashed"),
+                       shape = c(19, NA, NA))))
+#
+###Presentation fig: Mortality_model_CRW -- 1000
+#
+hist(CRW_mort_final$residuals)
+qqnorm(CRW_mort_final$residuals); qqline(CRW_mort_final$residuals)
+round(cor(CRWdata_mort %>% dplyr::select(-MonYr, -MeanMonthly, -TempAdj, -SalAdj, -DOAdj, -pHAdj)),2) 
+anova(CRW_mort, CRW_mort_final) #p> 0.05 = new model better
+summary(CRW_mort_final)
+#
+#
+#END OF SECTION
+#
+#
+#
+#
 ####Water quality - LXN####
 #
 ##Working within estuary
@@ -1537,6 +1602,71 @@ ggplot(LXNdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm =
                        shape = c(19, NA, NA))))
 #
 ###Presentation fig: Growth_model_LXN -- 1000
+#
+#
+#
+#
+####Water quality v Mortality - LXN####
+#
+##Working within estuary
+#
+head(LXNWQ_adj)
+#
+#
+(LXNdata_mort <- left_join(LXNWQ_adj, Counts_cages %>% filter(Site == "LXN") %>% group_by(MonYr) %>% summarise(MeanMonthly = mean(DeadRate, na.rm = T))) %>% mutate(MeanMonthly = as.numeric(case_when(MeanMonthly == 1 ~ MeanMonthly-0.0005, TRUE ~ MeanMonthly))) %>%
+    drop_na() %>% mutate(Year = as.integer(format(MonYr, "%Y"))))
+##Vizualize data##
+#Get summary mean/sd
+LXNdata_mort %>% group_by(Year) %>% rstatix::get_summary_stats(MeanMonthly, type = "mean_sd")
+ggboxplot(LXNdata_mort, x = "Year", y = "MeanMonthly")
+LXNdata_mort %>% ggplot(aes(x = MeanMonthly))+ geom_histogram(aes(y = ..count..)) #Has NO zeros
+#
+#
+##Initial MLR - all dat, mortality
+set.seed(54321)
+LXN_mort <- betareg(MeanMonthly ~ ., data = LXNdata_mort %>% dplyr::select(-MonYr))
+LXN_mort_tab <- tidy(LXN_mort) %>% dplyr::select(-component)
+names(LXN_mort_tab) <- c("term", "Est.", "SE", "t", "p-value")
+LXN_mort_sum <- glance(LXN_mort) 
+names(LXN_mort_sum) <- c("PseudoR2", "dfN", "LL", "AIC", "BIC", "Resid.df", "N")
+LXN_mort_tab; LXN_mort_sum
+##AIC - Model selection for final model - including YEAR
+summary(LXN_mort)
+set.seed(54321)
+LXN_mort_final <- betareg(MeanMonthly ~ Year + pHAdj, data = LXNdata_mort %>% dplyr::select(-MonYr, -TempAdj, -SalAdj, -DOAdj))
+tidy(LXN_mort_final); summary(LXN_mort_final)
+glance(LXN_mort_final) 
+#
+(LXN_mort_modeldata <- cbind(data.frame(Mort_p = predict(LXN_mort_final, (LXNdata_mort %>% dplyr::select(-MonYr, -TempAdj, -SalAdj, -DOAdj)), type = "response"), Year = LXNdata_mort$Year),
+                             predict(LXN_mort_final, (LXNdata_mort %>% dplyr::select(-MonYr, -TempAdj, -SalAdj, -DOAdj)), type = "quantile", at = c(0.05, 0.95))) %>% 
+    group_by(Year) %>% dplyr::summarise(Mort_p = mean(Mort_p, na.rm = T), Mort_lwr = mean(q_0.05), Mort_upr = mean(q_0.95)))
+#
+ggplot(LXNdata_mort %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm = T)))+
+  geom_point(aes(Year, mean, color = "Mean"), size = 4)+
+  geom_line(data = LXN_mort_modeldata, aes(Year, Mort_p, color = "Predict"), size = 1.25)+
+  geom_line(data = LXN_mort_modeldata, aes(Year, Mort_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  geom_line(data = LXN_mort_modeldata, aes(Year, Mort_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  preztheme + theme(legend.position = c(0.85, 0.93), legend.text = element_text(size = 16), plot.margin = margin(t = 10, l = 2, r = 2))+ axistheme +
+  ylab("Mean percent mortality")+ 
+  scale_x_continuous(expand = c(0.1,0), limits = c(2015, 2024), breaks = seq(2015, 2024, 1))+
+  scale_y_continuous(expand = c(0,0), limits = c(0,1), labels = percent_format()) +
+  scale_color_manual(name = "",
+                     breaks = c("Mean", "Predict", "95% CI"),
+                     values = c("#000000", "#FF0000", "#999999"),
+                     labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
+                     guide = guide_legend(override.aes = list(
+                       linetype = c("blank", "solid", "dashed"),
+                       shape = c(19, NA, NA))))
+#
+###Presentation fig: Mortality_model_LXN -- 1000
+#
+hist(LXN_mort_final$residuals)
+qqnorm(LXN_mort_final$residuals); qqline(LXN_mort_final$residuals)
+round(cor(LXNdata_mort %>% dplyr::select(-MonYr, -MeanMonthly, -TempAdj, -SalAdj, -DOAdj, -pHAdj)),2) 
+summary(LXN_mort_final)
+#
+#
+#END OF SECTION
 #
 #
 #
@@ -1600,6 +1730,71 @@ ggplot(SLCdata %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm =
                        shape = c(19, NA, NA))))
 #
 ###Presentation fig: Growth_model_SLC -- 1000
+#
+#
+#
+#
+####Water quality v Mortality - SLC####
+#
+##Working within estuary
+#
+head(SLCWQ_adj)
+#
+#
+(SLCdata_mort <- left_join(SLCWQ_adj, Counts_cages %>% filter(Site == "SLC") %>% group_by(MonYr) %>% summarise(MeanMonthly = mean(DeadRate, na.rm = T))) %>% mutate(MeanMonthly = as.numeric(case_when(MeanMonthly == 1 ~ MeanMonthly-0.0005, TRUE ~ MeanMonthly))) %>%
+    drop_na() %>% mutate(Year = as.integer(format(MonYr, "%Y"))))
+##Vizualize data##
+#Get summary mean/sd
+SLCdata_mort %>% group_by(Year) %>% rstatix::get_summary_stats(MeanMonthly, type = "mean_sd")
+ggboxplot(SLCdata_mort, x = "Year", y = "MeanMonthly")
+SLCdata_mort %>% ggplot(aes(x = MeanMonthly))+ geom_histogram(aes(y = ..count..)) #Has NO zeros
+#
+#
+##Initial MLR - all dat, mortality
+set.seed(54321)
+SLC_mort <- betareg(MeanMonthly ~ ., data = SLCdata_mort %>% dplyr::select(-MonYr))
+SLC_mort_tab <- tidy(SLC_mort) %>% dplyr::select(-component)
+names(SLC_mort_tab) <- c("term", "Est.", "SE", "t", "p-value")
+SLC_mort_sum <- glance(SLC_mort) 
+names(SLC_mort_sum) <- c("PseudoR2", "dfN", "LL", "AIC", "BIC", "Resid.df", "N")
+SLC_mort_tab; SLC_mort_sum
+##AIC - Model selection for final model - including YEAR
+summary(SLC_mort)
+set.seed(54321)
+SLC_mort_final <- betareg(MeanMonthly ~ Year + pHAdj, data = SLCdata_mort %>% dplyr::select(-MonYr, -TempAdj, -SalAdj, -DOAdj))
+tidy(SLC_mort_final); summary(SLC_mort_final)
+glance(SLC_mort_final) 
+#
+(SLC_mort_modeldata <- cbind(data.frame(Mort_p = predict(SLC_mort_final, (SLCdata_mort %>% dplyr::select(-MonYr, -TempAdj, -SalAdj, -DOAdj)), type = "response"), Year = SLCdata_mort$Year),
+                             predict(SLC_mort_final, (SLCdata_mort %>% dplyr::select(-MonYr, -TempAdj, -SalAdj, -DOAdj)), type = "quantile", at = c(0.05, 0.95))) %>% 
+    group_by(Year) %>% dplyr::summarise(Mort_p = mean(Mort_p, na.rm = T), Mort_lwr = mean(q_0.05), Mort_upr = mean(q_0.95)))
+#
+ggplot(SLCdata_mort %>% group_by(Year) %>% summarise(mean = mean(MeanMonthly, na.rm = T)))+
+  geom_point(aes(Year, mean, color = "Mean"), size = 4)+
+  geom_line(data = SLC_mort_modeldata, aes(Year, Mort_p, color = "Predict"), size = 1.25)+
+  geom_line(data = SLC_mort_modeldata, aes(Year, Mort_lwr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  geom_line(data = SLC_mort_modeldata, aes(Year, Mort_upr, color = "95% CI"), linetype = "dashed", size = 1.25)+
+  preztheme + theme(legend.position = c(0.85, 0.86), legend.text = element_text(size = 16), plot.margin = margin(t = 10, l = 2, r = 2))+ axistheme +
+  ylab("Mean percent mortality")+ 
+  scale_x_continuous(expand = c(0.1,0), limits = c(2015, 2024), breaks = seq(2015, 2024, 1))+
+  scale_y_continuous(expand = c(0,0), limits = c(0,1), labels = percent_format()) +
+  scale_color_manual(name = "",
+                     breaks = c("Mean", "Predict", "95% CI"),
+                     values = c("#000000", "#FF0000", "#999999"),
+                     labels = c("Observed Mean", "Predicted Mean", "95% confidence limit"),
+                     guide = guide_legend(override.aes = list(
+                       linetype = c("blank", "solid", "dashed"),
+                       shape = c(19, NA, NA))))
+#
+###Presentation fig: Mortality_model_SLC -- 1000
+#
+hist(SLC_mort_final$residuals)
+qqnorm(SLC_mort_final$residuals); qqline(SLC_mort_final$residuals)
+round(cor(SLCdata_mort %>% dplyr::select(-MonYr, -MeanMonthly, -TempAdj, -SalAdj, -DOAdj)),2) 
+summary(SLC_mort_final)
+#
+#
+#END OF SECTION
 #
 #
 #
