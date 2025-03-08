@@ -56,7 +56,9 @@ MollWQ_df <- Molluscs_WQ_Raw %>%
   #rename columns to make easier to work with
   rename(Depth = 'Depth (m)', Temp = 'Temp (oC)', Salinity = 'Salinity (ppt)', DO_mgL = 'DO (mg/L)', DO_Pct = 'DO %', Secchi = 'Secchi (m)', Turb_P = 'Tubidity Probe (NTU)', Turb_H = 'Tubidity Handheld (NTU)') %>%
   #update data types/values as needed
-  mutate(across(c(Site, Station), as.factor))
+  mutate(across(c(Site, Station), as.factor),
+         Year = as.factor(format(Date, "%Y")),
+         MonYr = as.yearmon(format(Date, "%b %Y")))
 #
 glimpse(MollWQ_df)
 #
