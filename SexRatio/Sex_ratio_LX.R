@@ -7,7 +7,7 @@
 #if (!require("remotes")) install.packages("remotes")
 if (!require("pacman")) {install.packages("pacman")}
 pacman::p_load(plyr, tidyverse, #Df manipulation, 
-               ggpubr, ggpattern, scales, biostat,
+               ggpubr, scales, lemon,
                rstatix, broom, #Summary stats
                zoo, lubridate, forecast, #Dates and times
                readxl, #Reading excel files
@@ -34,7 +34,11 @@ Repro_df <- Repro_data_raw %>%
   rename(Sample_num = 'Sample Number', SH = 'SH (mm)', Stage = 'Repro Stage (2017-current)', Parasite = 'Other Parasite', Bad_Slide = 'Bad Slide', M_F = 'Male and Female') %>%
   #update data types/values as needed
   mutate(Date = as.Date(Date, origin = "1899-12-30"),
-         across(c(Site, Station, Sex, Stage), as.factor))
+         across(c(Site, Station, Sex, Stage), as.factor),
+         Sex = as.factor(case_when(is.na(Sex) ~ "Z", TRUE ~ Sex)),
+         Year = as.factor(format(Date, "%Y")),
+         MonYr = as.yearmon(format(Date, "%b %Y"))) %>%
+  filter(Bad_Slide == "No" & M_F == "No")
 #
 glimpse(Repro_df)
 #
@@ -82,6 +86,85 @@ facettheme <- theme(strip.text = element_text(size = 12, color = "black", face =
 ##Colors to sites
 SiteColor <- c("#009E73", "#E69F00")
 names(SiteColor) <- levels(Repro_df$Site)
+#
+##Colors to sex
+SexZColor <- c("#CC79A7", "#56B4E9", "#E69F00")
+names(SexZColor) <- levels(Repro_df$Sex)
+SexColor <- c("#CC79A7", "#56B4E9")
+names(SexColor) <- c("F", "M")
+#
+#
+#
+#END OF SECTION
+#
+#
+
+#####Review of data - summary tables and figures####
+#
+###All estuary data - LXN + LXS
+#
+##What is the average ratio of males:females?
+(LX_ratios <- left_join(
+  #Group by sex and get count of each (including Zs)
+  Repro_df %>% group_by(Sex) %>% summarise(All_Count = n()) %>% 
+    mutate(All_Total = sum(All_Count), All_Ratio = All_Count/All_Total),
+  #Group by sex and get count of each (excluding Zs)
+  Repro_df %>% filter(Sex != "Z") %>% group_by(Sex) %>% summarise(MF_Count = n()) %>% 
+    mutate(MF_Total = sum(MF_Count), MF_Ratio = MF_Count/MF_Total)))
+#
+ggarrange(
+  LX_ratios %>% 
+    ggplot(aes(Sex, All_Ratio, fill = Sex))+
+    geom_bar(stat = "identity", fill = SexZColor) +
+    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+    basetheme,
+  LX_ratios %>% filter(Sex != "Z") %>%
+    ggplot(aes(Sex, MF_Ratio, fill = Sex))+
+    geom_bar(stat = "identity", fill = SexColor) +
+    scale_x_discrete(labels = c("F", "M", ""))+
+    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+    basetheme)
+#
+#
+###Has the ratio changed over time? - not including Zs for now
+Repro_df %>% filter(Sex != "Z") %>% group_by(Sex)
+#
+#
+#
+#
+#
+####What is the average ratio of males:females within each site?
+(Site_ratios <- left_join(
+  #Group by sex and get count of each (including Zs)
+  Repro_df %>% group_by(Site, Sex) %>% summarise(All_Count = n()) %>% 
+    mutate(All_Total = sum(All_Count), All_Ratio = All_Count/All_Total),
+  #Group by sex and get count of each (excluding Zs)
+  Repro_df %>% filter(Sex != "Z") %>% group_by(Site, Sex) %>% summarise(MF_Count = n()) %>% 
+    mutate(MF_Total = sum(MF_Count), MF_Ratio = MF_Count/MF_Total)))
+#
+ggarrange(
+  Site_ratios %>% 
+    ggplot(aes(Sex, All_Ratio, fill = Sex))+
+    geom_bar(stat = "identity", fill = c(SexZColor, SexZColor)) +
+    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) +  
+    facet_rep_grid(.~Site)+
+    basetheme + facettheme,
+  Site_ratios %>% filter(Sex != "Z") %>%
+    ggplot(aes(Sex, MF_Ratio, fill = Sex))+
+    geom_bar(stat = "identity", fill = c(SexColor,SexColor)) +
+    scale_x_discrete(labels = c("F", "M", ""))+
+    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) +  
+    facet_rep_grid(.~Site)+
+    basetheme + facettheme)
+#Very similar among sites when just looking at M and F - compare to be sure
+(Site_cont_tab <- table((Repro_df %>% subset(Sex != "Z") %>% droplevels())$Site, (Repro_df %>% subset(Sex != "Z") %>% droplevels())$Sex)) #Create a contingency table
+chisq.test(Site_cont_tab) #Perform Chi-squared test
+#p = 0.5799 - fail to reject null that they are the same >> LXN M:F = LXS M:F
+#
+(SiteZ_cont_tab <- table(Repro_df$Site, Repro_df$Sex)) #Create a contingency table
+chisq.test(SiteZ_cont_tab) #Perform Chi-squared test
+#p = 0.002 - reject null when Zs are include >> LXN M:F:Z != LXS M:F:Z
+#
 #
 #
 #
