@@ -36,7 +36,9 @@ Repro_df <- Repro_data_raw %>%
   mutate(across(c(Site, Station, Sex, Stage), as.factor),
          Sex = as.factor(case_when(is.na(Sex) ~ "Z", TRUE ~ Sex)),
          Year = as.factor(format(Date, "%Y")),
-         MonYr = as.yearmon(format(Date, "%b %Y"))) %>%
+         Month = as.factor(format(Date, "%b")),
+         MonYr = as.yearmon(format(Date, "%b %Y")),
+         SH_Bin = cut(SH, breaks = seq(0, 5*ceiling(max(SH, na.rm = T)/5), by = 5))) %>%
   filter(Bad_Slide == "No" & M_F == "No")
 #
 glimpse(Repro_df)
@@ -57,6 +59,7 @@ MollWQ_df <- Molluscs_WQ_Raw %>%
   #update data types/values as needed
   mutate(across(c(Site, Station), as.factor),
          Year = as.factor(format(Date, "%Y")),
+         Month = as.factor(format(Date, "%b")),
          MonYr = as.yearmon(format(Date, "%b %Y")))
 #
 glimpse(MollWQ_df)
@@ -99,7 +102,7 @@ names(SexColor) <- c("F", "M")
 #
 #
 
-#####Review of data - summary tables and figures####
+#####Review of data - overall summary tables and figures####
 #
 ###All estuary data - LXN + LXS
 #
@@ -139,10 +142,34 @@ LX_annual_ratios %>%
   basetheme
 #
 #
+##Plotting all Months/Years
+left_join(Repro_df %>% filter(Sex != "Z") %>% group_by(Sex, MonYr) %>% summarise(Count = n()),
+          Repro_df %>% filter(Sex != "Z") %>% group_by(MonYr) %>% summarise(Total = n())) %>% 
+  mutate(Ratio = Count/Total) %>%
+  ggplot(aes(MonYr, Ratio, fill = Sex))+
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_manual(values = SexColor)+
+  scale_x_continuous(expand = c(0,0))+
+  scale_y_continuous(expand = c(0,0))+
+  basetheme
+#
+#
+###How do months differ in M:F?
+left_join(Repro_df %>% filter(Sex != "Z") %>% group_by(Sex, Month) %>% summarise(Count = n()),
+          Repro_df %>% filter(Sex != "Z") %>% group_by(Month) %>% summarise(Total = n())) %>% 
+  mutate(Ratio = Count/Total) %>%
+  ggplot(aes(Month, Ratio, fill = Sex))+
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_manual(values = SexColor)+
+  scale_y_continuous(expand = c(0,0))+
+  basetheme
 #
 #
 #
-####What is the average ratio of males:females within each site?
+#
+#
+#
+####What is the average ratio of males:females within each site? - LXN vs LXS
 (Site_ratios <- left_join(
   #Group by sex and get count of each (including Zs)
   Repro_df %>% group_by(Site, Sex) %>% summarise(All_Count = n()) %>% 
@@ -178,5 +205,36 @@ chisq.test(SiteZ_cont_tab) #Perform Chi-squared test
 #
 #
 #END OF SECTION
+#
+#
+#####Ratios by shell heights -  summary tables and figures####
+#
+###All estuary data - LXN + LXS
+#
+##What is the average ratio of males:females per SH bin?
+(LX_SH_Bin_ratios <- left_join(
+  #Group by sex and get count of each (including Zs)
+  left_join(Repro_df %>% group_by(Sex, SH_Bin) %>% summarise(All_Count = n()), Repro_df %>% group_by(SH_Bin) %>% summarise(All_Total = n())) %>% 
+    mutate(All_Ratio = All_Count/All_Total),
+  #Group by sex and get count of each (excluding Zs)
+  left_join(Repro_df %>% filter(Sex != "Z") %>% group_by(Sex, SH_Bin) %>% summarise(MF_Count = n()), Repro_df %>% filter(Sex != "Z") %>% group_by(SH_Bin) %>% summarise(MF_Total = n())) %>% 
+    mutate(MF_Ratio = MF_Count/MF_Total)))
+#
+#Compare ratios
+ggarrange(
+  LX_SH_Bin_ratios %>% 
+    ggplot(aes(SH_Bin, All_Ratio, fill = Sex))+
+    geom_bar(stat = "identity", position = "stack") +
+    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+    scale_fill_manual(values = SexZColor)+
+    basetheme,
+  LX_SH_Bin_ratios %>% filter(Sex != "Z") %>%
+    ggplot(aes(SH_Bin, MF_Ratio, fill = Sex))+
+    geom_bar(stat = "identity", position = "stack") +
+    scale_fill_manual(values = SexColor)+
+    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+    basetheme,
+  nrow = 2)
+#
 #
 #
