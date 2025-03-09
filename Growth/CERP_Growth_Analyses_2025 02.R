@@ -1812,3 +1812,9 @@ summary(SLC_mort_final)
 #
 #
 #
+####Human impacts####
+#
+head(Cage_counts)
+left_join(Cage_counts %>% filter(is.na(RetTotal)) %>% group_by(Site) %>% summarise(Bad = n()),
+          Cage_counts %>% filter(!is.na(RetTotal)) %>% group_by(Site) %>% summarise(Good = n())) %>%
+  mutate(Total = Bad + Good, Pct_Bad = (Bad/Total)*100)
