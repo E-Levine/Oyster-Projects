@@ -33,8 +33,7 @@ Repro_df <- Repro_data_raw %>%
   #rename columns to make easier to work with
   rename(Sample_num = 'Sample Number', SH = 'SH (mm)', Stage = 'Repro Stage (2017-current)', Parasite = 'Other Parasite', Bad_Slide = 'Bad Slide', M_F = 'Male and Female') %>%
   #update data types/values as needed
-  mutate(Date = as.Date(Date, origin = "1899-12-30"),
-         across(c(Site, Station, Sex, Stage), as.factor),
+  mutate(across(c(Site, Station, Sex, Stage), as.factor),
          Sex = as.factor(case_when(is.na(Sex) ~ "Z", TRUE ~ Sex)),
          Year = as.factor(format(Date, "%Y")),
          MonYr = as.yearmon(format(Date, "%b %Y"))) %>%
@@ -68,7 +67,6 @@ glimpse(MollWQ_df)
 #END OF SECTION
 #
 #
-
 #####Figure formatting - for consistent figures####
 #
 #Basic background to work with
@@ -129,7 +127,16 @@ ggarrange(
 #
 #
 ###Has the ratio changed over time? - not including Zs for now
-Repro_df %>% filter(Sex != "Z") %>% group_by(Sex)
+(LX_annual_ratios <- left_join(Repro_df %>% filter(Sex != "Z") %>% group_by(Sex, Year) %>% summarise(Count = n()),
+                               Repro_df %>% filter(Sex != "Z") %>% group_by(Year) %>% summarise(Total = n())) %>% 
+    mutate(Ratio = Count/Total))
+#
+LX_annual_ratios %>%
+  ggplot(aes(Year, Ratio, fill = Sex))+
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_manual(values = SexColor)+
+  scale_y_continuous(expand = c(0,0))+
+  basetheme
 #
 #
 #
