@@ -238,3 +238,11 @@ ggarrange(
 #
 #
 #
+Repro_df %>% mutate(Sex = factor(Sex, ordered = TRUE, levels = c("Z", "M", "F"))) %>%
+  ggplot()+
+  geom_jitter(aes(SH, Sex, color = Sex), height = 0.1)+
+  geom_point(data = Repro_df %>% mutate(Sex = factor(Sex, ordered = TRUE, levels = c("Z", "M", "F"))) %>% group_by(Sex) %>% summarise(SH = mean(SH)),
+             aes(SH, Sex), color = "black", size = 10)+
+  scale_x_continuous(expand = c(0,0), limits = c(0, 100))+
+  scale_y_discrete(expand = c(0,0.5))+
+  basetheme
