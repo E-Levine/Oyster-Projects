@@ -22,7 +22,7 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
 ##Load repro data file
 Repro_data_raw <- read_excel("Data/LX Combined Raw Data 2020-2024.xlsx", sheet = "ReproMSX", #File name and sheet name
                              skip = 3, col_names = TRUE,  #How many rows to skip at top; are column names to be used
-                             na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                             na = c("", "Z", "z", " ", "NAN", "na"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                              .name_repair = "unique")
 #check data types 
 glimpse(Repro_data_raw)
@@ -36,7 +36,7 @@ Repro_df <- Repro_data_raw %>%
   mutate(across(c(Site, Station, Sex, Stage), as.factor),
          Sex = as.factor(case_when(is.na(Sex) ~ "Z", TRUE ~ Sex)),
          Year = as.factor(format(Date, "%Y")),
-         Month = as.factor(format(Date, "%b")),
+         Month = factor(format(Date, "%b"), levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")),
          MonYr = as.yearmon(format(Date, "%b %Y")),
          SH_Bin = cut(SH, breaks = seq(0, 5*ceiling(max(SH, na.rm = T)/5), by = 5))) %>%
   filter(Bad_Slide == "No" & M_F == "No")
@@ -101,148 +101,95 @@ names(SexColor) <- c("F", "M")
 #END OF SECTION
 #
 #
-
-#####Review of data - overall summary tables and figures####
 #
-###All estuary data - LXN + LXS
+####Compile cleaned data for summary and analyses####
 #
-##What is the average ratio of males:females?
-(LX_ratios <- left_join(
-  #Group by sex and get count of each (including Zs)
-  Repro_df %>% group_by(Sex) %>% summarise(All_Count = n()) %>% 
-    mutate(All_Total = sum(All_Count), All_Ratio = All_Count/All_Total),
-  #Group by sex and get count of each (excluding Zs)
-  Repro_df %>% filter(Sex != "Z") %>% group_by(Sex) %>% summarise(MF_Count = n()) %>% 
-    mutate(MF_Total = sum(MF_Count), MF_Ratio = MF_Count/MF_Total)))
+##Cleaned data for ratio analyes:
+(Ratio_clean_df <- Repro_df %>% 
+   #Remove Zs and group by stations and Sex
+   filter(Sex != "Z") %>% group_by(Year, Month, Site, Station, Sex) %>% droplevels() %>%
+   #Get count of each M and F sample
+   summarise(Count = n(), .groups = 'drop') %>%
+   #Add in missing counts (when M or F were 0)
+   complete(Year, Month, Site, Station, Sex, fill = list(Count = 0)) %>%
+   #Add in Total number of samples
+   left_join(Repro_df %>% 
+                #Remove Zs and group by stations
+                filter(Sex != "Z") %>% group_by(Year, Month, Site, Station) %>% droplevels() %>%
+                summarise(Total = n(), .groups = 'drop')) %>%
+   #Removing 4-5/2020 since no samples collected
+   filter(!(Year == '2020' & Month == 'Apr') & !(Year == '2020' & Month == 'May')) %>%
+   #Calculate ratios
+   mutate(Ratio = Count/Total))
 #
-ggarrange(
-  LX_ratios %>% 
-    ggplot(aes(Sex, All_Ratio, fill = Sex))+
-    geom_bar(stat = "identity", fill = SexZColor) +
-    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
-    basetheme,
-  LX_ratios %>% filter(Sex != "Z") %>%
-    ggplot(aes(Sex, MF_Ratio, fill = Sex))+
-    geom_bar(stat = "identity", fill = SexColor) +
-    scale_x_discrete(labels = c("F", "M", ""))+
-    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
-    basetheme)
+glimpse(Ratio_clean_df)
 #
 #
-###Has the ratio changed over time? - not including Zs for now
-(LX_annual_ratios <- left_join(Repro_df %>% filter(Sex != "Z") %>% group_by(Sex, Year) %>% summarise(Count = n()),
-                               Repro_df %>% filter(Sex != "Z") %>% group_by(Year) %>% summarise(Total = n())) %>% 
-    mutate(Ratio = Count/Total))
-#
-LX_annual_ratios %>%
-  ggplot(aes(Year, Ratio, fill = Sex))+
-  geom_bar(stat = "identity", position = "stack") +
-  scale_fill_manual(values = SexColor)+
-  scale_y_continuous(expand = c(0,0))+
-  basetheme
+##END OF SECTION
 #
 #
-##Plotting all Months/Years
-left_join(Repro_df %>% filter(Sex != "Z") %>% group_by(Sex, MonYr) %>% summarise(Count = n()),
-          Repro_df %>% filter(Sex != "Z") %>% group_by(MonYr) %>% summarise(Total = n())) %>% 
-  mutate(Ratio = Count/Total) %>%
-  ggplot(aes(MonYr, Ratio, fill = Sex))+
-  geom_bar(stat = "identity", position = "stack") +
-  scale_fill_manual(values = SexColor)+
-  scale_x_continuous(expand = c(0,0))+
-  scale_y_continuous(expand = c(0,0))+
-  basetheme
+####Review of data - overall summary tables and figures####
 #
+####What is the average ratio of males:females overall within each site? - LXN vs LXS
+(Site_ratios <- Ratio_clean_df %>% 
+  #Get count per Sex
+  group_by(Site, Sex) %>% summarise(MeanRatio = mean(Ratio, na.rm = T)))
 #
-###How do months differ in M:F?
-left_join(Repro_df %>% filter(Sex != "Z") %>% group_by(Sex, Month) %>% summarise(Count = n()),
-          Repro_df %>% filter(Sex != "Z") %>% group_by(Month) %>% summarise(Total = n())) %>% 
-  mutate(Ratio = Count/Total) %>%
-  ggplot(aes(Month, Ratio, fill = Sex))+
-  geom_bar(stat = "identity", position = "stack") +
-  scale_fill_manual(values = SexColor)+
-  scale_y_continuous(expand = c(0,0))+
-  basetheme
-#
-#
-#
-#
-#
-#
-####What is the average ratio of males:females within each site? - LXN vs LXS
-(Site_ratios <- left_join(
-  #Group by sex and get count of each (including Zs)
-  Repro_df %>% group_by(Site, Sex) %>% summarise(All_Count = n()) %>% 
-    mutate(All_Total = sum(All_Count), All_Ratio = All_Count/All_Total),
-  #Group by sex and get count of each (excluding Zs)
-  Repro_df %>% filter(Sex != "Z") %>% group_by(Site, Sex) %>% summarise(MF_Count = n()) %>% 
-    mutate(MF_Total = sum(MF_Count), MF_Ratio = MF_Count/MF_Total)))
-#
-ggarrange(
-  Site_ratios %>% 
-    ggplot(aes(Sex, All_Ratio, fill = Sex))+
-    geom_bar(stat = "identity", fill = c(SexZColor, SexZColor)) +
+Site_ratios %>% 
+    ggplot(aes(Sex, MeanRatio))+
+    geom_bar(stat = "identity", fill = c(SexColor, SexColor)) +
     scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) +  
     facet_rep_grid(.~Site)+
-    basetheme + facettheme,
-  Site_ratios %>% filter(Sex != "Z") %>%
-    ggplot(aes(Sex, MF_Ratio, fill = Sex))+
-    geom_bar(stat = "identity", fill = c(SexColor,SexColor)) +
-    scale_x_discrete(labels = c("F", "M", ""))+
-    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) +  
-    facet_rep_grid(.~Site)+
-    basetheme + facettheme)
+    basetheme + facettheme
+#
 #Very similar among sites when just looking at M and F - compare to be sure
-(Site_cont_tab <- table((Repro_df %>% subset(Sex != "Z") %>% droplevels())$Site, (Repro_df %>% subset(Sex != "Z") %>% droplevels())$Sex)) #Create a contingency table
+(Site_cont_tab <- table((Ratio_clean_df %>% filter(Count >0) %>% droplevels())$Site, (Ratio_clean_df %>% filter(Count >0) %>% droplevels())$Sex)) #Create a contingency table
 chisq.test(Site_cont_tab) #Perform Chi-squared test
-#p = 0.5799 - fail to reject null that they are the same >> LXN M:F = LXS M:F
-#
-(SiteZ_cont_tab <- table(Repro_df$Site, Repro_df$Sex)) #Create a contingency table
-chisq.test(SiteZ_cont_tab) #Perform Chi-squared test
-#p = 0.002 - reject null when Zs are include >> LXN M:F:Z != LXS M:F:Z
+#p = 0.8167 - fail to reject null that they are the same >> LXN M:F = LXS M:F
 #
 #
+####What is the average ratio of males:females per year? - LXN + LXS
+(Annual_ratios <- Ratio_clean_df %>% 
+    #Get count per Sex
+    group_by(Year, Sex) %>% summarise(MeanRatio = mean(Ratio, na.rm = T)))
 #
-#
-#END OF SECTION
-#
-#
-#####Ratios by shell heights -  summary tables and figures####
-#
-###All estuary data - LXN + LXS
-#
-##What is the average ratio of males:females per SH bin?
-(LX_SH_Bin_ratios <- left_join(
-  #Group by sex and get count of each (including Zs)
-  left_join(Repro_df %>% group_by(Sex, SH_Bin) %>% summarise(All_Count = n()), Repro_df %>% group_by(SH_Bin) %>% summarise(All_Total = n())) %>% 
-    mutate(All_Ratio = All_Count/All_Total),
-  #Group by sex and get count of each (excluding Zs)
-  left_join(Repro_df %>% filter(Sex != "Z") %>% group_by(Sex, SH_Bin) %>% summarise(MF_Count = n()), Repro_df %>% filter(Sex != "Z") %>% group_by(SH_Bin) %>% summarise(MF_Total = n())) %>% 
-    mutate(MF_Ratio = MF_Count/MF_Total)))
-#
-#Compare ratios
-ggarrange(
-  LX_SH_Bin_ratios %>% 
-    ggplot(aes(SH_Bin, All_Ratio, fill = Sex))+
-    geom_bar(stat = "identity", position = "stack") +
-    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
-    scale_fill_manual(values = SexZColor)+
-    basetheme,
-  LX_SH_Bin_ratios %>% filter(Sex != "Z") %>%
-    ggplot(aes(SH_Bin, MF_Ratio, fill = Sex))+
-    geom_bar(stat = "identity", position = "stack") +
-    scale_fill_manual(values = SexColor)+
-    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
-    basetheme,
-  nrow = 2)
+Annual_ratios %>% 
+  ggplot(aes(Year, MeanRatio, fill = Sex))+
+  geom_bar(stat = "identity") +
+  #geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ 
+  scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+  scale_fill_manual(values = SexColor)+ scale_color_manual(values = SexColor)+
+  basetheme + facettheme
 #
 #
 #
-Repro_df %>% mutate(Sex = factor(Sex, ordered = TRUE, levels = c("Z", "M", "F"))) %>%
-  ggplot()+
-  geom_jitter(aes(SH, Sex, color = Sex), height = 0.1)+
-  geom_point(data = Repro_df %>% mutate(Sex = factor(Sex, ordered = TRUE, levels = c("Z", "M", "F"))) %>% group_by(Sex) %>% summarise(SH = mean(SH)),
-             aes(SH, Sex), color = "black", size = 10)+
-  scale_x_continuous(expand = c(0,0), limits = c(0, 100))+
-  scale_y_discrete(expand = c(0,0.5))+
-  basetheme
+####What is the average ratio of males:females per month? - LXN + LXS
+(Monthly_ratios <- Ratio_clean_df %>% 
+    #Get count per Sex
+    group_by(Month, Sex) %>% summarise(MeanRatio = mean(Ratio, na.rm = T)))
+#
+Monthly_ratios %>% 
+  ggplot(aes(Month, MeanRatio, fill = Sex))+
+  geom_bar(stat = "identity") +
+  #geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ 
+  scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+  scale_fill_manual(values = SexColor)+ scale_color_manual(values = SexColor)+
+  basetheme + facettheme
+#
+#
+#
+####What is the average ratio of males:females overtime (MonYr)? - LXN + LXS
+(MonYr_ratios <- Ratio_clean_df %>% 
+    mutate(MonYr = as.yearmon(paste(Month, Year))) %>%
+    #Get count per Sex
+    group_by(MonYr, Sex) %>% summarise(MeanRatio = mean(Ratio, na.rm = T)))
+#
+MonYr_ratios %>% 
+  ggplot(aes(MonYr, MeanRatio, fill = Sex))+
+  #geom_bar(stat = "identity") +
+  geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ 
+  scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+  scale_x_continuous(expand = c(0,0))+
+  scale_fill_manual(values = SexColor)+ scale_color_manual(values = SexColor)+
+  basetheme + facettheme
+#
