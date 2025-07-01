@@ -200,3 +200,79 @@ MonYr_ratios %>%
   scale_fill_manual(values = SexColor)+ scale_color_manual(values = SexColor)+
   basetheme + facettheme
 #
+#####Ratios by shell heights -  summary tables and figures####
+#
+###All estuary data - LXN + LXS
+#Number of samples
+Repro_n <- Repro_data_raw %>% 
+  rename(SH = 'SH (mm)', Bad_Slide = 'Bad Slide', M_F = 'Male and Female') %>%
+  #update data types/values as needed
+  mutate(SH_Bin = cut(SH, breaks = seq(0, 5*ceiling(max(SH, na.rm = T)/5), by = 5))) 
+#
+Repro_n %>% group_by(SH_Bin) %>% summarise(Total = n()) %>%
+  ggplot(aes(SH_Bin, Total))+
+  geom_bar(stat = "identity", position = "identity")+
+  scale_y_continuous("Total samples", expand = c(0, 0), limits = c(0, 350))+
+  ggtitle("Number of samples through May 2025")+
+  basetheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.85))
+#
+Repro_n %>% group_by(SH_Bin) %>% summarise(Total = n()) %>%
+  ggplot(aes(SH_Bin, Total))+
+  geom_bar(stat = "identity", position = "identity")+
+  scale_y_continuous("Total samples", expand = c(0, 0))+
+  coord_cartesian(ylim = c(0, 40))+
+  ggtitle("Number of samples through May 2025")+
+  basetheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.85))
+#
+#
+#
+#
+##What is the average ratio of males:females per SH bin?
+(LX_SH_Bin_ratios <- left_join(
+  #Group by sex and get count of each (including Zs)
+  left_join(Repro_df %>% group_by(Sex, SH_Bin) %>% summarise(All_Count = n()), 
+            Repro_df %>% group_by(SH_Bin) %>% summarise(All_Total = n())) %>% 
+    mutate(All_Ratio = All_Count/All_Total),
+  #Group by sex and get count of each (excluding Zs)
+  left_join(Repro_df %>% filter(Sex != "Z") %>% group_by(Sex, SH_Bin) %>% summarise(MF_Count = n()), 
+            Repro_df %>% filter(Sex != "Z") %>% group_by(SH_Bin) %>% summarise(MF_Total = n())) %>% 
+    mutate(MF_Ratio = MF_Count/MF_Total)))
+#
+(Female_ratio <- left_join(Repro_df %>% filter(Sex == "F") %>% group_by(SH_Bin) %>% summarise(Female_count = n()), 
+                           Repro_df %>% filter(Sex != "Z") %>% group_by(SH_Bin) %>% summarise(Total = n())) %>% 
+    mutate(Ratio = Female_count/Total))
+#
+#
+#Compare ratios
+ggarrange(
+  LX_SH_Bin_ratios %>% 
+    ggplot(aes(SH_Bin, All_Ratio, fill = Sex))+
+    geom_bar(stat = "identity", position = "stack") +
+    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+    scale_fill_manual(values = SexZColor)+
+    basetheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.85)),
+  LX_SH_Bin_ratios %>% filter(Sex != "Z") %>%
+    ggplot(aes(SH_Bin, MF_Ratio, fill = Sex))+
+    geom_bar(stat = "identity", position = "stack") +
+    scale_fill_manual(values = SexColor)+
+    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+    basetheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.85)),
+  nrow = 2)
+#
+Female_ratio %>% 
+  ggplot(aes(SH_Bin, Ratio))+
+  geom_point(color = "#CC79A7", size = 3)+
+  geom_line(group = 1, color = "#CC79A7", linewidth = 1.25)+
+  scale_y_continuous("Female ratio", expand = c(0, 0), limits = c(0,1.01))+
+  basetheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.85))
+#
+##Mean SH per Sex:
+Repro_df %>% mutate(Sex = factor(Sex, ordered = TRUE, levels = c("Z", "M", "F"))) %>%
+  mutate(SH = case_when(Sex == "Z" & Stage == 0 ~ SH, Sex == "Z" & Stage != "0" ~ NA, TRUE ~ SH)) %>%
+  ggplot()+
+  geom_jitter(aes(SH, Sex, color = Sex), height = 0.1)+
+  geom_point(data = Repro_df %>% mutate(Sex = factor(Sex, ordered = TRUE, levels = c("Z", "M", "F")), SH = case_when(Sex == "Z" & Stage == 0 ~ SH, Sex == "Z" & Stage != "0" ~ NA, TRUE ~ SH)) %>% group_by(Sex) %>% summarise(SH = mean(SH, na.rm = T)),
+             aes(SH, Sex), color = "black", size = 10)+
+  scale_x_continuous(expand = c(0,0), limits = c(0, 100))+
+  scale_y_discrete(expand = c(0,0.5))+
+  basetheme
