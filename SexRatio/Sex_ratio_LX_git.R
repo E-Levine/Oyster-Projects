@@ -22,7 +22,7 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
 ##Load repro data file
 Repro_data_raw <- read_excel("Data/LX Combined Raw Data 2020-2024.xlsx", sheet = "ReproMSX", #File name and sheet name
                              skip = 3, col_names = TRUE,  #How many rows to skip at top; are column names to be used
-                             na = c("", "Z", "z", " ", "NAN", "na"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                             na = c("", "NULL", " ", "NAN", "na"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                              .name_repair = "unique")
 #check data types 
 glimpse(Repro_data_raw)
@@ -39,7 +39,8 @@ Repro_df <- Repro_data_raw %>%
          Month = factor(format(Date, "%b"), levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")),
          MonYr = as.yearmon(format(Date, "%b %Y")),
          SH_Bin = cut(SH, breaks = seq(0, 5*ceiling(max(SH, na.rm = T)/5), by = 5))) %>%
-  filter(Bad_Slide == "No" & M_F == "No")
+  filter(Bad_Slide == "No" & M_F == "No") %>% 
+  mutate(Stage = as.factor(case_when(grepl("first spawn", Comments) ~ "0", TRUE ~ Stage)))
 #
 glimpse(Repro_df)
 #
@@ -96,6 +97,10 @@ names(SexZColor) <- levels(Repro_df$Sex)
 SexColor <- c("#CC79A7", "#56B4E9")
 names(SexColor) <- c("F", "M")
 #
+##Colors to stage
+StageColor <- c("#666666", "#993333", "#E69F00", "#009E73", "#56B4E9", "#FFFFFF")
+names(StageColor) <- levels(Repro_df$Stage)
+#
 #
 #
 #END OF SECTION
@@ -118,7 +123,8 @@ names(SexColor) <- c("F", "M")
                 filter(Sex != "Z") %>% group_by(Year, Month, Site, Station) %>% droplevels() %>%
                 summarise(Total = n(), .groups = 'drop')) %>%
    #Removing 4-5/2020 since no samples collected
-   filter(!(Year == '2020' & Month == 'Apr') & !(Year == '2020' & Month == 'May')) %>%
+   filter(!(Year == '2020' & Month == 'Apr') & !(Year == '2020' & Month == 'May')) & 
+   !(Year == '2025' & Month %in% c("Jan","Feb", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"))) %>%
    #Calculate ratios
    mutate(Ratio = Count/Total))
 #
@@ -146,6 +152,7 @@ Site_ratios %>%
 (Site_cont_tab <- table((Ratio_clean_df %>% filter(Count >0) %>% droplevels())$Site, (Ratio_clean_df %>% filter(Count >0) %>% droplevels())$Sex)) #Create a contingency table
 chisq.test(Site_cont_tab) #Perform Chi-squared test
 #p = 0.8167 - fail to reject null that they are the same >> LXN M:F = LXS M:F
+#p = 0.8833 - fail to reject null that they are the same >> LXN M:F = LXS M:F (2020-2024 data)
 #
 #
 ####What is the average ratio of males:females per year? - LXN + LXS
@@ -153,7 +160,7 @@ chisq.test(Site_cont_tab) #Perform Chi-squared test
     #Get count per Sex
     group_by(Year, Sex) %>% summarise(MeanRatio = mean(Ratio, na.rm = T)))
 #
-Annual_ratios %>% 
+Annual_ratios %>% filter(Year != "2025") %>%
   ggplot(aes(Year, MeanRatio, fill = Sex))+
   geom_bar(stat = "identity") +
   #geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ 
@@ -164,7 +171,7 @@ Annual_ratios %>%
 #
 #
 ####What is the average ratio of males:females per month? - LXN + LXS
-(Monthly_ratios <- Ratio_clean_df %>% 
+(Monthly_ratios <- Ratio_clean_df %>% filter(Year != "2025") %>%
     #Get count per Sex
     group_by(Month, Sex) %>% summarise(MeanRatio = mean(Ratio, na.rm = T)))
 #
@@ -179,7 +186,7 @@ Monthly_ratios %>%
 #
 #
 ####What is the average ratio of males:females overtime (MonYr)? - LXN + LXS
-(MonYr_ratios <- Ratio_clean_df %>% 
+(MonYr_ratios <- Ratio_clean_df %>% filter(Year != "2025") %>%
     mutate(MonYr = as.yearmon(paste(Month, Year))) %>%
     #Get count per Sex
     group_by(MonYr, Sex) %>% summarise(MeanRatio = mean(Ratio, na.rm = T)))
