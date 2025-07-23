@@ -123,8 +123,8 @@ names(StageColor) <- levels(Repro_df$Stage)
                 filter(Sex != "Z") %>% group_by(Year, Month, Site, Station) %>% droplevels() %>%
                 summarise(Total = n(), .groups = 'drop')) %>%
    #Removing 4-5/2020 since no samples collected
-   filter(!(Year == '2020' & Month == 'Apr') & !(Year == '2020' & Month == 'May')) & 
-   !(Year == '2025' & Month %in% c("Jan","Feb", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"))) %>%
+   filter(!(Year == '2020' & Month == 'Apr') & !(Year == '2020' & Month == 'May') & 
+            !(Year == '2025' & Month %in% c("Jan","Feb", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"))) %>%
    #Calculate ratios
    mutate(Ratio = Count/Total))
 #
@@ -134,7 +134,7 @@ glimpse(Ratio_clean_df)
 ##END OF SECTION
 #
 #
-####Review of data - overall summary tables and figures####
+####Site comparisons####
 #
 ####What is the average ratio of males:females overall within each site? - LXN vs LXS
 (Site_ratios <- Ratio_clean_df %>% 
@@ -155,18 +155,32 @@ chisq.test(Site_cont_tab) #Perform Chi-squared test
 #p = 0.8833 - fail to reject null that they are the same >> LXN M:F = LXS M:F (2020-2024 data)
 #
 #
+###END OF SECTION
+#
+####Year and month comparisons#####
+#
 ####What is the average ratio of males:females per year? - LXN + LXS
 (Annual_ratios <- Ratio_clean_df %>% 
     #Get count per Sex
-    group_by(Year, Sex) %>% summarise(MeanRatio = mean(Ratio, na.rm = T)))
+    group_by(Year, Sex) %>% get_summary_stats(Ratio, show = c("mean", "sd", "se")))
 #
 Annual_ratios %>% filter(Year != "2025") %>%
-  ggplot(aes(Year, MeanRatio, fill = Sex))+
-  geom_bar(stat = "identity") +
-  #geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ 
+  ggplot(aes(Year, mean, fill = Sex))+
+  #geom_bar(stat = "identity") +
+  geom_hline(aes(yintercept = 0), linetype = "dashed")+
+  geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ 
+  geom_errorbar(aes(color = Sex, ymin = mean-se, ymax = mean+se))+
   scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
   scale_fill_manual(values = SexColor)+ scale_color_manual(values = SexColor)+
   basetheme + facettheme
+#
+#Beta regression:
+library(betareg)
+annual_F_model <- betareg(mean ~ Year, data = Annual_ratios %>% filter(Sex == "F" & Year != "2025"),
+                          control = betareg.control(maxit = 1000))
+summary(annual_F_model)
+#No sig diff among years.
+#
 #
 #
 #
