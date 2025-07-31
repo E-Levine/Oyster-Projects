@@ -180,8 +180,16 @@ annual_F_model <- betareg(mean ~ Year, data = Annual_ratios %>% filter(Sex == "F
                           control = betareg.control(maxit = 1000))
 summary(annual_F_model)
 #No sig diff among years.
+## each month = 1 smaple
+(f_proportions <- Ratio_clean_df %>% 
+  #Get count per Sex
+  group_by(Year, Month, Sex) %>% get_summary_stats(Ratio, show = c("mean", "sd", "se")) %>% 
+    filter(Sex == "F" & Year != "2025") %>% dplyr::select(Year, Month, mean) %>% 
+    pivot_wider(names_from = Month, values_from = mean) %>% arrange(Year))
 #
-#
+library(vegan)
+distance_matrix <- vegdist(temp_df[-c(1)], method = "bray", na.rm = TRUE)
+F_annaul_perm <- adonis2(f_proportions[-1] ~ c("2020", "2021", "2022", "2023", "2024"), method = "bray", permutations = 999, na.rm = TRUE)
 #
 #
 ####What is the average ratio of males:females per month? - LXN + LXS
