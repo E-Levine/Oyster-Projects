@@ -144,7 +144,7 @@ TB_SP <- TB_SP_raw %>% mutate(SizeClass = case_when(Height < 25 ~ "S",
                           Pct_Affected = Pct.Polydora + Pct.Cliona) %>%
   left_join(Seasons) %>% 
   left_join(Reef_Type) %>%
-  mutate_at(c("Year", "Month", "Site", "Station", "Shell_Side", "Shell_Pos", "Month_Abb", "Season", "Station_Name", "Type"), as.factor)
+  mutate_at(c("Year", "Month", "Site", "Station", "Shell_Side", "Shell_Pos", "Month_Abb", "Season", "Station_Name", "Type", "Initials"), as.factor)
 head(TB_SP)
 #
 #Summarize data by Shell_Side, Shell_Pos, and overall
@@ -183,6 +183,76 @@ TB_SP_df <-
 head(TB_SP_df)
 #
 #
+###END OF SECTION
+#
+#
+####Comparison among readers####
+##
+###Starting
+##Assuming stations may be different, compare within each station:
+head(TB_SP)
+(readers <- TB_SP %>% group_by(Initials, Station, Shell_Side) %>% summarise(Count = n(),
+                                                    AvePoly = mean(Polydora, na.rm = T), 
+                                                    AveClio = mean(Cliona, na.rm = T)) %>%
+  pivot_longer(cols = c(AvePoly, AveClio), names_to = "Pest", values_to = "Ave") %>%
+  mutate(PerSample = Ave/Count))
+#
+readers %>% 
+  ggplot(aes(Station, Ave, color = Initials))+
+  geom_point(size = 3)+
+  lemon::facet_rep_grid(Pest~Shell_Side, scales = "free_y")+
+  theme_bw()
+#
+##ANOVA 
+set.seed(4321)
+readers_aov <- aov(Ave ~ Initials * Pest * Shell_Side, data = readers)
+summary(readers_aov)
+##Average area:
+#               Df Sum Sq Mean Sq F value Pr(>F)   
+#Initials       2   7899    3949   0.391 0.6806   
+#Pest           1  80526   80526   7.972 0.0094 **
+#Initials:Pest  2  10647    5324   0.527 0.5970   
+#Residuals     24 242440   10102 
+#
+##Area/number samples:
+#                Df Sum Sq Mean Sq F value Pr(>F)  
+#Initials        2    442  221.02   3.861 0.0238 *
+#Pest            1    242  242.03   4.228 0.0420 *
+#Initials:Pest   2    104   51.77   0.905 0.4076  
+#Residuals     114   6525   57.24  
+coefficients(readers_aov) #Group Means
+model.tables(readers_aov, "means")
+pairs(emmeans(readers_aov, ~ Initials|Pest), adjust = "tukey")
+#Pest = AveClio:
+#  contrast estimate   SE  df t.ratio p.value
+#CK - MM    6.7500 2.39 114   2.821  0.0155
+#CK - NPM   4.7894 2.39 114   2.002  0.1164
+#MM - NPM  -1.9606 2.39 114  -0.820  0.6917
+#
+#Pest = AvePoly:
+#  contrast estimate   SE  df t.ratio p.value
+#CK - MM    2.2219 2.39 114   0.929  0.6233
+#CK - NPM   2.1330 2.39 114   0.892  0.6467
+#MM - NPM  -0.0889 2.39 114  -0.037  0.9992
+#
+with(readers, interaction.plot(Initials, Pest, PerSample, main = "Interaction: Reader × Pest"))
+boxplot(PerSample ~ Initials * Pest, data = readers, main = "Area Measurements by Reader and Pest")
+#
+#
+#
+#
+head(TB_SP)
+(Pest_area <- TB_SP %>% 
+  group_by(Date, Year, Month, Site, Station, Sample.Number, Shell_Side, Initials) %>% 
+  summarise(ShellArea = sum(Surface.Area), Poly = sum(Polydora), Clio = sum(Cliona)) %>%
+  pivot_longer(cols = c(Poly, Clio), names_to = "Pest", values_to = "Area") %>%
+  mutate(Proportion = Area/ShellArea))
+#
+#Zero-inflated = zero inflated beta reg
+Pest_zmod <- gamlss::gamlss(Proportion ~ Station * Pest * Initials * Shell_Side, family = 'BEZI', data = Pest_area)
+summary(Pest_zmod)
+#
+###END OF SECTION
 #
 #
 ####Overall summary for comparisons####
