@@ -19,6 +19,11 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
 #
 #####Load data files####
 #
+Dermo_raw <- read_excel("Data/LX Combined Raw Data 2020-2024.xlsx", sheet = "Database_dermo", #File name and sheet name
+                        skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+                        na = c("", "NULL", " ", "NAN", "na"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                        .name_repair = "unique") 
+Dermo_df <- Dermo_raw %>% mutate(SH_Bin = cut(ShellHeight, breaks = seq(0, 5*ceiling(max(ShellHeight, na.rm = T)/5), by = 5)))
 ##Load repro data file
 Repro_data_raw <- read_excel("Data/LX Combined Raw Data 2020-2024.xlsx", sheet = "ReproMSX", #File name and sheet name
                              skip = 3, col_names = TRUE,  #How many rows to skip at top; are column names to be used
@@ -223,6 +228,14 @@ MonYr_ratios %>%
   basetheme + facettheme
 #
 #####Ratios by shell heights -  summary tables and figures####
+#
+##Sample coutns
+Dermo_df %>% group_by(SH_Bin) %>% summarise(Total = n()) %>%
+  ggplot(aes(SH_Bin, Total))+
+  geom_bar(stat = "identity", position = "identity")+
+  scale_y_continuous("Total samples", expand = c(0, 0), limits = c(0, 100))+
+  ggtitle("Number of samples May 2024 throuhg Sept 2025")+
+  basetheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.85))
 #
 ###All estuary data - LXN + LXS
 #Number of samples
