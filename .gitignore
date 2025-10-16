@@ -52,3 +52,6 @@ rsconnect/
 *.png
 *.jpeg
 *.tiff
+
+#HSM data raw data files
+HSM/Data/*/*.xlsx
