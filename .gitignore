@@ -54,4 +54,4 @@ rsconnect/
 *.tiff
 
 #HSM data raw data files
-HSM/Data/*/*.xlsx
+HSM/Data layers/*/*.xlsx
