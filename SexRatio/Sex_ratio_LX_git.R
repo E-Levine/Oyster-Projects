@@ -26,7 +26,9 @@ Dermo_raw <- read_excel("Data/LX Combined Raw Data.xlsx", sheet = "Database_derm
                         na = c("", "NULL", " ", "NAN", "na"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
                         .name_repair = "unique") 
 #Add 5 mm SH bins
-Dermo_df <- Dermo_raw %>% mutate(SH_Bin = cut(ShellHeight, breaks = seq(0, 5*ceiling(max(ShellHeight, na.rm = T)/5), by = 5)))
+Dermo_df <- Dermo_raw %>% 
+  mutate(Year = substr(SampleEventID, 8, 11),
+         SH_Bin = cut(ShellHeight, breaks = seq(0, 5*ceiling(max(ShellHeight, na.rm = T)/5), by = 5)))
 #
 #
 ###Repro data
@@ -55,7 +57,10 @@ Repro_df_raw <- Repro_data_raw %>%
 #
 #Get data to work with:
 Repro_df <- Repro_df_raw %>% 
-  filter(BadSlide == "N" & M_F == "No") %>% 
+  mutate(BadSlide = case_when(Sex == "Z" & ReproStage == "Z" ~ "Y", 
+                              Sex != "Z" ~ "N", 
+                              TRUE ~ BadSlide)) %>% 
+  filter(M_F == "No") %>% 
   mutate(Sex = as.factor(case_when(Sex == "M/F" ~ "Z", TRUE ~ Sex)),
          ReproStage = as.factor(case_when(grepl("first spawn", Comments) ~ "0", TRUE ~ ReproStage)))
 #across(c(Site, Station, Sex, Stage, Sample_num), as.factor),
@@ -162,8 +167,8 @@ Repro_df %>% group_by(Site, MonYr) %>%
 #
 #
 #
-##Cleaned data for ratio analyses:
-(Ratio_clean_df <- Repro_df %>% 
+##Cleaned data for ratio analyses (w/o Z):
+(Ratio_clean_df <- Repro_df %>%  
    #Remove Zs and group by stations and Sex
    filter(Sex != "Z") %>% group_by(Year, Month, Site, Station, Sex) %>% droplevels() %>%
    #Get count of each M and F sample
@@ -184,7 +189,31 @@ Repro_df %>% group_by(Site, MonYr) %>%
    #Calculate ratios
    mutate(Ratio = Count/Total))
 #
+#
 glimpse(Ratio_clean_df)
+#
+#
+##Cleaned data for ratio analyses (w/ Z):
+(Ratio_Z_df <- Repro_df %>%  
+    #Group by stations and Sex
+    group_by(Year, Month, Site, Station, Sex) %>% droplevels() %>%
+    #Get count of each M and F sample
+    summarise(Count = n(), .groups = 'drop') %>%
+    #Add in missing counts (when M or F were 0) 
+    mutate(SiteStation = as.factor(paste0(Site, Station))) %>% 
+    complete(Year, Month, SiteStation, Sex, fill = list(Count = 0)) %>%
+    mutate(Site = case_when(is.na(Site) ~ substr(SiteStation, 1, 3), TRUE ~ Site),
+           Station = case_when(is.na(Station) ~ substr(SiteStation, 4, 7), TRUE ~ Station)) %>%
+    #Add in Total number of samples
+    left_join(Repro_df %>% 
+                #Group by stations
+                group_by(Year, Month, Site, Station) %>% droplevels() %>%
+                summarise(Total = n(), .groups = 'drop')) %>%
+    #Removing 4-5/2020 since no samples collected
+    filter(!(Year == '2020' & Month == 'Apr') & !(Year == '2020' & Month == 'May')) %>% # & 
+    #!(Year == '2025' & Month %in% c("Jan","Feb", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"))) %>%
+    #Calculate ratios
+    mutate(Ratio = Count/Total))
 #
 #
 ##END OF SECTION
@@ -193,40 +222,69 @@ glimpse(Ratio_clean_df)
 ####Site comparisons####
 #
 ####What is the average ratio of males:females overall within each site? - LXN vs LXS
-(Site_ratios <- Ratio_clean_df %>% 
-  #Get count per Sex
-  group_by(Site, Sex) %>% summarise(MeanRatio = mean(Ratio, na.rm = T)))
+(Site_ratios <- #Ratio_clean_df %>% #Get count per Sex group_by(Site, Sex) %>% summarise(MeanRatio = mean(Ratio, na.rm = T)))
+   Ratio_clean_df %>%
+   #Get count per Year and Sex
+   group_by(Site, Sex) %>% 
+   summarise(Count = sum(Count, na.rm = T)) %>% 
+   pivot_wider(names_from = Sex, values_from = Count) %>% 
+   mutate(Total = sum(F, M), Ratio_F = F/Total, Ratio_M = M/Total) %>%
+   pivot_longer(cols = c(Ratio_M, Ratio_F), names_to = c("Column", "Sex"), names_sep = "_", values_to = "Ratio") %>%
+   mutate(Sex = factor(Sex, levels = c("F", "M"))) %>%
+   dplyr::select(-c("F", "M", "Column")))
 #
 Site_ratios %>% 
-    ggplot(aes(Sex, MeanRatio))+
-    geom_bar(stat = "identity", fill = c(SexColor, SexColor)) +
+    ggplot(aes(Sex, Ratio))+
+    geom_bar(stat = "identity", fill = c(rev(SexColor), rev(SexColor))) +
     scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) +  
     facet_rep_grid(.~Site)+
-    basetheme + facettheme
-#
+    basetheme + facettheme#
 #Very similar among sites when just looking at M and F - compare to be sure
 (Site_cont_tab <- table((Ratio_clean_df %>% filter(Count >0) %>% droplevels())$Site, (Ratio_clean_df %>% filter(Count >0) %>% droplevels())$Sex)) #Create a contingency table
 chisq.test(Site_cont_tab) #Perform Chi-squared test
 #p = 0.8167 - fail to reject null that they are the same >> LXN M:F = LXS M:F
 #p = 0.8833 - fail to reject null that they are the same >> LXN M:F = LXS M:F (2020-2024 data)
-#p = 0.861 - fail to reject null that they are the same >> LXN M:F = LXS M:F (2020-08/2025 data)
+#p = 0.8639 - fail to reject null that they are the same >> LXN M:F = LXS M:F (2020-08/2025 data)
 #
 ###END OF SECTION
 #
 ####Year comparisons#####
 #
 ####What is the average ratio of males:females per year? - LXN + LXS
-(Annual_ratios <- Ratio_clean_df %>% 
+(Annual_ratios <- Ratio_clean_df %>%
+    #Get count per Year and Sex
+   group_by(Year, Sex) %>% 
+   summarise(Count = sum(Count, na.rm = T)) %>% 
+   pivot_wider(names_from = Sex, values_from = Count) %>% 
+   mutate(Total = sum(F, M), Ratio_F = F/Total, Ratio_M = M/Total) %>%
+   pivot_longer(cols = c(Ratio_M, Ratio_F), names_to = c("Column", "Sex"), names_sep = "_", values_to = "Ratio") %>%
+   dplyr::select(-c("F", "M", "Column")))
+#
+Annual_ratios %>% #filter(Year != "2025") %>%
+  ggplot(aes(Year, Ratio, fill = Sex))+
+  geom_bar(stat = "identity") +
+  #geom_hline(aes(yintercept = 0), linetype = "dashed")+
+  #geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ geom_errorbar(aes(color = Sex, ymin = mean-se, ymax = mean+se))+ scale_color_manual(values = SexColor)+
+  scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+  scale_fill_manual(values = SexColor)+ 
+  basetheme + facettheme
+#
+#
+#INCLUDING Zs
+####What is the average ratio of males:females per year? - LXN + LXS
+(Annual_Z_ratios <- Ratio_Z_df %>%
     #Get count per Sex
     group_by(Year, Sex) %>% get_summary_stats(Ratio, show = c("mean", "sd", "se")))
 #
-Annual_ratios %>% #filter(Year != "2025") %>%
+Annual_Z_ratios %>% dplyr::select(Year, Sex, mean)
+#
+Annual_Z_ratios %>% #filter(Year != "2025") %>%
   ggplot(aes(Year, mean, fill = Sex))+
-  #geom_bar(stat = "identity") +
+  geom_bar(stat = "identity") +
   geom_hline(aes(yintercept = 0), linetype = "dashed")+
-  geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ geom_errorbar(aes(color = Sex, ymin = mean-se, ymax = mean+se))+ scale_color_manual(values = SexColor)+
-  scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
-  scale_fill_manual(values = SexColor)+ 
+  #geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ geom_errorbar(aes(color = Sex, ymin = mean-se, ymax = mean+se))+ scale_color_manual(values = SexColor)+
+  scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1.01)) + 
+  scale_fill_manual(values = SexZColor)+ 
   basetheme + facettheme
 #
 #
@@ -256,28 +314,61 @@ F_annaul_perm <- adonis2(f_proportions[-1] ~ c("2020", "2021", "2022", "2023", "
 ####Month comparisons#####
 #
 #What is the average ratio of males:females per month? - LXN + LXS
-(Monthly_ratios <- Ratio_clean_df %>% #filter(Year != "2025") %>%
-    #Get count per Sex
-    group_by(Month, Sex) %>% get_summary_stats(Ratio, show = c("mean", "sd", "se")))
+(Monthly_ratios <- Ratio_clean_df %>% #filter(Year != "2025") %>% #Get count per Sex group_by(Month, Sex) %>% get_summary_stats(Ratio, show = c("mean", "sd", "se")))
+   #Get count per Year and Sex
+   group_by(Month, Sex) %>% 
+   summarise(Count = sum(Count, na.rm = T)) %>% 
+   pivot_wider(names_from = Sex, values_from = Count) %>% 
+   mutate(Total = sum(F, M), Ratio_F = F/Total, Ratio_M = M/Total) %>%
+   pivot_longer(cols = c(Ratio_M, Ratio_F), names_to = c("Column", "Sex"), names_sep = "_", values_to = "Ratio") %>%
+   dplyr::select(-c("F", "M", "Column")))
 #
 Monthly_ratios %>% 
-  ggplot(aes(Month, mean, fill = Sex))+
+  ggplot(aes(Month, Ratio, fill = Sex))+
   #geom_bar(stat = "identity") +
-  geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ geom_errorbar(aes(color = Sex, ymin = mean-se, ymax = mean+se)) + scale_color_manual(values = SexColor)+
+  geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ scale_color_manual(values = SexColor)+
   scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
   scale_fill_manual(values = SexColor)+ 
   basetheme + facettheme
 #
+##Monthly ratio per year:
+ggarrange(
+Ratio_clean_df %>% #filter(Year != "2025") %>%
+  #Get count per Sex
+  group_by(Year, Month, Sex) %>% get_summary_stats(Ratio, show = c("mean", "sd", "se")) %>%
+  ggplot(aes(Month, mean, fill = Sex))+
+  #geom_bar(stat = "identity") +
+  geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ geom_errorbar(aes(color = Sex, ymin = mean-se, ymax = mean+se)) + scale_color_manual(values = SexColor)+
+  scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+  lemon::facet_rep_grid(Year~.)+
+  scale_fill_manual(values = SexColor)+ 
+  basetheme + facettheme,
 #
+Repro_df %>% filter(Sex != "Z") %>%
+  group_by(Year, Month, Sex) %>% get_summary_stats(ShellHeight, show = c("mean", "sd", "se")) %>%
+  ggplot(aes(Month, mean, fill = Sex))+
+  geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ geom_errorbar(aes(color = Sex, ymin = mean-se, ymax = mean+se)) + scale_color_manual(values = SexColor)+
+  geom_hline(data = Repro_df %>% filter(Sex != "Z") %>%
+               group_by(Year) %>% get_summary_stats(ShellHeight, show = c("mean", "sd", "se")), 
+             aes(yintercept = mean), linetype = "dashed")+
+  lemon::facet_rep_grid(Year~.)+
+  scale_fill_manual(values = SexColor)+ scale_y_continuous("Mean shell height (mm)")+
+  basetheme + facettheme
+)
 #
 ####What is the average ratio of males:females overtime (MonYr)? - LXN + LXS
-(MonYr_ratios <- Ratio_clean_df %>% filter(Year != "2025") %>%
-    mutate(MonYr = as.yearmon(paste(Month, Year))) %>%
-    #Get count per Sex
-    group_by(MonYr, Sex) %>% summarise(MeanRatio = mean(Ratio, na.rm = T)))
+(MonYr_ratios <- Ratio_clean_df %>% 
+    filter(Year != "2025") %>% mutate(MonYr = as.yearmon(paste(Month, Year))) %>% #Get count per Sex group_by(MonYr, Sex) %>% summarise(MeanRatio = mean(Ratio, na.rm = T)))
+    #Get count per Year and Sex
+    group_by(MonYr, Sex) %>% 
+    summarise(Count = sum(Count, na.rm = T)) %>% 
+    pivot_wider(names_from = Sex, values_from = Count) %>% 
+    mutate(Total = sum(F, M), Ratio_F = F/Total, Ratio_M = M/Total) %>%
+    pivot_longer(cols = c(Ratio_M, Ratio_F), names_to = c("Column", "Sex"), names_sep = "_", values_to = "Ratio") %>%
+    dplyr::select(-c("F", "M", "Column")))
 #
 MonYr_ratios %>% 
-  ggplot(aes(MonYr, MeanRatio, fill = Sex))+
+  ggplot(aes(MonYr, Ratio, fill = Sex))+
   #geom_bar(stat = "identity") +
   geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ 
   scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
@@ -346,6 +437,9 @@ aictab(AIC_models1) #Want lowest AIC with most change
 Sex_best <- model.SH
 ### Assess goodness-of-fit
 simulateResiduals(Sex_best, n = 250, refit = FALSE, plot = TRUE) #Want no deviation in QQ
+recalculateResiduals(simulateResiduals(Sex_best, n = 250, refit = FALSE, plot = TRUE), group = Repro_WQ2$Site) #Doesn't change much. Not needed.
+#REF: https://cran.r-project.org/web/packages/DHARMa/vignettes/DHARMa.html
+#REF: https://jonesor.github.io/BB852_Book/extending-use-cases-of-glm.html
 ## Calculate R-squared equivalent for count models. Closer to 1 is better
 r2(Sex_best) #0.217 - more variability present than model accounts for
 ## Look at estimates
@@ -392,9 +486,9 @@ aictab(AIC_models2) #Want lowest AIC with most change
 #
 ### Key findings from model selection
 ##1. Both Season AND Year are important (5 >> 2 or 3 alone)
-##2. Non-linear year effects are crucial (5 >> 6: factor vs linear year) - may change once samples are completed for 2025
-##3. Seasonal patterns are consistent across years
-##4. Temporal factors explain a lot of the variation (ΔAICc = 2.34 vs baseline)")
+##2. Non-linear year effects may be important (5 > 6: factor vs linear year) - may change once samples are completed for 2025
+##3. Seasonal patterns are mostly consistent across years (5, 6, 7 not too different)
+##4. Temporal factors explain a lot of the variation (ΔAICc = 1.36 vs baseline)")
 #
 ###Best model - model 5 - evaluate model
 Sex_best2 <- model.Yr_Sea_SH
@@ -406,7 +500,7 @@ r2(Sex_best2) #0.244 - more variability present than model accounts for
 summary(Sex_best2)
 ###Key findings 
 ##Sex_class ~ SH_scaled + Year + Season
-## 1. Model fits the data pretty well with good residuals. Tjur's R-squared value of 0.202 indicates a weak to moderate ability to discriminate between the 2 outcomes. Thus, there's lots of room for improvement, though better than the initial model.
+## 1. Model fits the data pretty well with good residuals. Tjur's R-squared value of 0.244 indicates a weak to moderate ability to discriminate between the 2 outcomes. Thus, there's lots of room for improvement, though better than the initial model.
 ## 2. Larger oysters still more likely to be female (1)
 ## 3. There appear to be some statistical differences between the Seasons and the Years. Closer inspection of those results to follow
 ## 4. Differences in more recent years... 
@@ -441,7 +535,7 @@ Year_mean %>%
   ggplot(aes(Year, mean, fill = Group))+
   geom_col()+ geom_errorbar(aes(ymin = mean, ymax = mean+se), width = 0.5)+
   scale_y_continuous("Proportion female", expand = c(0,0), limits = c(0, 1))+
-  scale_fill_grey()+
+  #scale_fill_grey()+
   basetheme + axistheme
 #Year by SH - not fair comparison since collecting more, but interesting to look at
 Repro_WQ2 %>%
@@ -493,7 +587,7 @@ SH_mean <- attr(scale(Repro_WQ2$ShellHeight), "scaled:center")
 SH_sd <- attr(scale(Repro_WQ2$ShellHeight), "scaled:scale")
 #Get the coefficient and odds ratio
 (SH_coeff <- (summary(Sex_best2)$coefficients$cond %>% as.data.frame())["SH_scaled",]) #The coefficient for SH_scaled is 1.0128791 (SE = 0.02952, z = 34.314, p < 0.001)
-(SH_odds <- as.numeric(paste(exp(sh_scaled_coef))))
+(SH_odds <- as.numeric(paste(exp(SH_coeff))))
 #
 #Create a sequence of ORIGINAL Shell_height values, then scale them for emmeans
 original_seq <- seq(min(Repro_WQ2$ShellHeight), max(Repro_WQ2$ShellHeight), by = 0.5)  # Example sequence on original scale
@@ -525,7 +619,7 @@ Repro_WQ2 %>%
   geom_point(aes(color = as.factor(Sex_class)), alpha = 0.6, position = position_jitter(height = 0.05)) +  # Raw data
   scale_color_manual("Sex", labels = c("Male", "Female"), values = SexColorC)+ new_scale_color()+
   geom_line(data = pred_SH_df, aes(x = SH_original, y = Predictions, color = Year), size = 1) +  # Fitted curve
-  lemon::facet_rep_grid(Season~.) +
+  #lemon::facet_rep_grid(Season~.) +
   basetheme + axistheme + facettheme
 #
 ##Averaged
@@ -650,7 +744,8 @@ Mature_df <- Repro_df %>% filter(!grepl("no slide", Comments, ignore.case = TRUE
 #Type 1 = all M and F in one, extra == NA; 
 #Type 2 = either Male or Female, must specify extra == "M" or "F"; 
 #Type 3 = Male and female with individual propMature, specify extra == 1 for 1 plot, extra == 2 for faceted
-matureSL <- function(df, proportionMature, Type, extra){
+#showU - show undetermined as gray on plot? Yes/No
+matureSL <- function(df, proportionMature, Type, extra, showU = "Yes"){
   #Functions needed
   round10 <- function(x){10*ceiling(x/10)} #Rounds x up to nearest 10
   round5 <- function(x){5*ceiling(x/5)} #Rounds x up to nearest 5
@@ -697,7 +792,6 @@ matureSL <- function(df, proportionMature, Type, extra){
   outputF$Mature <- predict(lrSLF, newdata = outputF, type = "response")
   #Get x where y = p
   LD50F <- MASS::dose.p(lrSLF, p = proportionMature)
-  
   ##Plots
   All <- mat_all %>%
     ggplot(aes(ShellHeight, as.numeric(Mature)-1))+
@@ -728,18 +822,32 @@ matureSL <- function(df, proportionMature, Type, extra){
     geom_vline(xintercept = LD50F[[1]],linetype = "dashed", color = "#009E73", size = 1)+
     scale_x_continuous(name = "Shell length (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
     scale_y_continuous(name = "Proportion mature", expand = c(0.025,0.025), limits = c(0,1))
-  Facet <- rbind(mat_M, mat_F) %>%
-    ggplot(aes(ShellHeight, as.numeric(Mature)-1))+
-    geom_point(aes(color = MF_Final), size = 3, alpha = 0.6)+
-    stat_smooth(method = "glm", se = FALSE, fullrange = TRUE, 
-                method.args = list(family = binomial), size = 1.25)+
-    lemon::facet_rep_grid(MF_Final~., labeller = labeller(MF_Final = Sex))+
-    basetheme + XCate + MFCol + facettheme+ theme(legend.position = "none")+
-    geom_vline(data = filter(mat_all, MF_Final == "M"), aes(xintercept = LD50M[[1]]),linetype = "dashed", color = "black", size = 1)+
-    geom_vline(data = filter(mat_all, MF_Final == "F"), aes(xintercept = LD50F[[1]]),linetype = "dashed", color = "black", size = 1)+
-    scale_x_continuous(name = "Shell length (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
-    scale_y_continuous(name = "Proportion mature", expand = c(0.025,0.025), limits = c(0,1))
-  
+  if(showU == "No"){
+    Facet <- rbind(mat_M, mat_F) %>%
+      ggplot(aes(ShellHeight, as.numeric(Mature)-1))+
+      geom_point(aes(color = MF_Final), size = 3, alpha = 0.6)+
+      stat_smooth(method = "glm", se = FALSE, fullrange = TRUE, 
+                  method.args = list(family = binomial), size = 1.25)+
+      lemon::facet_rep_grid(MF_Final~., labeller = labeller(MF_Final = Sex))+
+      basetheme + XCate + MFCol + facettheme+ theme(legend.position = "none")+
+      geom_vline(data = filter(mat_all, MF_Final == "M"), aes(xintercept = LD50M[[1]]),linetype = "dashed", color = "black", size = 1)+
+      geom_vline(data = filter(mat_all, MF_Final == "F"), aes(xintercept = LD50F[[1]]),linetype = "dashed", color = "black", size = 1)+
+      scale_x_continuous(name = "Shell length (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
+      scale_y_continuous(name = "Proportion mature", expand = c(0.025,0.025), limits = c(0,1))
+  } else {
+    Facet <- rbind(mat_M, mat_F) %>%
+      ggplot(aes(ShellHeight, as.numeric(Mature)-1))+
+      geom_point(aes(color = MF_Final, alpha = Mature), size = 3.5)+
+      stat_smooth(method = "glm", se = FALSE, fullrange = TRUE, 
+                  method.args = list(family = binomial), size = 1.25)+
+      lemon::facet_rep_grid(MF_Final~., labeller = labeller(MF_Final = Sex))+
+      basetheme + XCate + MFUCol + facettheme+ theme(legend.position = "none")+
+      scale_alpha_manual(values = c(0.2, 0.6))+
+      geom_vline(data = filter(mat_all, MF_Final == "M"), aes(xintercept = LD50M[[1]]),linetype = "dashed", color = "black", size = 1)+
+      geom_vline(data = filter(mat_all, MF_Final == "F"), aes(xintercept = LD50F[[1]]),linetype = "dashed", color = "black", size = 1)+
+      scale_x_continuous(name = "Shell length (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
+      scale_y_continuous(name = "Proportion mature", expand = c(0.025,0.025), limits = c(0,1))
+  }
   #OUTPUT
   ifelse(Type == 1,
          return(list(All, paste("All:", proportionMature,"=",LD50[1],",", "SE =",attr(LD50, "SE")))),
@@ -760,7 +868,7 @@ matureSL <- function(df, proportionMature, Type, extra){
   
 }
 #
-matureSL(Mature_df, 0.5, 3, 2)
+matureSL(Mature_df, 0.5, 3, 2, "Yes")
 #[[2]]
 #[1] "Males: 0.5 = 10.656656694755 , SE = 1.22395283539628"
 #[[3]]
