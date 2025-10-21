@@ -55,3 +55,4 @@ rsconnect/
 
 #HSM data raw data files
 HSM/Data layers/*/*.xlsx
+**/Data files/*.xlsx

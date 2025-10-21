@@ -2,7 +2,7 @@
 #
 ##Shorebirds
 #
-##Load shorebird data:
+## Load shorebird data:
 #Counties = list of county names
 load_shorebird_data <- function(Counties, SiteCode, VersionNumber){
   data_dir <- paste0("Data layers/Shorebirds/")
@@ -10,16 +10,42 @@ load_shorebird_data <- function(Counties, SiteCode, VersionNumber){
   #
   solitary_rawdata <- data.frame()  # For "Solitary summary" sheet
   colonial_rawdata <- data.frame()  # For "Colonial summary" sheet
+  search_rawdata <- NULL
   #
   #Iterate over counties listed:
   for(County in Counties){
     # Build match pattern:
     pattern <- paste0("^Shorebirds_", County, ".*\\.xlsx$")
-    # List all matching shapefiles
+    # List all matching shape files
     data_files <- list.files(path = data_dir, pattern = pattern, full.names = TRUE)
     file_name <- sub("^.*/", "", data_files)
     #
     for (file in data_files) {
+      # Load the "SearchCriteria" sheet 
+      if ("SearchCriteria" %in% excel_sheets(file)) {
+        search_data <- readxl::read_excel(file, sheet = "SearchCriteria") %>% drop_na(`Search Option`) %>% filter(!str_detect(`Search Option`, "Created"))
+        # Data manipulation: Move last value in 'Search Option' column to the same row as 'Data Analysis Note:' value in 'Search Criteria' column
+        # Find the row where 'Search Criteria' contains "Data Analysis Note:"
+        note_row <- which(grepl("Data Analysis Note:", search_data$'Search Option'))
+        if (length(note_row) > 0) {
+          # Get the last value from 'Search Option' column
+          last_option <- tail(search_data$'Search Option', 1)
+          # Append it to the 'Search Criteria' in that row
+          search_data$'Search Criteria Selected'[note_row] <- last_option
+          # Remove the last row from search_data (assuming it was the source of the moved value)
+          if (nrow(search_data) > 1) {
+            search_data <- search_data[-nrow(search_data), ]
+          }
+        }
+        names(search_data)[names(search_data) == "Search Criteria Selected"] <- paste0(County, "_", "Search Criteria Selected")
+        if (is.null(search_rawdata)) {
+          # For the first matching sheet, load the format directly
+          search_rawdata <- search_data
+        } else {
+          # For subsequent sheets, full_join based on common columns
+          search_rawdata <- full_join(search_rawdata, search_data, by = intersect(names(search_rawdata), names(search_data)))
+        }
+      }
       # Load the "Solitary summary" sheet and append to solitary_rawdata
       if ("SolitarySummary" %in% excel_sheets(file)) {
         solitary_data <- readxl::read_excel(file, sheet = "SolitarySummary")
@@ -30,17 +56,13 @@ load_shorebird_data <- function(Counties, SiteCode, VersionNumber){
         colonial_data <- readxl::read_excel(file, sheet = "ColonialSummary")
         # Check if the first value (assuming first cell) is "No data returned"
         if (nrow(colonial_data) > 0 && ncol(colonial_data) > 0 && colonial_data[1, 1] == "No data returned") {
-          # Skip appending if condition is met
-          next
+          # Skip appending if condition is met (do nothing)
         } else {
           colonial_rawdata <- rbind(colonial_rawdata, colonial_data)
         }
       }
+      #
     }
-    #Return final data to global
-    Solitary_nests_raw <<- solitary_rawdata
-    Colonial_nests_raw <<- colonial_rawdata
-    #
     if (length(data_files) == 0) {
       message(paste0("No data file found for county: ", County))
     } else {
@@ -48,10 +70,15 @@ load_shorebird_data <- function(Counties, SiteCode, VersionNumber){
       message(paste("File loaded for:", County, "::", paste(file_name, collapse = "\n")))
     }
   }
+    #Return final data to global
+    Solitary_nests_raw <<- solitary_rawdata
+    Colonial_nests_raw <<- colonial_rawdata
+    Search_raw <<- search_rawdata
+    #
 }
 #
 #
-##Function to split coordinates
+## Function to split coordinates
 split_coordinates <- function(coord_string){
   # Split the input string by spaces to get individual coordinate pairs
   coord_pairs <- strsplit(coord_string, " ")[[1]]
@@ -72,7 +99,7 @@ split_coordinates <- function(coord_string){
 }
 #split_coordinates(Colonial_nests_raw$ColonyFootprintCoordinates)
 #
-##Clean shorebird data, limit to IBNB if specified.
+## Clean shorebird data, limit to IBNB if specified.
 clean_shorebird_data <- function(IBNB = "No"){
   #
   # Solitary data:
@@ -140,3 +167,41 @@ clean_shorebird_data <- function(IBNB = "No"){
     message("No raw colonial nest data found")
   }
 }
+#
+#
+save_shorebird_data <- function(SiteCode, VersionNumber){
+  # Establish path and file name:
+  file_path <- paste0(SiteCode, "_", VersionNumber, "/Output/Data files/")
+  file_name <- paste0(SiteCode, "_", VersionNumber, "_Shorebird_data")
+  #
+  # Create the workbook with sheets for each data frame:
+  wb <- createWorkbook()
+  #
+  addWorksheet(wb, "SearchCriteria")
+  writeData(wb, "SearchCriteria", Search_raw)
+  #
+  addWorksheet(wb, "SolitaryNests")
+  writeData(wb, "SolitaryNests", Solitary_nests)
+  #
+  addWorksheet(wb, "ColonialNests")
+  writeData(wb, "ColonialNests", Colonial_nests)
+  #
+  # Check if the file exists
+  if (file.exists(paste0(file_path, file_name, ".xlsx"))) {
+    if(interactive()){
+      result<- select.list(c("yes", "no"), title = paste0("File:", file_name, "already exists.\n Do you want to overwrite it?: "))
+      if(tolower(result) == "no"){
+        file_name <- paste0(file_name, "_", Sys.Date())
+        saveWorkbook(wb, paste0(file_path, file_name, ".xlsx"), overwrite = TRUE) 
+        message("Shorebird data was written to file containing today's date")
+      } else {
+        saveWorkbook(wb, paste0(file_path, file_name, ".xlsx"), overwrite = TRUE)
+      }
+    }
+  }
+  #
+  saveWorkbook(wb, paste0(file_path, file_name, ".xlsx"), overwrite = TRUE)
+  cat("File written successfully to:", file_name, "\n")
+  #
+}
+#
