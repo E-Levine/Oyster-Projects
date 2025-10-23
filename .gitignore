@@ -53,6 +53,8 @@ rsconnect/
 *.jpeg
 *.tiff
 
-#HSM data raw data files
+#HSM data files
 HSM/Data layers/*/*.xlsx
 **/Data files/*.xlsx
+**/Data/*.xlsx
+**/Data/*.csv
