@@ -3,6 +3,8 @@ dermo
 
 library(Hmisc)
 library(plyr)
+library(tidyverse)
+library(ggpubr)
 
 summary(dermo)
 dermo$Month <- factor(dermo$Month)
@@ -47,6 +49,7 @@ ggplot(data=heightdata, aes(x=Month, y=mean, fill=Site,)) +
   scale_y_continuous(limits=c(0,5), breaks = seq(0,5, by = 1)) +
   scale_fill_manual(values = colors) +
   theme_classic2()
+
 
 ggline(dermo3,x="Month",y="SH",color="Site", xlab="Month", 
        ylab="Average Shell Height (mm)") + 
@@ -330,3 +333,4 @@ pres
 pairwise.wilcox.test(dermo$SH, dermo$Site, p.adjust.method = "BH")
 pairwise.wilcox.test(dermo$PresenceBoth, dermo$Site, p.adjust.method = "BH")
 pairwise.wilcox.test(dermo$Intensity, dermo$Site, p.adjust.method = "BH")
+
