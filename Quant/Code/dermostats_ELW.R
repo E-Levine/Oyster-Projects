@@ -46,11 +46,11 @@ ggplot(data=heightdata, aes(x=Month, y=mean, fill=Site,)) +
                 position=position_dodge(.93)) +
   labs(y= "Average Shell Height (mm)", x = "Month") +
   scale_x_discrete(limits = month.abb) +
-  scale_y_continuous(limits=c(0,5), breaks = seq(0,5, by = 1)) +
+  #scale_y_continuous(limits=c(0,5), breaks = seq(0,5, by = 1)) +
   scale_fill_manual(values = colors) +
   theme_classic2()
 
-
+#dermo3 not found...
 ggline(dermo3,x="Month",y="SH",color="Site", xlab="Month", 
        ylab="Average Shell Height (mm)") + 
   scale_x_discrete(limits = month.abb) +
@@ -172,6 +172,9 @@ intensedata%>%filter(Site=="SL")%>%
   theme_classic2()
 
 intensemean=data.frame(aggregate(Intensity ~ Month + Site, dermo, mean))
+intensemean %>% pivot_wider(names_from = "Site", values_from = "Intensity") %>%
+  mutate(Month = month.name[match(Month, month.abb)]) %>%
+  arrange(factor(Month, levels = month.name))
 
 #Prevalence
 presencemean=data.frame(aggregate(PresenceBoth ~ Month + Site, dermo, mean))
@@ -245,11 +248,11 @@ hist(dermo$PresenceBoth)
 #not normal
 
 shapiro.test(dermo$SH)
-hist(cond$SH)
+hist(dermo$SH)
 #not normal
 
-shapiro.test(dermo$Total.Weight)
-hist(dermo$Total.Weight)
+shapiro.test(dermo$TotalWeight)
+hist(dermo$TotalWeight)
 #not normal
 
 #TEST HOMOGENEITY OF VARIANCE
@@ -288,7 +291,7 @@ cldList(comparison = DT$Comparison,
 #6    TB      a       a   
 
 #DUNNTEST DERMO INTENSITY
-library(FSA)
+#library(FSA)
 IT = dunnTest(Intensity ~ Site,
               data = dermo,
               method = "bh")
@@ -296,7 +299,7 @@ IT
 
 IT = IT$res
 IT
-library(rcompanion)
+#library(rcompanion)
 cldList(comparison = IT$Comparison,
         p.value = IT$P.adj,
         threshold = 0.05)

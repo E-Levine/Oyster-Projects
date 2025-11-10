@@ -4,7 +4,9 @@
 # date: "`r Sys.Date()`"
 # output: html_document
 # ---
-  
+
+###Code for comparing wet and dry seasons
+
 #### Load packages
 library(tidyverse)
 library(glmmTMB)
