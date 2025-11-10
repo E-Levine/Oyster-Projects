@@ -13,7 +13,7 @@ library(ggpubr)
 library(dplyr)
 library(RColorBrewer)
 library(Hmisc)
-library(plyr)
+#library(plyr)
 library(doBy)
 library(dunn.test)
 library(doBy)
@@ -25,7 +25,7 @@ colnames(repro)[colnames(repro)=="?..Site"] <- "Site"
 colnames(wq)[colnames(wq)=="?..Month"] <- "Month"
 repro$Month = factor(repro$Month)
 repro$Stage = factor(repro$Stage)
-
+repro <- repro %>% mutate(Stage = as.factor(ifelse(is.na(Stage), "Z", Stage)), Sex = as.factor(ifelse(is.na(Sex), "Z", Sex))) #Added by ELW
 summary(wq)
 wq
 wq$Month = factor(wq$Month, levels = month.abb)
@@ -65,6 +65,16 @@ colors <- c("dodgerblue4", "chocolate", "mediumpurple2", "violetred",
             "forestgreen", "goldenrod1")
 names(colors) <- c("AB", "CR", "LW", "LX", "SL", "TB")
 colors
+#All sites and months - Added by ELW
+repro %>% dplyr::group_by(Month, Sex) %>% 
+  summarise(Count = n()) %>%
+  pivot_wider(names_from = "Sex", values_from = "Count") %>%
+  arrange(factor(Month, levels = month.abb))
+
+repro %>% dplyr::group_by(Month, Stage) %>% 
+  summarise(Count = n()) %>%
+  pivot_wider(names_from = "Stage", values_from = "Count") %>%
+  arrange(factor(Month, levels = month.abb))
 
 prop.table(with(AB, table(Month, Sex)), 1) 
 prop.table(with(AB, table(Month, Stage)),1)
@@ -266,7 +276,7 @@ ggplot(as.data.frame(par), aes(factor(Parasite), Freq, fill = Site)) +
 ###GONAD
 gonaddata=data.frame(repro %>%
                     dplyr::select(Site, Month, GonadPercent))
-gonaddatasummary <- ddply(gonaddata, c("Month", "Site"), summarise,
+gonaddatasummary <- plyr::ddply(gonaddata, c("Month", "Site"), summarise,
                        N    = length(GonadPercent),
                        mean = mean(GonadPercent, na.rm=TRUE),
                        sd   = sd(GonadPercent, na.rm=TRUE),
@@ -360,7 +370,7 @@ gonaddatasummary%>%filter(Site=="SL")%>%
 ####OOCYTE 
 oocytedata=data.frame(repro %>%
                        dplyr::select(Site, Month, OocyteDiam))
-oocytedatasummary <- ddply(oocytedata, c("Month", "Site"), summarise,
+oocytedatasummary <- plyr::ddply(oocytedata, c("Month", "Site"), summarise,
                           N    = length(OocyteDiam),
                           mean = mean(OocyteDiam, na.rm=TRUE),
                           sd   = sd(OocyteDiam, na.rm=TRUE),
@@ -456,11 +466,11 @@ summary(repro$SH)
 repro<-na.omit(repro)
 
 shellstage=data.frame(repro %>%
-                     dplyr::select(Site, Stage, SH))
-shellstagedata <- ddply(oostage, c("Stage", "Site"), summarise,
-                     N    = length(SH),
-                     mean = mean(SH),
-                     sd   = sd(SH),
+                     dplyr::select(Site, Stage, Height))
+shellstagedata <- plyr::ddply(oostage, c("Stage", "Site"), summarise,
+                     N    = length(Height),
+                     mean = mean(Height),
+                     sd   = sd(Height),
                      se   = sd / sqrt(N))
 shellstagedata
 
@@ -481,7 +491,7 @@ repro<-na.omit(repro)
 
 oostage=data.frame(repro %>%
                      dplyr::select(Site, Stage, OocyteDiam))
-oostagedata <- ddply(oostage, c("Stage", "Site"), summarise,
+oostagedata <- plyr::ddply(oostage, c("Stage", "Site"), summarise,
                      N    = length(OocyteDiam),
                      mean = mean(OocyteDiam),
                      sd   = sd(OocyteDiam),
@@ -502,7 +512,7 @@ ggplot(data=oostagedata, aes(x=Stage, y=mean, fill=Site,)) +
 ###GONAD BY STAGE
 gonadstage=data.frame(repro %>%
                      dplyr::select(Site, Stage, GonadPercent))
-gonadstagedata <- ddply(gonadstage, c("Stage", "Site"), summarise,
+gonadstagedata <- plyr::ddply(gonadstage, c("Stage", "Site"), summarise,
                      N    = length(GonadPercent),
                      mean = mean(GonadPercent),
                      sd   = sd(GonadPercent),
@@ -563,7 +573,7 @@ bptest(modelY)
 #there is not constant variance or homoscedasticity in residual
 #heterscedasticity (unequal variance)
 
-library(lmtest)
+#library(lmtest)
 modelT=lm(OocyteDiam ~ Site, data = repro)
 bptest(modelT)
 #There is constant variance or homoscedasticity in residual
@@ -601,7 +611,7 @@ GT
 
 GT = GT$res
 GT 
-library(rcompanion)
+#library(rcompanion)
 cldList(comparison = GT$Comparison,
         p.value = GT$P.adj,
         threshold = 0.05)

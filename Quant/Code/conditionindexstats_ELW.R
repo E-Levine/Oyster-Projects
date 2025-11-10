@@ -19,16 +19,16 @@ colors <- c("dodgerblue4", "chocolate", "mediumpurple2", "violetred",
 names(colors) <- c("AB", "CR", "LW", "LX", "SL", "TB")
 colors
 
+colnames(cond)[colnames(cond)=="SH.mm"] <-"SH"
+colnames(cond)[colnames(cond)=="Total.Weight..g."] <-"Total.Weight"
+colnames(cond)[colnames(cond)=="?..Site"] <- "Site"
+
 ABS=subset(cond, Site=="AB")
 LXN=subset(cond, Site=="LX")
 SLC=subset(cond, Site=="SL")
 LW=subset(cond, Site=="LW")
 TB=subset(cond, Site=="TB")
 CR=subset(cond, Site=="CR")
-
-colnames(cond)[colnames(cond)=="SH.mm"] <-"SH"
-colnames(cond)[colnames(cond)=="Total.Weight..g."] <-"Total.Weight"
-colnames(cond)[colnames(cond)=="?..Site"] <- "Site"
 
 avgcond=data.frame(aggregate(Condition.Index ~ Month + Site, cond, mean))
 avgsh=data.frame(aggregate(SH ~ Month + Site, cond, mean))
@@ -310,7 +310,7 @@ cldList(comparison = CT$Comparison,
 #6    TB      e          e
 
 #DUNNTEST FOR SH
-library(FSA)
+#library(FSA)
 ST = dunnTest(SH ~ Site,
               data = cond,
               method = "bh")
@@ -318,7 +318,7 @@ ST
 
 ST = ST$res
 ST
-library(rcompanion)
+#library(rcompanion)
 cldList(comparison = ST$Comparison,
         p.value = ST$P.adj,
         threshold = 0.05)
