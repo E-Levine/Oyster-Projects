@@ -74,77 +74,77 @@ means=data.frame(wq%>%group_by(Site, Month)%>%summarize(
   meansal=mean(Salinity)))
 
 means%>%filter(Site=="TB")%>%ggplot(aes(x=Month)) +
-  geom_line(aes(y=meantemp, colour="Temperature (?C)")) +
-  geom_line(aes(y=meansal, colour="Salinity (ppt)")) + 
+  geom_line(aes(y=meantemp, colour="Temperature (?C)"), group = 1) +
+  geom_line(aes(y=meansal, colour="Salinity (ppt)"), group = 1) + 
   geom_point(aes(y=meantemp, colour="Temperature (?C)"), shape = 18, size =2) +
   geom_point(aes(y=meansal, colour="Salinity (ppt)"), shape = 18, size =2) + 
-  scale_x_continuous(breaks = seq(1,12, by = 1)) +
+  #scale_x_continuous(breaks = seq(1,12, by = 1)) +
   scale_y_continuous(limits=c(0,35), breaks = seq(0,35, by = 5)) +
   ylab(NULL) +
   theme_classic2() +
   theme(legend.title=element_blank()) +
-  theme(legend.position = c(0.85, 0.15)) +
+  theme(legend.position.inside = c(0.85, 0.15)) +
   theme(plot.title = element_text())
 
-means%>%filter(Site=="ABS")%>%ggplot(aes(x=Month)) +
-  geom_line(aes(y=meantemp, colour="Temperature (?C)")) +
-  geom_line(aes(y=meansal, colour="Salinity (ppt)")) + 
+means%>%filter(Site=="AB")%>%ggplot(aes(x=Month)) +
+  geom_line(aes(y=meantemp, colour="Temperature (?C)"), group = 1) +
+  geom_line(aes(y=meansal, colour="Salinity (ppt)"), group = 1) + 
   geom_point(aes(y=meantemp, colour="Temperature (?C)"), shape = 18, size =2) +
   geom_point(aes(y=meansal, colour="Salinity (ppt)"), shape = 18, size =2) + 
-  scale_x_discrete(breaks = seq(1,12, by = 1)) +
+  #scale_x_discrete(breaks = seq(1,12, by = 1)) +
   scale_y_continuous(limits=c(0,35), breaks = seq(0,35, by = 5)) +
   ylab(NULL) +
   theme_classic2() +
   theme(legend.title=element_blank()) +
-  theme(legend.position = c(0.85, 0.15))
+  theme(legend.position.inside = c(0.85, 0.15))
 
-means%>%filter(Site=="SL-C")%>%ggplot(aes(x=Month)) +
-  geom_line(aes(y=meantemp, colour="Temperature (?C)")) +
-  geom_line(aes(y=meansal, colour="Salinity (ppt)")) + 
+means%>%filter(Site=="SL")%>%ggplot(aes(x=Month)) +
+  geom_line(aes(y=meantemp, colour="Temperature (?C)"), group = 1) +
+  geom_line(aes(y=meansal, colour="Salinity (ppt)"), group = 1) + 
   geom_point(aes(y=meantemp, colour="Temperature (?C)"), shape = 18, size =2) +
   geom_point(aes(y=meansal, colour="Salinity (ppt)"), shape = 18, size =2) + 
-  scale_x_continuous(breaks = seq(1,12, by = 1)) +
+  #scale_x_continuous(breaks = seq(1,12, by = 1)) +
   scale_y_continuous(limits=c(0,35), breaks = seq(0,35, by = 5)) +
   ylab(NULL) +
   theme_classic2() +
   theme(legend.title=element_blank()) +
-  theme(legend.position = c(0.89, 0.15))
+  theme(legend.position.inside =  c(0.89, 0.15))
 
-means%>%filter(Site=="LX-N")%>%ggplot(aes(x=Month)) +
-  geom_line(aes(y=meantemp, colour="Temperature (?C)")) +
-  geom_line(aes(y=meansal, colour="Salinity (ppt)")) + 
+means%>%filter(Site=="LX")%>%ggplot(aes(x=Month)) +
+  geom_line(aes(y=meantemp, colour="Temperature (?C)"), group = 1) +
+  geom_line(aes(y=meansal, colour="Salinity (ppt)"), group = 1) + 
   geom_point(aes(y=meantemp, colour="Temperature (?C)"), shape = 18, size =2) +
   geom_point(aes(y=meansal, colour="Salinity (ppt)"), shape = 18, size =2) + 
-  scale_x_continuous(breaks = seq(1,12, by = 1)) +
+  #scale_x_continuous(breaks = seq(1,12, by = 1)) +
   scale_y_continuous(limits=c(0,35), breaks = seq(0,35, by = 5)) +
   ylab(NULL) +
   theme_classic2() +
   theme(legend.title=element_blank()) +
-  theme(legend.position = c(0.88, 0.15))
+  theme(legend.position.inside = c(0.88, 0.15))
 
 means%>%filter(Site=="LW")%>%ggplot(aes(x=Month)) +
-  geom_line(aes(y=meantemp, colour="Temperature (?C)")) +
-  geom_line(aes(y=meansal, colour="Salinity (ppt)")) + 
+  geom_line(aes(y=meantemp, colour="Temperature (?C)"), group = 1) +
+  geom_line(aes(y=meansal, colour="Salinity (ppt)"), group = 1) + 
   geom_point(aes(y=meantemp, colour="Temperature (?C)"), shape = 18, size =2) +
   geom_point(aes(y=meansal, colour="Salinity (ppt)"), shape = 18, size =2) + 
-  scale_x_continuous(breaks = seq(1,12, by = 1)) +
+  #scale_x_continuous(breaks = seq(1,12, by = 1)) +
   scale_y_continuous(limits=c(0,35), breaks = seq(0,35, by = 5)) +
   ylab(NULL) +
   theme_classic2() +
   theme(legend.title=element_blank()) +
-  theme(legend.position = c(0.85, 0.15))
+  theme(legend.position.inside = c(0.85, 0.15))
 
 means%>%filter(Site=="CR")%>%ggplot(aes(x=Month)) +
-  geom_line(aes(y=meantemp, colour="Temperature (?C)")) +
-  geom_line(aes(y=meansal, colour="Salinity (ppt)")) + 
+  geom_line(aes(y=meantemp, colour="Temperature (?C)"), group = 1) +
+  geom_line(aes(y=meansal, colour="Salinity (ppt)"), group = 1) + 
   geom_point(aes(y=meantemp, colour="Temperature (?C)"), shape = 18, size =2) +
   geom_point(aes(y=meansal, colour="Salinity (ppt)"), shape = 18, size =2) + 
-  scale_x_continuous(breaks = seq(1,12, by = 1)) +
+  #scale_x_continuous(breaks = seq(1,12, by = 1)) +
   scale_y_continuous(limits=c(0,35), breaks = seq(0,35, by = 5)) +
   ylab(NULL) +
   theme_classic2() +
   theme(legend.title=element_blank()) +
-  theme(legend.position = c(0.85, 0.15))
+  theme(legend.position.inside = c(0.85, 0.15))
 
 #TEST NORMALITY
 shapiro.test(wq$Temp)
@@ -198,7 +198,7 @@ c <- ggplot(wq, aes(x = Site, y = Temp)) +
   theme_classic()
 c
 
-library(FSA)
+#library(FSA)
 ST = dunnTest(Salinity ~ Site,
               data = wq,
               method = "bh")
@@ -206,7 +206,7 @@ ST
 
 ST = ST$res
 ST
-library(rcompanion)
+#library(rcompanion)
 cldList(comparison = ST$Comparison,
         p.value = ST$P.adj,
         threshold = 0.05)
