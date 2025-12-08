@@ -136,6 +136,9 @@ SexColor <- c("#CC79A7", "#56B4E9")
 names(SexColor) <- c("F", "M")
 SexColorC <- c("#CC79A7", "#56B4E9")
 names(SexColorC) <- c("1", "0")
+SexZ0Color <- c("#CC79A7", "#56B4E9", "#E69F00", "#009E73")
+names(SexZ0Color) <- c("F", "M", "Z", "Z0")
+
 #
 ##Colors to stage
 StageColor <- c("#666666", "#993333", "#E69F00", "#009E73", "#56B4E9", "#FFFFFF")
@@ -167,10 +170,11 @@ Repro_df %>% group_by(Site, MonYr) %>%
 #
 #
 #
-##Cleaned data for ratio analyses (w/o Z):
+##Cleaned data for ratio analyses (w/o Z, limiting to normal 15 samples):
 (Ratio_clean_df <- Repro_df %>%  
-   #Remove Zs and group by stations and Sex
-   filter(Sex != "Z") %>% group_by(Year, Month, Site, Station, Sex) %>% droplevels() %>%
+   #Remove Zs, limit to 1-15, and group by stations and Sex
+   filter(Sex != "Z") %>% filter(as.numeric(Sample_num) < 16) %>%
+   group_by(Year, Month, Site, Station, Sex) %>% droplevels() %>%
    #Get count of each M and F sample
    summarise(Count = n(), .groups = 'drop') %>%
    #Add in missing counts (when M or F were 0) 
@@ -194,7 +198,7 @@ glimpse(Ratio_clean_df)
 #
 #
 ##Cleaned data for ratio analyses (w/ Z):
-(Ratio_Z_df <- Repro_df %>%  
+(Ratio_Z_df <- Repro_df %>%  filter(as.numeric(Sample_num) < 16) %>%
     #Group by stations and Sex
     group_by(Year, Month, Site, Station, Sex) %>% droplevels() %>%
     #Get count of each M and F sample
@@ -244,7 +248,7 @@ Site_ratios %>%
 chisq.test(Site_cont_tab) #Perform Chi-squared test
 #p = 0.8167 - fail to reject null that they are the same >> LXN M:F = LXS M:F
 #p = 0.8833 - fail to reject null that they are the same >> LXN M:F = LXS M:F (2020-2024 data)
-#p = 0.8639 - fail to reject null that they are the same >> LXN M:F = LXS M:F (2020-08/2025 data)
+#p = 0.8141 - fail to reject null that they are the same >> LXN M:F = LXS M:F (2020-08/2025 data)
 #
 # Both sites
 (All_ratio <- #Ratio_clean_df %>% #Get count per Sex group_by(Site, Sex) %>% summarise(MeanRatio = mean(Ratio, na.rm = T)))
@@ -277,7 +281,7 @@ Annual_ratios %>% #filter(Year != "2025") %>%
   geom_bar(stat = "identity") +
   #geom_hline(aes(yintercept = 0), linetype = "dashed")+
   #geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ geom_errorbar(aes(color = Sex, ymin = mean-se, ymax = mean+se))+ scale_color_manual(values = SexColor)+
-  scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+  scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) + 
   scale_fill_manual(values = SexColor)+ 
   basetheme + facettheme
 #
@@ -295,7 +299,7 @@ Annual_Z_ratios %>% #filter(Year != "2025") %>%
   geom_bar(stat = "identity") +
   geom_hline(aes(yintercept = 0), linetype = "dashed")+
   #geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ geom_errorbar(aes(color = Sex, ymin = mean-se, ymax = mean+se))+ scale_color_manual(values = SexColor)+
-  scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1.01)) + 
+  scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1.01)) + 
   scale_fill_manual(values = SexZColor)+ 
   basetheme + facettheme
 #
@@ -339,7 +343,7 @@ Monthly_ratios %>%
   ggplot(aes(Month, Ratio, fill = Sex))+
   #geom_bar(stat = "identity") +
   geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ scale_color_manual(values = SexColor)+
-  scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+  scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) + 
   scale_fill_manual(values = SexColor)+ 
   basetheme + facettheme
 #
@@ -351,7 +355,7 @@ Ratio_clean_df %>% #filter(Year != "2025") %>%
   ggplot(aes(Month, mean, fill = Sex))+
   #geom_bar(stat = "identity") +
   geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ geom_errorbar(aes(color = Sex, ymin = mean-se, ymax = mean+se)) + scale_color_manual(values = SexColor)+
-  scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+  scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) + 
   lemon::facet_rep_grid(Year~.)+
   scale_fill_manual(values = SexColor)+ 
   basetheme + facettheme,
@@ -383,7 +387,7 @@ MonYr_ratios %>%
   ggplot(aes(MonYr, Ratio, fill = Sex))+
   #geom_bar(stat = "identity") +
   geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ 
-  scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+  scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) + 
   scale_x_continuous(expand = c(0,0))+
   scale_fill_manual(values = SexColor)+ scale_color_manual(values = SexColor)+
   basetheme + facettheme
@@ -630,7 +634,7 @@ Repro_WQ2 %>%
   ggplot(aes(x = ShellHeight, y = Sex_class)) +  # Use original Shell_height for data points
   geom_point(aes(color = as.factor(Sex_class)), alpha = 0.6, position = position_jitter(height = 0.05)) +  # Raw data
   scale_color_manual("Sex", labels = c("Male", "Female"), values = SexColorC)+ new_scale_color()+
-  geom_line(data = pred_SH_df, aes(x = SH_original, y = Predictions, color = Year), size = 1) +  # Fitted curve
+  geom_line(data = pred_SH_df, aes(x = SH_original, y = Predictions, color = Year, group = 1), size = 1) +  # Fitted curve
   #lemon::facet_rep_grid(Season~.) +
   basetheme + axistheme + facettheme
 #
@@ -685,16 +689,34 @@ Dermo_df %>% group_by(SH_Bin) %>% summarise(Total = n()) %>%
 ##What is the average ratio of males:females per SH bin?
 (LX_SH_Bin_ratios <- left_join(
   #Group by sex and get count of each (including Zs)
-  left_join(Repro_df %>% group_by(Sex, SH_Bin) %>% summarise(All_Count = n()), 
-            Repro_df %>% group_by(SH_Bin) %>% summarise(All_Total = n())) %>% 
+  left_join(Repro_df %>% 
+              mutate(Sex = factor(case_when(grepl("imm", Comments, ignore.case = TRUE) ~ "Z0", TRUE ~ Sex), levels = c("F", "M", "Z", "Z0")),
+                     ReproStage = case_when(grepl("imm", Comments, ignore.case = TRUE) ~ "0", TRUE ~ ReproStage)) %>% 
+              group_by(Sex, SH_Bin) %>% summarise(All_Count = n()), 
+            Repro_df %>% 
+              mutate(Sex = factor(case_when(grepl("imm", Comments, ignore.case = TRUE) ~ "Z0", TRUE ~ Sex), levels = c("F", "M", "Z", "Z0")),
+                     ReproStage = case_when(grepl("imm", Comments, ignore.case = TRUE) ~ "0", TRUE ~ ReproStage)) %>% 
+              group_by(SH_Bin) %>% summarise(All_Total = n())) %>% 
     mutate(All_Ratio = All_Count/All_Total),
   #Group by sex and get count of each (excluding Zs)
-  left_join(Repro_df %>% filter(Sex != "Z") %>% group_by(Sex, SH_Bin) %>% summarise(MF_Count = n()), 
-            Repro_df %>% filter(Sex != "Z") %>% group_by(SH_Bin) %>% summarise(MF_Total = n())) %>% 
+  left_join(Repro_df %>% 
+              mutate(Sex = factor(case_when(grepl("imm", Comments, ignore.case = TRUE) ~ "Z0", TRUE ~ Sex), levels = c("F", "M", "Z", "Z0")),
+                     ReproStage = case_when(grepl("imm", Comments, ignore.case = TRUE) ~ "0", TRUE ~ ReproStage)) %>% 
+              filter(Sex != "Z") %>% group_by(Sex, SH_Bin) %>% summarise(MF_Count = n()), 
+            Repro_df %>% 
+              mutate(Sex = factor(case_when(grepl("imm", Comments, ignore.case = TRUE) ~ "Z0", TRUE ~ Sex), levels = c("F", "M", "Z", "Z0")),
+                     ReproStage = case_when(grepl("imm", Comments, ignore.case = TRUE) ~ "0", TRUE ~ ReproStage)) %>% 
+              filter(Sex != "Z") %>% group_by(SH_Bin) %>% summarise(MF_Total = n())) %>% 
     mutate(MF_Ratio = MF_Count/MF_Total)))
 #
-(Female_ratio <- left_join(Repro_df %>% filter(Sex == "F") %>% group_by(SH_Bin) %>% summarise(Female_count = n()), 
-                           Repro_df %>% filter(Sex != "Z") %>% group_by(SH_Bin) %>% summarise(Total = n())) %>% 
+(Female_ratio <- left_join(Repro_df %>% 
+                             mutate(Sex = factor(case_when(grepl("imm", Comments, ignore.case = TRUE) ~ "Z0", TRUE ~ Sex), levels = c("F", "M", "Z", "Z0")),
+                                    ReproStage = case_when(grepl("imm", Comments, ignore.case = TRUE) ~ "0", TRUE ~ ReproStage)) %>% 
+                             filter(Sex == "F") %>% group_by(SH_Bin) %>% summarise(Female_count = n()), 
+                           Repro_df %>% 
+                             mutate(Sex = factor(case_when(grepl("imm", Comments, ignore.case = TRUE) ~ "Z0", TRUE ~ Sex), levels = c("F", "M", "Z", "Z0")),
+                                    ReproStage = case_when(grepl("imm", Comments, ignore.case = TRUE) ~ "0", TRUE ~ ReproStage)) %>% 
+                             filter(Sex != "Z") %>% group_by(SH_Bin) %>% summarise(Total = n())) %>% 
     mutate(Ratio = Female_count/Total))
 #
 #
@@ -703,14 +725,14 @@ ggarrange(
   LX_SH_Bin_ratios %>% 
     ggplot(aes(SH_Bin, All_Ratio, fill = Sex))+
     geom_bar(stat = "identity", position = "stack") +
-    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
-    scale_fill_manual(values = SexZColor)+
+    scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) + 
+    scale_fill_manual(values = SexZ0Color)+
     basetheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.85)),
   LX_SH_Bin_ratios %>% filter(Sex != "Z") %>%
     ggplot(aes(SH_Bin, MF_Ratio, fill = Sex))+
     geom_bar(stat = "identity", position = "stack") +
-    scale_fill_manual(values = SexColor)+
-    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+    scale_fill_manual(values = SexZ0Color)+
+    scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) + 
     basetheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.85)),
   nrow = 2)
 #
@@ -718,7 +740,7 @@ Female_ratio %>%
   ggplot(aes(SH_Bin, Ratio))+
   geom_point(color = "#CC79A7", size = 3)+
   geom_line(group = 1, color = "#CC79A7", linewidth = 1.25)+
-  scale_y_continuous("Female ratio", expand = c(0, 0), limits = c(0,1.01))+
+  scale_y_continuous("Female proportion", expand = c(0, 0), limits = c(0,1.01))+
   basetheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.85))
 #
 ##Mean SH per Sex:
@@ -743,8 +765,7 @@ Mature_df <- Repro_df %>% filter(!grepl("no slide", Comments, ignore.case = TRUE
   dplyr::select(Date:SH_Bin, Sex, ReproStage, Comments) %>% 
   filter(!is.na(ShellHeight)) %>%
   #Get maturity (0/1)
-  mutate(Mature = case_when(grepl("0=", Comments) ~ 0,
-                            grepl("0 = ", Comments) ~ 0,
+  mutate(Mature = case_when(grepl("imm", Comments, ignore.case = TRUE) ~ 0,
                             ReproStage == 0 ~ 0, 
                             TRUE ~ 1)) %>%
   #MF with "U" for unknowns
@@ -880,7 +901,7 @@ matureSL <- function(df, proportionMature, Type, extra, showU = "Yes"){
   
 }
 #
-matureSL(Mature_df, 0.5, 3, 2, "Yes")
+(Mat_fig <- matureSL(Mature_df, 0.5, 3, 2, "Yes"))
 #[[2]]
 #[1] "Males: 0.5 = 10.656656694755 , SE = 1.22395283539628"
 #[[3]]
@@ -905,7 +926,7 @@ Prez <- theme(axis.title.x = element_text(size = 18, face = "bold", color = "bla
       panel.grid = element_blank(), panel.border = element_blank(), axis.line = element_line(color = "black"),
       axis.ticks.length = unit(-0.15, "cm"))
 #
-## Site comparisons
+## Site proportions comparisons
 Site_ratios %>% 
   ggplot(aes(Sex, Ratio))+
   geom_bar(stat = "identity", fill = c(rev(SexColor), rev(SexColor))) +
@@ -916,6 +937,7 @@ Site_ratios %>%
 #
 #ggsave(path = "Output/", filename = paste("Sex_proportions_LXN_LXS_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 1000)
 #
+## All proportions
 All_ratio %>% 
   ggplot(aes(Sex, Ratio))+
   geom_bar(stat = "identity", fill = c(rev(SexColor))) +
@@ -926,3 +948,90 @@ All_ratio %>%
 #ggsave(path = "Output/", filename = paste("Sex_proportions_all_LX_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 1000)
 #
 #
+## Annual proportions
+Annual_ratios %>% #filter(Year != "2025") %>%
+  ggplot(aes(Year, Ratio, fill = Sex))+
+  geom_bar(stat = "identity") +
+  #geom_hline(aes(yintercept = 0), linetype = "dashed")+
+  #geom_line(aes(group = Sex, color = Sex), linewidth = 1)+ geom_point(aes(color = Sex), size = 4)+ geom_errorbar(aes(color = Sex, ymin = mean-se, ymax = mean+se))+ scale_color_manual(values = SexColor)+
+  scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) + 
+  scale_fill_manual(values = SexColor)+ 
+  basetheme + facettheme
+#
+#
+## GLM 
+#Years overall - all samples
+Year_mean %>% 
+  ggplot(aes(Year, mean, fill = Group))+
+  geom_col()+ geom_errorbar(aes(ymin = mean, ymax = mean+se), width = 0.5)+
+  scale_y_continuous("Proportion female", expand = c(0,0), limits = c(0, 1))+
+  #scale_fill_grey()+
+  basetheme + axistheme + Prez 
+#Year by SH - not fair comparison since collecting more, but interesting to look at
+Repro_WQ2 %>%
+  group_by(SH_Bin, Year, Sex) %>%
+  summarise(Count = n()) %>%
+  ggplot(aes(SH_Bin, Count, fill = Sex))+
+  geom_col()+
+  lemon::facet_rep_grid(Year~., scales = "free_y")+ 
+  scale_fill_manual(values = SexColor)+
+  basetheme+ axistheme + facettheme + Prez
+#
+#Seasons overall
+Season_mean %>% 
+  ggplot(aes(Season, mean, fill = Group))+
+  geom_col()+ geom_errorbar(aes(ymin = mean, ymax = mean+se), width = 0.5)+
+  scale_y_continuous("Proportion female", expand = c(0,0), limits = c(0, 1))+
+  scale_fill_grey(start = 0, end = 0.5)+
+  basetheme + axistheme + Prez
+#
+#Seasons by SH
+Repro_WQ2 %>%
+  group_by(SH_Bin, Season, Sex) %>%
+  summarise(Count = n()) %>%
+  ggplot(aes(SH_Bin, Count, fill = Sex))+
+  geom_col()+
+  lemon::facet_rep_grid(Season~.)+ 
+  scale_fill_manual(values = SexColor)+
+  basetheme+ axistheme + facettheme
+#
+# Sex ratios
+ggplot() +  # Use original Shell_height for data points
+  geom_point(data = Repro_WQ2, aes(x = ShellHeight, y = Sex_class, color = as.factor(Sex_class)), alpha = 0.6, position = position_jitter(height = 0.05)) +  # Raw data
+  scale_color_manual("Sex", labels = c("Male", "Female"), values = SexColorC)+ 
+  geom_ribbon(data = pred_SH_df_ave, aes(x = SH_original, ymin = meanLower, ymax = meanUpper), alpha = 0.4) +  # SE shading
+  geom_line(data = pred_SH_df_ave, aes(x = SH_original, y = meanPred), size = 2) +  # Fitted curve
+  scale_x_continuous("Shell height (mm)", limits = c(0, 110), expand = c(0,0))+
+  ylab("Proportion")+
+  basetheme + axistheme + facettheme + theme(legend.position = "none") + Prez
+#
+#ggsave(path = "Output/", filename = paste("Sex_proportions_across_SH_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 1000)
+#
+#
+# Shell height proportions
+#Compare ratios
+ggarrange(
+  LX_SH_Bin_ratios %>% 
+    ggplot(aes(SH_Bin, All_Ratio, fill = Sex))+
+    geom_bar(stat = "identity", position = "stack") +
+    scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) +
+    scale_fill_manual(values = SexZ0Color)+
+    basetheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.85)) + 
+    Prez+ rremove("xlab") + theme(axis.text.x = element_text(size = 14, margin = unit(c(0.5, 0, -0.25, 0), "cm"))),
+  LX_SH_Bin_ratios %>% filter(Sex != "Z") %>%
+    ggplot(aes(SH_Bin, MF_Ratio, fill = Sex))+
+    geom_bar(stat = "identity", position = "stack") +
+    scale_fill_manual(values = SexZ0Color)+
+    scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) + 
+    xlab("Shell height (mm)")+
+    basetheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.85))+ 
+    Prez + theme(axis.text.x = element_text(size = 14, margin = unit(c(0.5, 0, 0, 0), "cm"))),
+  nrow = 2)
+#
+#Export instead. ggsave(path = "Output/", filename = paste("Sex_proportions_by_SHBin_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 800)
+#
+#
+# Maturity
+Mat_fig[[1]] + Prez
+#
+#ggsave(path = "Output/", filename = paste("Size_at_maturity_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 1000)
