@@ -236,7 +236,7 @@ glimpse(Ratio_clean_df)
 Site_ratios %>% 
     ggplot(aes(Sex, Ratio))+
     geom_bar(stat = "identity", fill = c(rev(SexColor), rev(SexColor))) +
-    scale_y_continuous("Ratio", expand = c(0, 0), limits = c(0, 1)) +  
+    scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) +  
     facet_rep_grid(.~Site)+
     basetheme + facettheme#
 #Very similar among sites when just looking at M and F - compare to be sure
@@ -245,6 +245,18 @@ chisq.test(Site_cont_tab) #Perform Chi-squared test
 #p = 0.8167 - fail to reject null that they are the same >> LXN M:F = LXS M:F
 #p = 0.8833 - fail to reject null that they are the same >> LXN M:F = LXS M:F (2020-2024 data)
 #p = 0.8639 - fail to reject null that they are the same >> LXN M:F = LXS M:F (2020-08/2025 data)
+#
+# Both sites
+(All_ratio <- #Ratio_clean_df %>% #Get count per Sex group_by(Site, Sex) %>% summarise(MeanRatio = mean(Ratio, na.rm = T)))
+    Ratio_clean_df %>%
+    #Get count per Year and Sex
+    group_by(Sex) %>% 
+    summarise(Count = sum(Count, na.rm = T)) %>% 
+    pivot_wider(names_from = Sex, values_from = Count) %>% 
+    mutate(Total = sum(F, M), Ratio_F = F/Total, Ratio_M = M/Total) %>%
+    pivot_longer(cols = c(Ratio_M, Ratio_F), names_to = c("Column", "Sex"), names_sep = "_", values_to = "Ratio") %>%
+    mutate(Sex = factor(Sex, levels = c("F", "M"))) %>%
+    dplyr::select(-c("F", "M", "Column")))
 #
 ###END OF SECTION
 #
@@ -882,3 +894,35 @@ matureSL(Mature_df, 0.5, 3, 2, "Yes")
 ##Write data to Excel
 #Ratio data
 writexl::write_xlsx(Ratio_clean_df, paste0("Data/Ratio_data_",Sys.Date(), ".xlsx"),col_names = TRUE)
+
+####All figures####
+#
+## Must run other sections first.
+#
+## Additional formatting for presentation/poster consistency:
+Prez <- theme(axis.title.x = element_text(size = 18, face = "bold", color = "black"), axis.text.x = element_text(size = 16, margin = unit(c(0.5, 0.5, 0, 0.5), "cm")),
+      axis.title.y = element_text(size = 18, face = "bold", color = "black"), axis.text.y = element_text(size = 16, margin = unit(c(0, 0.5, 0, 0), "cm")),
+      panel.grid = element_blank(), panel.border = element_blank(), axis.line = element_line(color = "black"),
+      axis.ticks.length = unit(-0.15, "cm"))
+#
+## Site comparisons
+Site_ratios %>% 
+  ggplot(aes(Sex, Ratio))+
+  geom_bar(stat = "identity", fill = c(rev(SexColor), rev(SexColor))) +
+  scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) +  
+  facet_rep_grid(.~Site)+
+  basetheme + facettheme +
+  Prez
+#
+#ggsave(path = "Output/", filename = paste("Sex_proportions_LXN_LXS_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 1000)
+#
+All_ratio %>% 
+  ggplot(aes(Sex, Ratio))+
+  geom_bar(stat = "identity", fill = c(rev(SexColor))) +
+  scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) +  
+  basetheme + facettheme +
+  Prez
+#
+#ggsave(path = "Output/", filename = paste("Sex_proportions_all_LX_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 1000)
+#
+#
