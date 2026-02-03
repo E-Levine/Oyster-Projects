@@ -16,6 +16,7 @@ pacman::p_load(plyr, tidyverse, #Df manipulation,
                lmPerm, stats, glmmTMB, AICcmodavg, DHARMa, performance,
                install = TRUE)
 #
+Date_cutoff <- as.Date("2025-12-31")
 #
 #
 #####Load data files####
@@ -27,6 +28,7 @@ Dermo_raw <- read_excel("Data/LX Combined Raw Data.xlsx", sheet = "Database_derm
                         .name_repair = "unique") 
 #Add 5 mm SH bins
 Dermo_df <- Dermo_raw %>% 
+  filter(as.Date(substr(SampleEventID, 8, 16), format = "%Y%m%d") <= Date_cutoff) %>%
   mutate(Year = substr(SampleEventID, 8, 11),
          SH_Bin = cut(ShellHeight, breaks = seq(0, 5*ceiling(max(ShellHeight, na.rm = T)/5), by = 5)))
 #
@@ -41,6 +43,7 @@ glimpse(Repro_data_raw)
 #Clean data:
 Repro_df_raw <- Repro_data_raw %>% 
   mutate(Date = as.Date(substr(SampleEventID, 8, 16), format = "%Y%m%d")) %>%
+  filter(Date <= Date_cutoff) %>%
   #update data types/values as needed
   mutate(Site = as.factor(substr(OysterID, 1, 3)),
          Station = as.factor(substr(SampleEventID, 19, 22)),
@@ -78,6 +81,7 @@ glimpse(Molluscs_WQ_Raw)
 MollWQ_df <- Molluscs_WQ_Raw %>% 
   #Add Station columns
   mutate(Station = as.factor(substr(SampleEventID, 19, 22))) %>%
+  filter(as.Date(substr(SampleEventID, 8, 16), format = "%Y%m%d") <= Date_cutoff) %>%
   #Add Site, Year, Month, MonYr info
   left_join(Repro_df %>% dplyr::select(SampleEventID, Date, Year, Month, MonYr, Site)) %>%
   #Reorder columns
@@ -87,18 +91,18 @@ glimpse(MollWQ_df)
 #
 #
 ##Load portal WQ file -need to update data
-Portal_WQ_Raw <- read_excel("Data/LX_Portal_combined_filtered_2020_082023.xlsx", sheet = "Sheet1", #File name and sheet name
-                              skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
-                              na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
-                              .name_repair = "unique")
+#Portal_WQ_Raw <- read_excel("Data/LX_Portal_combined_filtered_2020_082023.xlsx", sheet = "Sheet1", #File name and sheet name
+#                              skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+#                              na = c("", "Z", "z"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+#                              .name_repair = "unique")
 #check data types
-glimpse(Portal_WQ_Raw)
+#glimpse(Portal_WQ_Raw)
 #Clean data
-Portal_WQ <- Portal_WQ_Raw %>% 
-  dplyr::select(MonitoringLocationIdentifier:Estuary, LatitudeMeasure, LongitudeMeasure, ActivityStartDate, CharacteristicName:ResultMeasureValue) %>%
-  subset(Estuary == "LX" & (CharacteristicName == "Salinity"|CharacteristicName == "Temperature, water")) %>% 
-  pivot_wider(names_from = CharacteristicName, values_from = ResultMeasureValue, values_fn = sum) %>%
-  rename("Temp" = `Temperature, water`, "Station" = MonitoringLocationIdentifier, "Lat" = LatitudeMeasure, "Long" = LongitudeMeasure) 
+#Portal_WQ <- Portal_WQ_Raw %>% 
+#  dplyr::select(MonitoringLocationIdentifier:Estuary, LatitudeMeasure, LongitudeMeasure, ActivityStartDate, CharacteristicName:ResultMeasureValue) %>%
+#  subset(Estuary == "LX" & (CharacteristicName == "Salinity"|CharacteristicName == "Temperature, water")) %>% 
+#  pivot_wider(names_from = CharacteristicName, values_from = ResultMeasureValue, values_fn = sum) %>%
+#  rename("Temp" = `Temperature, water`, "Station" = MonitoringLocationIdentifier, "Lat" = LatitudeMeasure, "Long" = LongitudeMeasure) 
 #
 #
 #
@@ -109,9 +113,12 @@ Portal_WQ <- Portal_WQ_Raw %>%
 #
 #Basic background to work with
 basetheme <- theme_bw()+
-  theme(axis.title.x = element_text(size = 12, face = "bold", color = "black"), axis.text.x = element_text(size = 11, margin = unit(c(0.5, 0.5, 0, 0.5), "cm")),
-        axis.title.y = element_text(size = 12, face = "bold", color = "black"), axis.text.y = element_text(size = 11, margin = unit(c(0, 0.5, 0, 0), "cm")),
-        panel.grid = element_blank(), panel.border = element_blank(), axis.line = element_line(color = "black"),
+  theme(axis.title.x = element_text(size = 12, face = "bold", color = "black"), 
+        axis.text.x = element_text(color = "black", size = 11, margin = unit(c(0.5, 0.5, 0, 0.5), "cm")),
+        axis.title.y = element_text(size = 12, face = "bold", color = "black"), 
+        axis.text.y = element_text(color = "black", size = 11, margin = unit(c(0, 0.5, 0, 0), "cm")),
+        panel.grid = element_blank(), panel.border = element_blank(), 
+        axis.line = element_line(color = "black"),
         axis.ticks.length = unit(-0.15, "cm"))
 #
 axistheme <- theme(axis.ticks.length = unit(-0.15, "cm"), 
@@ -166,7 +173,7 @@ Repro_df %>% group_by(Site, MonYr) %>%
   lemon::facet_rep_grid(Site~.)+
   scale_y_continuous(expand = c(0,0), limits = c(0, 60))+
   basetheme + axistheme
-##Need to check missing data - check data sheets.
+#
 #
 #
 #
@@ -246,6 +253,7 @@ Site_ratios %>%
 #Very similar among sites when just looking at M and F - compare to be sure
 (Site_cont_tab <- table((Ratio_clean_df %>% filter(Count >0) %>% droplevels())$Site, (Ratio_clean_df %>% filter(Count >0) %>% droplevels())$Sex)) #Create a contingency table
 chisq.test(Site_cont_tab) #Perform Chi-squared test
+#p = 0.7436 - fail to reject null that they are the same >> LXN M:F = LXS M:F
 #p = 0.8167 - fail to reject null that they are the same >> LXN M:F = LXS M:F
 #p = 0.8833 - fail to reject null that they are the same >> LXN M:F = LXS M:F (2020-2024 data)
 #p = 0.8141 - fail to reject null that they are the same >> LXN M:F = LXS M:F (2020-08/2025 data)
@@ -285,6 +293,21 @@ Annual_ratios %>% #filter(Year != "2025") %>%
   scale_fill_manual(values = SexColor)+ 
   basetheme + facettheme
 #
+Annual_ratios %>%
+  #Get count per Year and Sex
+  group_by(Year, Sex) %>% 
+  summarise(mean = mean(Ratio, na.rm = T),
+            se = sd(Ratio, na.rm = TRUE) / sqrt(n())) %>%
+  ggplot(aes(Year, mean, color = Sex))+
+  geom_line(aes(group = Sex), linewidth = 1)+ 
+  geom_point(size = 4)+ 
+  geom_errorbar(aes(ymin = mean-se, ymax = mean+se, color = Sex))+ 
+  scale_color_manual(values = SexColor)+
+  scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) + 
+  scale_fill_manual(values = SexColor)+ 
+  basetheme + facettheme
+#
+#
 #
 #INCLUDING Zs
 ####What is the average ratio of males:females per year? - LXN + LXS
@@ -304,24 +327,6 @@ Annual_Z_ratios %>% #filter(Year != "2025") %>%
   basetheme + facettheme
 #
 #
-##WORKING IDEA, see GLM for analyses:
-#
-#Beta regression:
-library(betareg)
-annual_F_model <- betareg(mean ~ Year, data = Annual_ratios %>% filter(Sex == "F" & Year != "2025"),
-                          control = betareg.control(maxit = 1000))
-summary(annual_F_model)
-#No sig diff among years.
-## each month = 1 smaple
-(f_proportions <- Ratio_clean_df %>% 
-  #Get count per Sex
-  group_by(Year, Month, Sex) %>% get_summary_stats(Ratio, show = c("mean", "sd", "se")) %>% 
-    filter(Sex == "F" & Year != "2025") %>% dplyr::select(Year, Month, mean) %>% 
-    pivot_wider(names_from = Month, values_from = mean) %>% arrange(Year))
-#
-library(vegan)
-distance_matrix <- vegdist(temp_df[-c(1)], method = "bray", na.rm = TRUE)
-F_annaul_perm <- adonis2(f_proportions[-1] ~ c("2020", "2021", "2022", "2023", "2024"), method = "bray", permutations = 999, na.rm = TRUE)
 #
 #
 ##END OF SECTION
@@ -457,13 +462,13 @@ recalculateResiduals(simulateResiduals(Sex_best, n = 250, refit = FALSE, plot = 
 #REF: https://cran.r-project.org/web/packages/DHARMa/vignettes/DHARMa.html
 #REF: https://jonesor.github.io/BB852_Book/extending-use-cases-of-glm.html
 ## Calculate R-squared equivalent for count models. Closer to 1 is better
-r2(Sex_best) #0.217 - more variability present than model accounts for
+r2(Sex_best) #0.248 - more variability present than model accounts for
 ## Look at estimates
 summary(Sex_best)
 ###Key findings 
 ##Sex_class ~ SH_scaled
 ## 1. Model fits the data pretty well with good residuals.
-## 2. Tjur's R-squared is used here for a binary outcome. A value of 0.217 indicates a weak to moderate ability to discriminate between the 2 outcomes. Thus, there's lots of room for improvement.
+## 2. Tjur's R-squared is used here for a binary outcome. A value of 0.248 indicates a weak to moderate ability to discriminate between the 2 outcomes. Thus, there's lots of room for improvement.
 ## 3. Larger oysters more likely to be female (1)
 #
 #
@@ -511,12 +516,12 @@ Sex_best2 <- model.Yr_Sea_SH
 ### Assess goodness-of-fit
 simulateResiduals(Sex_best2, n = 250, refit = FALSE, plot = TRUE) #Want no deviation in QQ
 ## Calculate R-squared equivalent for count models. Closer to 1 is better
-r2(Sex_best2) #0.244 - more variability present than model accounts for
+r2(Sex_best2) #0.268 - more variability present than model accounts for
 ## Look at estimates
 summary(Sex_best2)
 ###Key findings 
 ##Sex_class ~ SH_scaled + Year + Season
-## 1. Model fits the data pretty well with good residuals. Tjur's R-squared value of 0.244 indicates a weak to moderate ability to discriminate between the 2 outcomes. Thus, there's lots of room for improvement, though better than the initial model.
+## 1. Model fits the data pretty well with good residuals. Tjur's R-squared value of 0.268 indicates a weak to moderate ability to discriminate between the 2 outcomes. Thus, there's lots of room for improvement, though better than the initial model.
 ## 2. Larger oysters still more likely to be female (1)
 ## 3. There appear to be some statistical differences between the Seasons and the Years. Closer inspection of those results to follow
 ## 4. Differences in more recent years... 
@@ -527,21 +532,21 @@ emm_Year <- emmeans(Sex_best2, ~ Year, type= "response")
 (pairs_Year <- contrast(emm_Year, method = "pairwise", adjust = "tukey"))
 pairs_Year %>% as.data.frame() %>% dplyr::select(-c("df", "null"))
 # contrast odds.ratio         SE    z.ratio      p.value
-#1  Year2020 / Year2021  1.1291497 0.10809861  1.2687678 8.021435e-01
-#2  Year2020 / Year2022  0.7067313 0.12135742 -2.0213826 3.299778e-01
-#3  Year2020 / Year2023  1.1850023 0.11254311  1.7872960 4.739616e-01
-#4  Year2020 / Year2024  1.5257773 0.13990686  4.6076868 5.973637e-05***
-#5  Year2020 / Year2025  2.0633619 0.17335419  8.6214740 5.284662e-14***
-#6  Year2021 / Year2022  0.6258969 0.10533679 -2.7841770 5.998352e-02
-#7  Year2021 / Year2023  1.0494643 0.09305386  0.5445012 9.943063e-01
-#8  Year2021 / Year2024  1.3512622 0.11504772  3.5357743 5.445643e-03**
-#9  Year2021 / Year2025  1.8273590 0.13823605  7.9694346 1.053602e-13***
-#10 Year2022 / Year2023  1.6767366 0.28123879  3.0814395 2.517028e-02*
-#11 Year2022 / Year2024  2.1589213 0.35844524  4.6353652 5.232682e-05***
-#12 Year2022 / Year2025  2.9195846 0.46924216  6.6664165 3.930899e-10***
-#13 Year2023 / Year2024  1.2875733 0.10846970  3.0003412 3.224376e-02*
-#14 Year2023 / Year2025  1.7412303 0.12721513  7.5908605 5.138112e-13***
-#15 Year2024 / Year2025  1.3523349 0.09442791  4.3226502 2.232098e-04***
+#Year2020 / Year2021      1.160 0.1100 Inf    1   1.565  0.6216
+#Year2020 / Year2022      0.727 0.1220 Inf    1  -1.893  0.4061
+#Year2020 / Year2023      1.150 0.1080 Inf    1   1.489  0.6711
+#Year2020 / Year2024      1.485 0.1360 Inf    1   4.327  0.0002
+#Year2020 / Year2025      1.789 0.1410 Inf    1   7.360  <.0001
+#Year2021 / Year2022      0.627 0.1030 Inf    1  -2.833  0.0524
+#Year2021 / Year2023      0.991 0.0869 Inf    1  -0.101  1.0000
+#Year2021 / Year2024      1.280 0.1090 Inf    1   2.905  0.0427
+#Year2021 / Year2025      1.542 0.1110 Inf    1   6.024  <.0001
+#Year2022 / Year2023      1.582 0.2600 Inf    1   2.793  0.0586
+#Year2022 / Year2024      2.043 0.3330 Inf    1   4.384  0.0002
+#Year2022 / Year2025      2.461 0.3830 Inf    1   5.780  <.0001
+#Year2023 / Year2024      1.291 0.1080 Inf    1   3.056  0.0272
+#Year2023 / Year2025      1.556 0.1070 Inf    1   6.449  <.0001
+#Year2024 / Year2025      1.205 0.0795 Inf    1   2.825  0.0535
 #Yearly mean (M = 0, F = 1)
 (Year_mean <- left_join(Repro_WQ2 %>% group_by(Year) %>% get_summary_stats(Sex_class, show = c("mean", "sd", "se")), 
                         cld(emm_Year, alpha = 0.05, adjust = "sidak", Letters = letters) %>% 
@@ -570,12 +575,12 @@ emm_Season <- emmeans(Sex_best2, ~ Season, type= "response")
 pairs_Season <- contrast(emm_Season, method = "pairwise", adjust = "tukey")
 pairs_Season %>% as.data.frame() %>% dplyr::select(-c("df", "null"))
 # contrast odds.ratio         SE    z.ratio      p.value
-#1 Spring / Summer  1.4870931 0.09041524  6.5267005 4.033369e-10
-#2   Spring / Fall  0.8720784 0.05552699 -2.1497036 1.375983e-01
-#3 Spring / Winter  0.8617906 0.07201428 -1.7799975 2.829480e-01
-#4   Summer / Fall  0.5864316 0.03272192 -9.5647846 3.141931e-14
-#5 Summer / Winter  0.5795136 0.04572027 -6.9151604 2.806821e-11
-#6   Fall / Winter  0.9882032 0.07804000 -0.1502683 9.987915e-01
+#1 Spring / Summer  1.4860280 0.09015515   6.529031 3.971136e-10
+#2   Spring / Fall  0.8584481 0.05436002  -2.410303 7.511836e-02
+#3 Spring / Winter  0.7559858 0.04878051  -4.335214 8.582023e-05
+#4   Summer / Fall  0.5776796 0.03224646  -9.830334 4.030110e-14
+#5 Summer / Winter  0.5087292 0.02897970 -11.864141 0.000000e+00
+#6   Fall / Winter  0.8806424 0.05256733  -2.129324 1.437858e-01
 #Seasonal mean (M = 0, F = 1)
 (Season_mean <- left_join(Repro_WQ2 %>% group_by(Season) %>% get_summary_stats(Sex_class, show = c("mean", "sd", "se")), 
   cld(emm_Season, alpha = 0.05, adjust = "sidak", Letters = letters) %>% 
@@ -696,7 +701,9 @@ Dermo_df %>% group_by(SH_Bin) %>% summarise(Total = n()) %>%
             Repro_df %>% 
               mutate(Sex = factor(case_when(grepl("imm", Comments, ignore.case = TRUE) ~ "Z0", TRUE ~ Sex), levels = c("F", "M", "Z", "Z0")),
                      ReproStage = case_when(grepl("imm", Comments, ignore.case = TRUE) ~ "0", TRUE ~ ReproStage)) %>% 
-              group_by(SH_Bin) %>% summarise(All_Total = n())) %>% 
+              group_by(SH_Bin) %>% 
+              summarise(MinSH = min(ShellHeight, na.rm = T),
+                        All_Total = n())) %>% 
     mutate(All_Ratio = All_Count/All_Total),
   #Group by sex and get count of each (excluding Zs)
   left_join(Repro_df %>% 
@@ -726,14 +733,16 @@ ggarrange(
     ggplot(aes(SH_Bin, All_Ratio, fill = Sex))+
     geom_bar(stat = "identity", position = "stack") +
     scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) + 
+    xlab("Shell height bin (mm)")+
     scale_fill_manual(values = SexZ0Color)+
-    basetheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.85)),
+    basetheme + axistheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.65)),
   LX_SH_Bin_ratios %>% filter(Sex != "Z") %>%
     ggplot(aes(SH_Bin, MF_Ratio, fill = Sex))+
     geom_bar(stat = "identity", position = "stack") +
+    xlab("Shell height bin (mm)")+
     scale_fill_manual(values = SexZ0Color)+
     scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) + 
-    basetheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.85)),
+    basetheme + axistheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.65)),
   nrow = 2)
 #
 Female_ratio %>% 
@@ -764,6 +773,8 @@ Repro_df %>% mutate(Sex = factor(Sex, ordered = TRUE, levels = c("Z", "M", "F"))
 Mature_df <- Repro_df %>% filter(!grepl("no slide", Comments, ignore.case = TRUE)) %>%
   dplyr::select(Date:SH_Bin, Sex, ReproStage, Comments) %>% 
   filter(!is.na(ShellHeight)) %>%
+  #Remove ZZs
+  filter(!(ReproStage == "Z" & Sex == "Z")) %>%
   #Get maturity (0/1)
   mutate(Mature = case_when(grepl("imm", Comments, ignore.case = TRUE) ~ 0,
                             ReproStage == 0 ~ 0, 
@@ -825,6 +836,8 @@ matureSL <- function(df, proportionMature, Type, extra, showU = "Yes"){
   outputF$Mature <- predict(lrSLF, newdata = outputF, type = "response")
   #Get x where y = p
   LD50F <- MASS::dose.p(lrSLF, p = proportionMature)
+  
+  
   ##Plots
   All <- mat_all %>%
     ggplot(aes(ShellHeight, as.numeric(Mature)-1))+
@@ -868,14 +881,24 @@ matureSL <- function(df, proportionMature, Type, extra, showU = "Yes"){
       scale_x_continuous(name = "Shell length (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
       scale_y_continuous(name = "Proportion mature", expand = c(0.025,0.025), limits = c(0,1))
   } else {
-    Facet <- rbind(mat_M, mat_F) %>%
+    Facet <- rbind(mat_MU %>% 
+                     mutate(MF_Final = as.character(MF_Final),         
+                            MF_Final = ifelse(MF_Final == "U", "M", MF_Final), 
+                            MF_Final = factor(MF_Final, levels = c("M", "F", "U"))), 
+                   mat_FU %>%
+                     mutate(MF_Final = as.character(MF_Final), 
+                            MF_Final = ifelse(MF_Final == "U", "F", MF_Final), 
+                            MF_Final = factor(MF_Final, levels = c("M", "F", "U"))))  %>%
+      mutate(Mature_num = as.numeric(as.character(Mature)),
+             col_grp = ifelse(Mature_num == 1, as.character(MF_Final), "U")) %>%
       ggplot(aes(ShellHeight, as.numeric(Mature)-1))+
-      geom_point(aes(color = MF_Final, alpha = Mature), size = 3.5)+
+      geom_point(aes(color = col_grp,
+                     alpha = Mature), size = 4.5)+
       stat_smooth(method = "glm", se = FALSE, fullrange = TRUE, 
                   method.args = list(family = binomial), size = 1.25)+
       lemon::facet_rep_grid(MF_Final~., labeller = labeller(MF_Final = Sex))+
       basetheme + XCate + MFUCol + facettheme+ theme(legend.position = "none")+
-      scale_alpha_manual(values = c(0.2, 0.6))+
+      scale_alpha_manual(values = c(0.7, 0.4)) +
       geom_vline(data = filter(mat_all, MF_Final == "M"), aes(xintercept = LD50M[[1]]),linetype = "dashed", color = "black", size = 1)+
       geom_vline(data = filter(mat_all, MF_Final == "F"), aes(xintercept = LD50F[[1]]),linetype = "dashed", color = "black", size = 1)+
       scale_x_continuous(name = "Shell length (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
@@ -903,9 +926,24 @@ matureSL <- function(df, proportionMature, Type, extra, showU = "Yes"){
 #
 (Mat_fig <- matureSL(Mature_df, 0.5, 3, 2, "Yes"))
 #[[2]]
-#[1] "Males: 0.5 = 10.656656694755 , SE = 1.22395283539628"
+#[1] "Males: 0.5 = 11.1645550769084 , SE = 0.834592050773521"
 #[[3]]
-#[1] "Females 0.5 = 12.1867129245564 , SE = 1.17555024958039"
+#[1] "Females 0.5 = 13.2789136246237 , SE = 0.781206098397466"
+#
+(Mat_fig_m <- matureSL(Mature_df %>% filter(!(ReproStage == 4 & (is.na(Comments) | !str_detect(Comments, "imm")))), 
+                       proportionMature = 0.5, 
+                       Type = 2, 
+                       extra = "M", 
+                       showU = "Yes"))
+#"Males: 0.5 = 12.2250267518631 , SE = 0.806952460139222"
+#
+#
+(Mat_fig_f <- matureSL(Mature_df %>% filter(!(ReproStage == 4 & (is.na(Comments) | !str_detect(Comments, "imm")))), 
+                       proportionMature = 0.5, 
+                       Type = 2, 
+                       extra = "F", 
+                       showU = "Yes"))
+#"Females: 0.5 = 17.9579894710367 , SE = 0.883888564251649"
 #
 #
 ##END OF SECTION
@@ -921,10 +959,14 @@ writexl::write_xlsx(Ratio_clean_df, paste0("Data/Ratio_data_",Sys.Date(), ".xlsx
 ## Must run other sections first.
 #
 ## Additional formatting for presentation/poster consistency:
-Prez <- theme(axis.title.x = element_text(size = 18, face = "bold", color = "black"), axis.text.x = element_text(size = 16, margin = unit(c(0.5, 0.5, 0, 0.5), "cm")),
-      axis.title.y = element_text(size = 18, face = "bold", color = "black"), axis.text.y = element_text(size = 16, margin = unit(c(0, 0.5, 0, 0), "cm")),
-      panel.grid = element_blank(), panel.border = element_blank(), axis.line = element_line(color = "black"),
-      axis.ticks.length = unit(-0.15, "cm"))
+Prez <- theme(axis.title.x = element_text(size = 16, face = "bold", color = "black"), 
+              axis.text.x = element_text(size = 14, margin = unit(c(0.5, 0.5, 0, 0.5), "cm")),
+              axis.title.y = element_text(size = 16, face = "bold", color = "black"), 
+              axis.text.y = element_text(size = 14, margin = unit(c(0, 0.5, 0, 0), "cm")),
+              panel.grid = element_blank(), 
+              panel.border = element_blank(), 
+              axis.line = element_line(color = "black"),
+              axis.ticks.length = unit(-0.15, "cm"))
 #
 ## Site proportions comparisons
 Site_ratios %>% 
@@ -935,7 +977,7 @@ Site_ratios %>%
   basetheme + facettheme +
   Prez
 #
-#ggsave(path = "Output/", filename = paste("Sex_proportions_LXN_LXS_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 1000)
+#ggsave(path = "Output/", filename = paste("Sex_proportions_LXN_LXS_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 800)
 #
 ## All proportions
 All_ratio %>% 
@@ -945,7 +987,7 @@ All_ratio %>%
   basetheme + facettheme +
   Prez
 #
-#ggsave(path = "Output/", filename = paste("Sex_proportions_all_LX_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 1000)
+#ggsave(path = "Output/", filename = paste("Sex_proportions_all_LX_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 800)
 #
 #
 ## Annual proportions
@@ -1005,7 +1047,7 @@ ggplot() +  # Use original Shell_height for data points
   ylab("Proportion")+
   basetheme + axistheme + facettheme + theme(legend.position = "none") + Prez
 #
-#ggsave(path = "Output/", filename = paste("Sex_proportions_across_SH_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 1000)
+#ggsave(path = "Output/", filename = paste("Sex_proportions_across_SH_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 800)
 #
 #
 # Shell height proportions
@@ -1028,10 +1070,38 @@ ggarrange(
     Prez + theme(axis.text.x = element_text(size = 14, margin = unit(c(0.5, 0, 0, 0), "cm"))),
   nrow = 2)
 #
-#Export instead. ggsave(path = "Output/", filename = paste("Sex_proportions_by_SHBin_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 800)
+#Individual ratio plots
+LX_SH_Bin_ratios %>% 
+  ggplot(aes(SH_Bin, All_Ratio, fill = Sex))+
+  geom_bar(stat = "identity", position = "stack") +
+  scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) +
+  xlab("Shell height bin (mm)")+
+  scale_fill_manual(values = SexZ0Color)+
+  basetheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.75)) + 
+  Prez+ theme(axis.text.x = element_text(size = 14, margin = unit(c(0.5, 0, -0.25, 0), "cm")))
+#ggsave(path = "Output/", filename = paste("Sex_proportions_by_SHBin_wZ4_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 800)
+#
+LX_SH_Bin_ratios %>% filter(Sex != "Z") %>%
+  ggplot(aes(SH_Bin, MF_Ratio, fill = Sex))+
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_manual(values = SexZ0Color)+
+  scale_y_continuous("Proportion", expand = c(0, 0), limits = c(0, 1)) + 
+  xlab("Shell height (mm)")+
+  basetheme + theme(axis.text.x = element_text(angle = 60, vjust = 0.75))+ 
+  Prez + theme(axis.text.x = element_text(size = 14, margin = unit(c(0.5, 0, 0, 0), "cm")))
+#ggsave(path = "Output/", filename = paste("Sex_proportions_by_SHBin_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 800)
 #
 #
 # Maturity
 Mat_fig[[1]] + Prez
+Mat_fig[[2]];Mat_fig[[3]]
+#ggsave(path = "Output/", filename = paste("Size_at_maturity_wZ4_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 800)
+
+Mat_fig_m[[1]] + Prez
+Mat_fig_m[[2]]
+#ggsave(path = "Output/", filename = paste("Size_at_maturity_males_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 800)
+
+Mat_fig_f[[1]] + Prez
+Mat_fig_f[[2]]
+#ggsave(path = "Output/", filename = paste("Size_at_maturity_females_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 800)
 #
-#ggsave(path = "Output/", filename = paste("Size_at_maturity_", format(Sys.Date(), "%Y_%m_%d"),".tiff", sep = ""), dpi = 1000)
