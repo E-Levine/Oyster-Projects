@@ -683,6 +683,266 @@ ggplot() +  # Use original Shell_height for data points
 #
 ##END OF SECTION
 #
+####GLM maturity -- needs updating from GLM sex####
+#
+##Get all data together - not currently using Portal WQ
+Mature_df <- Repro_df %>% filter(!grepl("no slide", Comments, ignore.case = TRUE)) %>%
+  dplyr::select(Date:SH_Bin, Sex, ReproStage, Comments) %>% 
+  filter(!is.na(ShellHeight)) %>%
+  #Remove ZZs
+  filter(!(ReproStage == "Z" & Sex == "Z")) %>%
+  #Get maturity (0/1)
+  mutate(Mature = case_when(grepl("imm", Comments, ignore.case = TRUE) ~ 0,
+                            ReproStage == 0 ~ 0, 
+                            TRUE ~ 1)) %>%
+  #MF with "U" for unknowns
+  mutate(MF_Final = case_when(Sex == "M" ~ "M", Sex == "F" ~ "F", TRUE ~ "U"))
+#
+##Scaling data
+(Mature_df2 <- Mature_df %>%
+    #Nuerical
+    mutate(Year_scaled = scale(as.numeric(Year))[,1],
+           SH_scaled = scale(ShellHeight)[,1]) %>%
+    #Factors
+    mutate(Site = factor(Site, levels = c("LXN", "LXS")),
+           Season = factor(Season, levels = c("Spring", "Summer", "Fall", "Winter")),
+           Month = factor(Month, levels = 1:12, labels = month.abb),
+           Year_numeric = as.numeric(Year),  # For linear trends
+           Station = factor(Station)) %>%
+    mutate(Sex_class = ifelse(Sex == "M", 0, 1)) %>%
+    #Remove Z Sex and oysters without shell heights
+    subset(Sex != "Z") %>% subset(!is.na(ShellHeight)))
+#
+#
+###Initial models
+#All possible independent variables: Year, Season, Site, Station, ShellHeight, Salinity, Temperature#
+#Starting with Site and ShellHeight
+#
+#### 1-Site/Section ONLY as a fixed effect
+model.Site <- glmmTMB(Sex_class ~ Site, family = binomial, data = Repro_WQ2,
+                      control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
+#
+#### 2-ShellHeight ONLY as a fixed effect
+model.SH <- glmmTMB(Sex_class ~ SH_scaled, family = binomial, data = Repro_WQ2,
+                    control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
+#
+#### 3-Site/Section and ShellHeight as a fixed effect
+model.S_SH <- glmmTMB(Sex_class ~ Site + SH_scaled, family = binomial, data = Repro_WQ2,
+                      control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
+#
+AIC_models1 <- list('1-SiteOnly' = model.Site, 
+                    '2-ShellHeightOnly' = model.SH, 
+                    '3-Site+ShellHeight' = model.S_SH)
+aictab(AIC_models1) #Want lowest AIC with most change
+####KEY FINDINGS:
+##Shell height is highly important (as expected)
+##Including Site doesn't improve the model - sites are similar
+#
+###Best model - model 5 - evaluate model
+Sex_best <- model.SH
+### Assess goodness-of-fit
+simulateResiduals(Sex_best, n = 250, refit = FALSE, plot = TRUE) #Want no deviation in QQ
+recalculateResiduals(simulateResiduals(Sex_best, n = 250, refit = FALSE, plot = TRUE), group = Repro_WQ2$Site) #Doesn't change much. Not needed.
+#REF: https://cran.r-project.org/web/packages/DHARMa/vignettes/DHARMa.html
+#REF: https://jonesor.github.io/BB852_Book/extending-use-cases-of-glm.html
+## Calculate R-squared equivalent for count models. Closer to 1 is better
+r2(Sex_best) #0.248 - more variability present than model accounts for
+## Look at estimates
+summary(Sex_best)
+###Key findings 
+##Sex_class ~ SH_scaled
+## 1. Model fits the data pretty well with good residuals.
+## 2. Tjur's R-squared is used here for a binary outcome. A value of 0.248 indicates a weak to moderate ability to discriminate between the 2 outcomes. Thus, there's lots of room for improvement.
+## 3. Larger oysters more likely to be female (1)
+#
+#
+#
+##Consider adding Year and Season:
+#### 1-Baseline: ShellHeight as a fixed effect
+#model.SH <- glmmTMB(Sex_class ~ SH_scaled, family = binomial, data = Repro_WQ2,
+#                    control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
+#### 2-Season and ShellHeight as a fixed effect
+model.Sea_SH <- glmmTMB(Sex_class ~ Season + SH_scaled, family = binomial, data = Repro_WQ2,
+                        control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
+#### 3-Year (factor, non-linear temporal) and ShellHeight as a fixed effect
+model.Yr_SH <- glmmTMB(Sex_class ~ Year + SH_scaled, family = binomial, data = Repro_WQ2,
+                       control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
+#### 4-Year (linear trend) and ShellHeight as a fixed effect
+model.YrN_SH <- glmmTMB(Sex_class ~ Year_numeric + SH_scaled, family = binomial, data = Repro_WQ2,
+                        control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
+#### 5-Season, Year (factor, non-linear temporal) and ShellHeight as a fixed effect
+model.Yr_Sea_SH <- glmmTMB(Sex_class ~ Year + Season + SH_scaled, family = binomial, data = Repro_WQ2,
+                           control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
+#### 6-Season, Year (linear trend) and ShellHeight as a fixed effect
+model.YrN_Sea_SH <- glmmTMB(Sex_class ~ Year_numeric + Season + SH_scaled, family = binomial, data = Repro_WQ2,
+                            control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
+#### 7-Season * Year (linear trend) interaction and ShellHeight as a fixed effect
+model.YrNSea_SH <- glmmTMB(Sex_class ~ Year_numeric * Season + SH_scaled, family = binomial, data = Repro_WQ2,
+                           control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
+#
+AIC_models2 <- list('1-ShellHeightOnly' = Sex_best, 
+                    '2-SH + Season' = model.Sea_SH, 
+                    '3-SH + Year' = model.Yr_SH,
+                    '4-SH + YearScaled' = model.YrN_SH,
+                    '5-SH + Year + Season' = model.Yr_Sea_SH,
+                    '6-SH + YearScaled + Season' = model.YrN_Sea_SH,
+                    '7-SH + YearScaled * Season' = model.YrNSea_SH)
+aictab(AIC_models2) #Want lowest AIC with most change
+#
+### Key findings from model selection
+##1. Both Season AND Year are important (5 >> 2 or 3 alone)
+##2. Non-linear year effects may be important (5 > 6: factor vs linear year) - may change once samples are completed for 2025
+##3. Seasonal patterns are mostly consistent across years (5, 6, 7 not too different)
+##4. Temporal factors explain a lot of the variation (ΔAICc = 1.36 vs baseline)")
+#
+###Best model - model 5 - evaluate model
+Sex_best2 <- model.Yr_Sea_SH
+### Assess goodness-of-fit
+simulateResiduals(Sex_best2, n = 250, refit = FALSE, plot = TRUE) #Want no deviation in QQ
+## Calculate R-squared equivalent for count models. Closer to 1 is better
+r2(Sex_best2) #0.268 - more variability present than model accounts for
+## Look at estimates
+summary(Sex_best2)
+###Key findings 
+##Sex_class ~ SH_scaled + Year + Season
+## 1. Model fits the data pretty well with good residuals. Tjur's R-squared value of 0.268 indicates a weak to moderate ability to discriminate between the 2 outcomes. Thus, there's lots of room for improvement, though better than the initial model.
+## 2. Larger oysters still more likely to be female (1)
+## 3. There appear to be some statistical differences between the Seasons and the Years. Closer inspection of those results to follow
+## 4. Differences in more recent years... 
+#
+##Years
+#Comparisons
+emm_Year <- emmeans(Sex_best2, ~ Year, type= "response")
+(pairs_Year <- contrast(emm_Year, method = "pairwise", adjust = "tukey"))
+pairs_Year %>% as.data.frame() %>% dplyr::select(-c("df", "null"))
+# contrast odds.ratio         SE    z.ratio      p.value
+#Year2020 / Year2021      1.160 0.1100 Inf    1   1.565  0.6216
+#Year2020 / Year2022      0.727 0.1220 Inf    1  -1.893  0.4061
+#Year2020 / Year2023      1.150 0.1080 Inf    1   1.489  0.6711
+#Year2020 / Year2024      1.485 0.1360 Inf    1   4.327  0.0002
+#Year2020 / Year2025      1.789 0.1410 Inf    1   7.360  <.0001
+#Year2021 / Year2022      0.627 0.1030 Inf    1  -2.833  0.0524
+#Year2021 / Year2023      0.991 0.0869 Inf    1  -0.101  1.0000
+#Year2021 / Year2024      1.280 0.1090 Inf    1   2.905  0.0427
+#Year2021 / Year2025      1.542 0.1110 Inf    1   6.024  <.0001
+#Year2022 / Year2023      1.582 0.2600 Inf    1   2.793  0.0586
+#Year2022 / Year2024      2.043 0.3330 Inf    1   4.384  0.0002
+#Year2022 / Year2025      2.461 0.3830 Inf    1   5.780  <.0001
+#Year2023 / Year2024      1.291 0.1080 Inf    1   3.056  0.0272
+#Year2023 / Year2025      1.556 0.1070 Inf    1   6.449  <.0001
+#Year2024 / Year2025      1.205 0.0795 Inf    1   2.825  0.0535
+#Yearly mean (M = 0, F = 1)
+(Year_mean <- left_join(Repro_WQ2 %>% group_by(Year) %>% get_summary_stats(Sex_class, show = c("mean", "sd", "se")), 
+                        cld(emm_Year, alpha = 0.05, adjust = "sidak", Letters = letters) %>% 
+                          dplyr::select(-"df") %>% rename("Group" = .group) %>% mutate(Group = gsub(" ", "", Group))))
+#Years overall
+Year_mean %>% 
+  ggplot(aes(Year, mean, fill = Group))+
+  geom_col()+ geom_errorbar(aes(ymin = mean, ymax = mean+se), width = 0.5)+
+  scale_y_continuous("Proportion female", expand = c(0,0), limits = c(0, 1))+
+  #scale_fill_grey()+
+  basetheme + axistheme
+#Year by SH - not fair comparison since collecting more, but interesting to look at
+Repro_WQ2 %>%
+  group_by(SH_Bin, Year, Sex) %>%
+  summarise(Count = n()) %>%
+  ggplot(aes(SH_Bin, Count, fill = Sex))+
+  geom_col()+
+  lemon::facet_rep_grid(Year~.)+ 
+  scale_fill_manual(values = SexColor)+
+  basetheme+ axistheme + facettheme
+#
+#
+##Seasons
+#Comparisons
+emm_Season <- emmeans(Sex_best2, ~ Season, type= "response")
+pairs_Season <- contrast(emm_Season, method = "pairwise", adjust = "tukey")
+pairs_Season %>% as.data.frame() %>% dplyr::select(-c("df", "null"))
+# contrast odds.ratio         SE    z.ratio      p.value
+#1 Spring / Summer  1.4860280 0.09015515   6.529031 3.971136e-10
+#2   Spring / Fall  0.8584481 0.05436002  -2.410303 7.511836e-02
+#3 Spring / Winter  0.7559858 0.04878051  -4.335214 8.582023e-05
+#4   Summer / Fall  0.5776796 0.03224646  -9.830334 4.030110e-14
+#5 Summer / Winter  0.5087292 0.02897970 -11.864141 0.000000e+00
+#6   Fall / Winter  0.8806424 0.05256733  -2.129324 1.437858e-01
+#Seasonal mean (M = 0, F = 1)
+(Season_mean <- left_join(Repro_WQ2 %>% group_by(Season) %>% get_summary_stats(Sex_class, show = c("mean", "sd", "se")), 
+                          cld(emm_Season, alpha = 0.05, adjust = "sidak", Letters = letters) %>% 
+                            dplyr::select(-"df") %>% rename("Group" = .group) %>% mutate(Group = gsub(" ", "", Group))))
+#Seasons overall
+Season_mean %>% 
+  ggplot(aes(Season, mean, fill = Group))+
+  geom_col()+ geom_errorbar(aes(ymin = mean, ymax = mean+se), width = 0.5)+
+  scale_y_continuous("Proportion female", expand = c(0,0), limits = c(0, 1))+
+  scale_fill_grey(start = 0, end = 0.5)+
+  basetheme + axistheme
+#Seasons by SH
+Repro_WQ2 %>%
+  group_by(SH_Bin, Season, Sex) %>%
+  summarise(Count = n()) %>%
+  ggplot(aes(SH_Bin, Count, fill = Sex))+
+  geom_col()+
+  lemon::facet_rep_grid(Season~.)+ 
+  scale_fill_manual(values = SexColor)+
+  basetheme+ axistheme + facettheme
+#
+###Shell heights
+# Get the scaling parameters from the original data
+SH_mean <- attr(scale(Repro_WQ2$ShellHeight), "scaled:center")
+SH_sd <- attr(scale(Repro_WQ2$ShellHeight), "scaled:scale")
+#Get the coefficient and odds ratio
+(SH_coeff <- (summary(Sex_best2)$coefficients$cond %>% as.data.frame())["SH_scaled",]) #The coefficient for SH_scaled is 1.0128791 (SE = 0.02952, z = 34.314, p < 0.001)
+(SH_odds <- as.numeric(paste(exp(SH_coeff))))
+#
+#Create a sequence of ORIGINAL Shell_height values, then scale them for emmeans
+original_seq <- seq(min(Repro_WQ2$ShellHeight), max(Repro_WQ2$ShellHeight), by = 0.5)  # Example sequence on original scale
+scaled_seq <- (original_seq - SH_mean) / SH_sd 
+#Use emmeans for post hoc
+emmeans_data <- expand.grid(SH_scaled = scaled_seq,
+                            Year = levels(Repro_WQ2$Year), Season = levels(Repro_WQ2$Season))
+emmeans_output <- emmeans(Sex_best2, ~ SH_scaled + Year + Season, at = list(SH_scaled = scaled_seq, Year = levels(Repro_WQ2$Year), Season = levels(Repro_WQ2$Season)), data = emmeans_data)
+emmeans_summary <- summary(emmeans_output, type = "response")  # On response scale (probabilities)
+#Add the original scale back to the emmeans output for easier interpretation
+emmeans_summary$SH_original <- rep(original_seq, each = length(levels(Repro_WQ2$Year)) * length(levels(Repro_WQ2$Season)))  # Match the order
+head(emmeans_summary)  #Check data is all there
+#
+# Create a dataframe for predictions using original scale, but scale for prediction
+SH_newdata <- data.frame(SH_original = seq(min(Repro_WQ2$ShellHeight), max(Repro_WQ2$ShellHeight), length.out = 100))
+# Scale the new data
+SH_newdata$SH_scaled <- (SH_newdata$SH_original - SH_mean) / SH_sd
+SH_newdata <- SH_newdata %>% 
+  tidyr::expand_grid(Year = levels(Repro_WQ2$Year), Season = levels(Repro_WQ2$Season)) # Add Year and Season combinations
+# Get predictions from the model using the scaled values
+pred_SH_df <- data.frame(SH_newdata, 
+                         Predictions = predict(Sex_best2, newdata = SH_newdata, type = "response", se.fit = TRUE)) %>%
+  rename(Predictions = Predictions.fit, SE = Predictions.se.fit) %>%
+  mutate(Lower_CI = Predictions - 1.96*SE, Upper_CI = Predictions + 1.96*SE)
+#
+# Plot the data and the fitted curves (individual)
+Repro_WQ2 %>%
+  ggplot(aes(x = ShellHeight, y = Sex_class)) +  # Use original Shell_height for data points
+  geom_point(aes(color = as.factor(Sex_class)), alpha = 0.6, position = position_jitter(height = 0.05)) +  # Raw data
+  scale_color_manual("Sex", labels = c("Male", "Female"), values = SexColorC)+ new_scale_color()+
+  geom_line(data = pred_SH_df, aes(x = SH_original, y = Predictions, color = Year, group = 1), size = 1) +  # Fitted curve
+  #lemon::facet_rep_grid(Season~.) +
+  basetheme + axistheme + facettheme
+#
+##Averaged
+(pred_SH_df_ave <- pred_SH_df %>% group_by(SH_original, SH_scaled) %>%
+    summarise(meanPred = mean(Predictions), meanSE = mean(SE), meanLower = mean(Lower_CI),meanUpper = mean(Upper_CI)))
+#
+ggplot() +  # Use original Shell_height for data points
+  geom_point(data = Repro_WQ2, aes(x = ShellHeight, y = Sex_class, color = as.factor(Sex_class)), alpha = 0.6, position = position_jitter(height = 0.05)) +  # Raw data
+  scale_color_manual("Sex", labels = c("Male", "Female"), values = SexColorC)+ 
+  geom_ribbon(data = pred_SH_df_ave, aes(x = SH_original, ymin = meanLower, ymax = meanUpper), alpha = 0.4) +  # SE shading
+  geom_line(data = pred_SH_df_ave, aes(x = SH_original, y = meanPred), size = 2) +  # Fitted curve
+  scale_x_continuous(limits = c(0, 110), expand = c(0,0))+
+  basetheme + axistheme + facettheme + theme(legend.position = "none")
+#
+#
+#
+##END OF SECTION
+#
 #####Shell heights -  summary tables and figures####
 #
 ###All estuary data - LXN + LXS
@@ -972,6 +1232,47 @@ matureSL <- function(df, proportionMature, Type, extra, showU = "Yes"){
                        showU = "Yes"))
 #"Females: 0.5 = 19.0053552197822 , SE = 38.1219225443271"
 #
+#
+## All mature
+(Males_all <- left_join(Mature_df %>% 
+                 filter(MF_Final != "F") %>%
+                 group_by(SH_Bin, Mature) %>%
+                 summarise(Count = n()),
+               Mature_df %>% 
+                 filter(MF_Final != "F") %>%
+                 group_by(SH_Bin) %>%
+                 summarise(Total = n())) %>%
+  mutate(Prop = Count/Total) %>%
+  dplyr::select(SH_Bin, Mature, Prop) %>%
+  pivot_wider(names_from = Mature, values_from = Prop))
+#
+Males_df <- Mature_df %>% 
+  filter(MF_Final != "F") %>%
+  dplyr::select(OysterID, SH_Bin, ShellHeight, MF_Final, Mature) %>%
+  group_by(SH_Bin, ShellHeight, Mature) %>%
+  summarise(Count = n()) %>%
+  pivot_wider(names_from = Mature, values_from = Count) %>%
+  arrange(ShellHeight)
+#
+(Females_all <- left_join(Mature_df %>% 
+                          filter(MF_Final != "M") %>%
+                          group_by(SH_Bin, Mature) %>%
+                          summarise(Count = n()),
+                        Mature_df %>% 
+                          filter(MF_Final != "M") %>%
+                          group_by(SH_Bin) %>%
+                          summarise(Total = n())) %>%
+    mutate(Prop = Count/Total) %>%
+    dplyr::select(SH_Bin, Mature, Prop) %>%
+    pivot_wider(names_from = Mature, values_from = Prop))
+#
+Females_df <- Mature_df %>% 
+  filter(MF_Final != "M") %>%
+  dplyr::select(OysterID, SH_Bin, ShellHeight, MF_Final, Mature) %>%
+  group_by(SH_Bin, ShellHeight, Mature) %>%
+  summarise(Count = n()) %>%
+  pivot_wider(names_from = Mature, values_from = Count) %>%
+  arrange(ShellHeight)
 #
 ##END OF SECTION
 #
