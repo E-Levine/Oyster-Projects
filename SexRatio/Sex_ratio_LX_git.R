@@ -870,7 +870,7 @@ matureSL <- function(df, proportionMature, Type, extra, showU = "Yes"){
                 method.args = list(family = binomial), size = 1.25)+
     basetheme + XCate + MFCol +
     geom_vline(xintercept = LD50[[1]],linetype = "dashed", color = "black", size = 1)+
-    scale_x_continuous(name = "Shell length (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
+    scale_x_continuous(name = "Shell height (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
     scale_y_continuous(name = "Proportion mature", expand = c(0.025,0.025), limits = c(0,1))
   Single <- mat_all %>% subset(MF_Final == extra | MF_Final == "U") %>%
     ggplot(aes(ShellHeight, as.numeric(Mature)-1))+
@@ -879,7 +879,7 @@ matureSL <- function(df, proportionMature, Type, extra, showU = "Yes"){
                 method.args = list(family = binomial), size = 1.25)+
     basetheme + XCate + MFCol +
     geom_vline(xintercept = ifelse(extra == "M", LD50M[[1]], LD50F[[1]]),linetype = "dashed", color = "black", size = 1)+
-    scale_x_continuous(name = "Shell length (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
+    scale_x_continuous(name = "Shell height (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
     scale_y_continuous(name = "Proportion mature", expand = c(0.025,0.025), limits = c(0,1))
   Both <- mat_all %>%
     ggplot(aes(ShellHeight, as.numeric(Mature)-1))+
@@ -890,7 +890,7 @@ matureSL <- function(df, proportionMature, Type, extra, showU = "Yes"){
     geom_vline(xintercept = LD50[[1]],linetype = "dashed", color = "black", size = 1)+
     geom_vline(xintercept = LD50M[[1]],linetype = "dashed", color = "#E69F00", size = 1)+
     geom_vline(xintercept = LD50F[[1]],linetype = "dashed", color = "#009E73", size = 1)+
-    scale_x_continuous(name = "Shell length (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
+    scale_x_continuous(name = "Shell height (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
     scale_y_continuous(name = "Proportion mature", expand = c(0.025,0.025), limits = c(0,1))
   if(showU == "No"){
     Facet <- rbind(mat_M, mat_F) %>%
@@ -902,7 +902,7 @@ matureSL <- function(df, proportionMature, Type, extra, showU = "Yes"){
       basetheme + XCate + MFCol + facettheme+ theme(legend.position = "none")+
       geom_vline(data = filter(mat_all, MF_Final == "M"), aes(xintercept = LD50M[[1]]),linetype = "dashed", color = "black", size = 1)+
       geom_vline(data = filter(mat_all, MF_Final == "F"), aes(xintercept = LD50F[[1]]),linetype = "dashed", color = "black", size = 1)+
-      scale_x_continuous(name = "Shell length (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
+      scale_x_continuous(name = "Shell height (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
       scale_y_continuous(name = "Proportion mature", expand = c(0.025,0.025), limits = c(0,1))
   } else {
     Facet <- rbind(mat_MU %>% 
@@ -925,7 +925,7 @@ matureSL <- function(df, proportionMature, Type, extra, showU = "Yes"){
       scale_alpha_manual(values = c(0.7, 0.4)) +
       geom_vline(data = filter(mat_all, MF_Final == "M"), aes(xintercept = LD50M[[1]]),linetype = "dashed", color = "black", size = 1)+
       geom_vline(data = filter(mat_all, MF_Final == "F"), aes(xintercept = LD50F[[1]]),linetype = "dashed", color = "black", size = 1)+
-      scale_x_continuous(name = "Shell length (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
+      scale_x_continuous(name = "Shell height (mm)", expand = c(0,0), limits = c(0, round10(max(mat_all$ShellHeight))), breaks = seq(0, round10(max(mat_all$ShellHeight)), by = 10))+
       scale_y_continuous(name = "Proportion mature", expand = c(0.025,0.025), limits = c(0,1))
   }
   #OUTPUT
@@ -986,10 +986,12 @@ writexl::write_xlsx(Ratio_clean_df, paste0("Data/Ratio_data_",Sys.Date(), ".xlsx
 ## Must run other sections first.
 #
 ## Additional formatting for presentation/poster consistency:
-Prez <- theme(axis.title.x = element_text(size = 16, face = "bold", color = "black"), 
-              axis.text.x = element_text(size = 14, margin = unit(c(0.5, 0.5, 0, 0.5), "cm")),
-              axis.title.y = element_text(size = 16, face = "bold", color = "black"), 
-              axis.text.y = element_text(size = 14, margin = unit(c(0, 0.5, 0, 0), "cm")),
+Prez <- theme(axis.title.x = element_text(size = 20, face = "bold", color = "black"), 
+              axis.text.x = element_text(size = 18, margin = unit(c(0.5, 0.5, 0, 0.5), "cm")),
+              axis.title.y = element_text(size = 20, face = "bold", color = "black"), 
+              axis.text.y = element_text(size = 18, margin = unit(c(0, 0.5, 0, 0), "cm")),
+              legend.title = element_text(size = 16, color = "black"),
+              legend.text = element_text(size = 14, color = "black"),
               panel.grid = element_blank(), 
               panel.border = element_blank(), 
               axis.line = element_line(color = "black"),
@@ -1126,7 +1128,14 @@ save_area_plot(p6, "Sex_proportions_by_SHBin")
 #
 #
 # Maturity
-(p7 <- Mat_fig[[1]] + Prez)
+(p7 <- Mat_fig[[1]] + Prez +
+    # Code to update facet label text size:
+    #theme(strip.text = element_text(size = 12, color = "black", face = "bold")) +
+    # Update colors to match other figures:
+    scale_color_manual(
+      values = c("M" = "#56B4E9",
+                 "F" = "#CC79A7", 
+                 "U" = "#CCCCCC")))
 Mat_fig[[2]];Mat_fig[[3]]
 save_area_plot(p7, "Size_at_maturity_wZ4")
 #
