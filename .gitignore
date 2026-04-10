@@ -58,3 +58,8 @@ HSM/Data layers/*/*.xlsx
 **/Data files/*.xlsx
 **/Data/*.xlsx
 **/Data/*.csv
+
+#Long term data files
+Longterm data/Data/*.xlsx
+Longterm data/Data/*/*.xlsx
+Longterm data/Data/*/*.csv
