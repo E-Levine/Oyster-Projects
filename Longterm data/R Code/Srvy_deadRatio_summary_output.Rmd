@@ -148,8 +148,6 @@ Annual_summ <- Quads_df %>%
                              minDead = min(TotalDead, na.rm = TRUE),
                              maxDead = max(TotalDead, na.rm = TRUE),
                              meanDeadRatio = mean(DeadRatio, na.rm = TRUE),
-                             sdDeadRatio = sd(DeadRatio, na.rm = TRUE),
-                             seDeadRatio   = sdDeadRatio / sqrt(n()),
                              minDeadRatio = min(DeadRatio, na.rm = TRUE),
                              maxDeadRatio = max(DeadRatio, na.rm = TRUE)) %>%
                    filter(Estuary != "_0" & !is.na(Estuary))
@@ -209,7 +207,7 @@ unique(Annual_summ$Estuary)
 
 # Statewide
 
-```{r Estuary summary, echo = FALSE, fig.align='center', results ="asis"}
+```{r Estuary summary, echo = FALSE, fig.align='center'}
 #
 # Filter to Estuary:
 All_summ <- Quads_df %>%
@@ -226,13 +224,10 @@ All_summ <- Quads_df %>%
                              maxDead = max(TotalDead, na.rm = TRUE),
                              meanDeadRatio = mean(DeadRatio, na.rm = TRUE),
                              minDeadRatio = min(DeadRatio, na.rm = TRUE),
-                             maxDeadRatio = max(DeadRatio, na.rm = TRUE),
-                             sdDeadRatio = sd(DeadRatio, na.rm = TRUE),
-                             seDeadRatio   = sdDeadRatio / sqrt(n())) %>%
+                             maxDeadRatio = max(DeadRatio, na.rm = TRUE)) %>%
                    filter(Estuary != "_0" & !is.na(Estuary))
 
 
-## Live counts
 # Annual means table
 All_summ %>%
   ungroup() %>%
@@ -284,7 +279,6 @@ if(exists("All_model") && !is.null(All_model)){
         ggplot(aes(Estuary, meanLive, fill = Group))+
         geom_bar(stat = "identity")+
         geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
-        geom_text(aes(y = meanLive + seLive, label = Group), vjust = -1, color = "black")+
         scale_x_discrete(expand = c(0.05,0.1))+
         scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
         scale_fill_viridis_d()+
@@ -327,104 +321,6 @@ if(exists("All_model_tab")){
 }
 #
 #
-cat("<br><br><br><br>") 
-## Dead ratio
-# Annual means table
-All_summ %>%
-  ungroup() %>%
-  dplyr::select(Estuary,
-                `Mean` = meanDeadRatio,
-                `SE` = seDeadRatio) %>%
-  gt() %>%
-  cols_align(align = c("center"), columns = everything()) %>%
-  fmt_number(
-    decimals = 2) %>% 
-  tab_header(
-    title = "Average dead ratio")
-
-# Annual means comps
-DR_model_data <- Quads_df %>% 
-  mutate(Estuary = as.factor(Estuary)) %>% 
-  group_by(Estuary, Year) %>%
-  summarise(MeanDeadRatio = mean(DeadRatio, na.rm =T),
-            .groups = "drop") %>%
-  mutate(MeanDR = (MeanDeadRatio * (n() - 1) + 0.5) / n()) %>% #transformation to make (0,1)
-  droplevels()
-#
-if (dplyr::n_distinct(DR_model_data$Year) > 1) {
-  set.seed(54321)
-  DR_model <- suppressWarnings(glmmTMB::glmmTMB(MeanDR ~ Estuary + (1|Year), family = beta_family(link = "logit"), data = DR_model_data))
-} else {
-  cat("Only one survey year is available. Model fitting was skipped.\n\n")
-}
-#
-# Model output
-if(exists("DR_model") && !is.null(DR_model)){
-  DR_model_tab <<- car::Anova(DR_model, type = 3) %>%
-    broom::tidy() %>% 
-    as.data.frame() %>%
-    mutate(statistic = round(statistic, 3),
-           p.value = round(p.value, 3))
-  DR_cld <- suppressMessages(
-    suppressWarnings(
-      left_join(All_summ, 
-                multcomp::cld(
-                  emmeans(DR_model, ~ Estuary, type = "response"),
-                  Letters = letters, adjust = "sidak") %>%
-                  as.data.frame() %>%
-                  rename(Group = .group) %>%
-                  mutate(Group = stringr::str_trim(Group)) %>%
-                  dplyr::select(Estuary, Group))
-      ))
-  
-   p <- DR_cld %>%
-        ggplot(aes(Estuary, meanDeadRatio, fill = Group))+
-        geom_bar(stat = "identity")+
-        geom_errorbar(aes(ymin = meanDeadRatio, ymax = meanDeadRatio + seDeadRatio), width = 0.25)+
-        geom_text(aes(y = meanDeadRatio + seDeadRatio, label = Group), vjust = -1, color = "black")+
-        scale_x_discrete(expand = c(0.05,0.1))+
-        scale_y_continuous("Average dead ratio per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
-        scale_fill_viridis_d()+
-        basetheme
-   
-  } else {
-     p <- All_summ %>%
-        ggplot(aes(Estuary, meanDeadRatio))+
-        geom_bar(stat = "identity")+
-        geom_errorbar(aes(ymin = meanDeadRatio, ymax = meanDeadRatio + seDeadRatio), width = 0.25)+
-        scale_x_discrete(expand = c(0.05,0.1))+
-        scale_y_continuous("Average dead ratio per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
-        basetheme 
-  }
-#
-#
-if(exists("DR_model_tab")){
-  DR_model_tab %>%
-  gt() %>%
-  cols_align(align = c("center"), columns = everything()) %>%
-  fmt_number(
-    decimals = 3) %>% 
-  tab_header(
-    title = "Estuary model results")
-}
-
-p
-
-## Summary info
-DR_min <- All_summ %>% slice_min(meanDeadRatio, n = 1, with_ties = TRUE)
-DR_max <- All_summ %>% slice_max(meanDeadRatio, n = 1, with_ties = TRUE)
-DR_mean <- All_summ %>% ungroup() %>% summarise(mean = mean(meanDeadRatio, na.rm = T),
-                                               sd = sd(meanDeadRatio, na.rm = T))
-if(exists("DR_model_tab")){
-  pValueDR <- car::Anova(DR_model, type = 3) %>%
-     broom::tidy() %>% 
-     as.data.frame()
-} else {
-  pValueDR <- NULL
-}
-#
-#
-#
 ```
 \
 \
@@ -432,11 +328,8 @@ if(exists("DR_model_tab")){
 The mean number of live oysters surveyed ranged from `r round(All_min$meanLive,1)` oysters/m2 in `r All_min$Estuary` to `r round(All_max$meanLive,1)` oysters/m2 in `r All_max$Estuary` with an overall average of `r round(All_mean$mean,1)` +/- `r round(All_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among estuaries `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
 \
 \
-The mean dead ratio of oysters surveyed ranged from `r round(DR_min$meanDeadRatio,1)` in `r DR_min$Estuary` to `r round(DR_max$meanDeadRatio,1)` in `r DR_max$Estuary` with an overall average of `r round(DR_mean$mean,1)` +/- `r round(DR_mean$sd, 1)`. Mean dead ratio `r if(!is.null(pValueDR) && pValueDR$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among estuaries `r if(!is.null(pValueDR) && pValueDR$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValueDR)){""} else {paste0("(p = ",round(pValueDR$p.value[2], 3), ")")}`.
-\
-\
 
-```{r All estuaries annual plot,  echo = FALSE, fig.align='center', results='asis'}
+```{r All estuaries annual plot,  echo = FALSE, fig.align='center'}
 Annual_summ %>%
   group_by(Year, Estuary) %>%
   summarise(mean = mean(meanLive, na.rm = T),
@@ -448,26 +341,13 @@ Annual_summ %>%
   scale_colour_viridis_d(option = "H")+
   ggtitle("Annual mean oysters/m2 per estuary")+
   basetheme + theme(axis.text.x = element_text(angle = 45))
-cat("<br><br>")
-Annual_summ %>%
-  group_by(Year, Estuary) %>%
-  summarise(mean = mean(meanDeadRatio, na.rm = T),
-            sd = sd(meanDeadRatio, na.rm = T)) %>%
-  ggplot(aes(Year, mean, group = Estuary))+
-  geom_line(aes(color = Estuary), linewidth = 1.5)+
-  scale_x_discrete(expand = c(0.01,0.1))+
-  scale_y_continuous("Average dead ratio per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
-  scale_colour_viridis_d(option = "H")+
-  ggtitle("Annual mean dead ratio of oysters per estuary")+
-  basetheme + theme(axis.text.x = element_text(angle = 45))
 ```
-
 
 # Eastpoint Lab 
 
 ## Apalachicola Bay {.tabset}
 
-### Estuary - live
+### Estuary
 
 ```{r AB estuary summary, echo = FALSE, fig.align='center'}
 #
@@ -580,7 +460,7 @@ if(exists("AB_model_tab")){
 **Summary:**
 The mean number of live oysters surveyed in `r unique(AB_summ$Estuary)` ranged from `r round(AB_min$meanLive,1)` oysters/m2 in `r AB_min$Year` to `r round(AB_max$meanLive,1)` oysters/m2 in `r AB_max$Year` with an overall average of `r round(AB_mean$mean,1)` +/- `r round(AB_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among years `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
 
-### Sections - live
+### Sections
 
 ```{r AB section summary, echo = FALSE, fig.align='center'}
 #
@@ -710,122 +590,6 @@ Section_Ann_summ %>%
   ggtitle("Annual mean oysters/m2 per section")+
   basetheme + theme(axis.text.x = element_text(angle = 45))
 ```
-
-### Estuary - dead ratio
-
-```{r AB estuary DR summary, echo = FALSE, fig.align='center'}
-#
-# Filter to Estuary:
-AB_summ <- Annual_summ %>% 
-  filter(Estuary == "AB") %>%
-  droplevels()
-
-# Annual means table
-AB_summ %>%
-  ungroup() %>%
-  dplyr::select(Year,
-                `Mean` = meanDeadRatio,
-                `SE` = seDeadRatio) %>%
-  gt() %>%
-  cols_align(align = c("center"), columns = everything()) %>%
-  fmt_number(
-    decimals = 2) %>% 
-  tab_header(
-    title = "Annual dead ratio")
-
-# Annual means comps
-DRmodel_data <- Quads_df %>% 
-  filter(Estuary == "AB") %>%
-  mutate(Year = as.factor(Year)) %>% 
-  group_by(Estuary, SectionName, Year) %>%
-  summarise(MeanDeadRatio = mean(DeadRatio, na.rm =T),
-            .groups = "drop") %>%
-  mutate(MeanDR = (MeanDeadRatio * (n() - 1) + 0.5) / n()) %>% #transformation to make (0,1) %>%
-  droplevels()
-#
-if (dplyr::n_distinct(DRmodel_data$Year) > 1) {
-  set.seed(54321)
-  AB_DR_model <- suppressWarnings(glmmTMB::glmmTMB(MeanDR ~ as.numeric(Year) + (1|SectionName), family = beta_family(link = "logit"), data = DRmodel_data))
-  AB_DR_model2 <- suppressWarnings(glmmTMB::glmmTMB(MeanDR ~ Year + (1|SectionName), family = beta_family(link = "logit"), data = DRmodel_data))
-} else {
-  rm(DRmodel_data)
-  cat("Only one survey year is available. Model fitting was skipped.\n\n")
-}
-#
-# Model output
-if(exists("AB_DR_model") && !is.null(AB_DR_model)){
-  AB_DR_model_tab <- car::Anova(AB_DR_model, type = 3) %>%
-    broom::tidy() %>% 
-    as.data.frame() %>%
-    mutate(statistic = round(statistic, 3),
-           p.value = round(p.value, 3))
-  AB_DR_cld <- suppressMessages(
-    suppressWarnings(
-      left_join(AB_summ, 
-                multcomp::cld(
-                  emmeans(AB_DR_model2, ~ Year, type = "response"),
-                  Letters = letters, adjust = "sidak") %>%
-                  as.data.frame() %>%
-                  rename(Group = .group) %>%
-                  mutate(Group = stringr::str_trim(Group)) %>%
-                  dplyr::select(Year, Group))
-      ))
-  
-   p <- AB_DR_cld %>%
-        ggplot(aes(Year, meanDeadRatio, fill = Group))+
-        geom_bar(stat = "identity")+
-        geom_errorbar(aes(ymin = meanDeadRatio, ymax = meanDeadRatio + seDeadRatio), width = 0.25)+
-        geom_text(aes(y = meanDeadRatio + seDeadRatio, label = Group), vjust = -1, color = "black")+
-        scale_x_discrete(expand = c(0.05,0.1))+
-        scale_y_continuous("Average dead ratio", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
-        scale_fill_viridis_d()+
-        basetheme + 
-        theme(axis.text.x = element_text(angle = 45))
-   
-  } else {
-     p <- AB_summ %>%
-        ggplot(aes(Year, meanDeadRatio))+
-        geom_bar(stat = "identity")+
-        geom_errorbar(aes(ymin = meanDeadRatio, ymax = meanDeadRatio + seDeadRatio), width = 0.25)+
-        scale_x_discrete(expand = c(0.05,0.1))+
-        scale_y_continuous("Average dead ratio", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
-        basetheme + 
-        theme(axis.text.x = element_text(angle = 45))
-  }
-#
-#
-if(exists("AB_DR-model_tab")){
-  AB_DR_model_tab %>%
-  gt() %>%
-  cols_align(align = c("center"), columns = everything()) %>%
-  fmt_number(
-    decimals = 3) %>% 
-  tab_header(
-    title = "Annual model results")
-}
-
-p
-
-## Summary info
-AB_DR_min <- AB_summ %>% group_by(Estuary) %>% slice_min(meanDeadRatio, n = 1, with_ties = TRUE)
-AB_DR_max <- AB_summ %>% group_by(Estuary) %>% slice_max(meanDeadRatio, n = 1, with_ties = TRUE)
-AB_DR_mean <- AB_summ %>% ungroup() %>% summarise(mean = mean(meanDeadRatio, na.rm = T),
-                                               sd = sd(meanDeadRatio, na.rm = T))
-if(exists("AB_DR_model_tab")){
-  pValueDR <- car::Anova(AB_DR_model, type = 3) %>%
-     broom::tidy() %>% 
-     as.data.frame()
-} else {
-  pValueDR <- NULL
-}
-#
-#
-```
-\
-\
-**Summary:**
-The mean dead ratio of oysters surveyed in `r unique(AB_summ$Estuary)` ranged from `r round(AB_DR_min$meanDeadRatio,1)` in `r AB_DR_min$Year` to `r round(AB_DR_max$meanDeadRatio,1)` in `r AB_DR_max$Year` with an overall average of `r round(AB_DR_mean$mean,1)` +/- `r round(AB_DR_mean$sd, 1)`. Mean dead ratio `r if(!is.null(pValueDR) && pValueDR$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among years `r if(!is.null(pValueDR) && pValueDR$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValueDR)){""} else {paste0("(p = ",round(pValueDR$p.value[2], 3), ")")}`.
-\
 
 ### {-} 
 
