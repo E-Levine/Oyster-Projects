@@ -1,0 +1,229 @@
+---
+title: "Srvy_data_cleaning"
+author: "ELevine"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+#
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+#Load packages, install as needed
+#if (!require("remotes")) install.packages("remotes")
+if (!require("pacman")) {install.packages("pacman")}
+pacman::p_load(plyr, tidyverse, #Df manipulation, 
+               ggpubr, scales, lemon, ggnewscale, #ploting
+               rstatix, broom, #Summary stats
+               zoo, lubridate, forecast, #Dates and times
+               readxl, #Reading excel files
+               car, emmeans, multcomp, #Basic analyses
+               lmPerm, stats, glmmTMB, AICcmodavg, DHARMa, performance,
+               gt, openxlsx,
+               install = TRUE)
+#
+Data_type <- c("SRVY")
+Initials <- c("ELW")
+Startdate <- as.Date("2005-01-01")
+Enddate <- as.Date("2025-12-31")
+#
+#
+#
+```
+
+```{r file loading, include=FALSE}
+#
+#### Load data files
+#
+## Trip Info data
+Trip_raw <- read_excel("../Data/Raw data/TripInfo_raw_shared.xlsx", sheet = "TripInfo", #File name and sheet name
+                        skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+                        na = c("", "NULL", " ", "NAN", "na"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                        .name_repair = "unique") 
+#
+## Sample Event
+Sample_raw <- read_excel("../Data/Raw data/SampleEvent_raw_shared.xlsx", sheet = "SampleEvent", #File name and sheet name
+                       skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+                       na = c("", "NULL", " ", "NAN", "na"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                       .name_repair = "unique") 
+#
+## Fixed Locations
+FLID_raw <- read_excel("../Data/Raw data/FixedLocations_raw_shared.xlsx", sheet = "FixedLocations", #File name and sheet name
+                       skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+                       na = c("", "NULL", " ", "NAN", "na"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                       .name_repair = "unique") 
+#
+## Survey
+Quads_raw <- read_excel("../Data/Raw data/SurveyQuadrat_raw.xlsx", sheet = "SurveyQuadrat_raw", #File name and sheet name
+                       skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+                       na = c("", "NULL", " ", "NAN", "na"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                       .name_repair = "unique") 
+#
+## Survey SHs
+SHs_raw <- read_excel("../Data/Raw data/SurveySH_raw.xlsx", sheet = "SurveySH_raw", #File name and sheet name
+                        skip = 0, col_names = TRUE,  #How many rows to skip at top; are column names to be used
+                        na = c("", "NULL", " ", "NAN", "na"), trim_ws = TRUE, #Values/placeholders for NAs; trim extra white space?
+                        .name_repair = "unique") 
+#
+#
+#
+#
+```
+
+```{r raw file cleaning, include=FALSE}
+#
+## Station information
+FLIDs <- FLID_raw %>%
+   # Limit to srvy stations
+   filter(Survey == "Y") %>%
+   # Limit to desired columns to add to other data
+   dplyr::select("FLID" = FixedLocationID,
+                 Estuary,
+                 SectionName,
+                 StationNumber,
+                 StationName,
+                 LatitudeDec, 
+                 LongitudeDec,
+                 StartDate,
+                 EndDate,
+                 EstuaryLongName,
+                 Comments) %>%
+   # Make date columns Dates
+   mutate(StartDate = as.Date(StartDate),
+          EndDate = as.Date(EndDate)) %>%
+   # Add Lab desigantion, Fixed vs Random srvy designation 
+   mutate(Lab = case_when(Estuary %in% c("AB", "SA") ~ "Eastpoint",
+                          Estuary %in% c("SS", "WI", "WC") ~ "CrystalRiver",
+                          TRUE ~ "StPete"),
+          # "Random" = FLID starts with letter, Comments contains "Supplemental", Start & End dates < 3 months apart
+          SrvyType = case_when(grepl("^[A-Za-z]", FLID) ~ "Random",
+                               !is.na(Comments) & grepl("Supplemental", Comments, ignore.case = TRUE) ~ "Random",
+                               !is.na(StartDate) & !is.na(EndDate) & EndDate < (StartDate %m+% months(3)) ~ "Random",
+                               grepl("Baywide", StationName, ignore.case = TRUE) ~ "Random",
+                               grepl("FCMP", StationName, ignore.case = TRUE) ~ "Random",
+                               SectionName == "Unk" ~ "Random",
+                               TRUE ~ "Fixed"))
+#
+#
+#
+## Survey counts
+Quads_c <- Quads_raw %>%
+    # Correct column types
+    mutate(across(c("NumLive", "NumDead", "TotalVolume", "TotalWeight", "NumLegal"), as.numeric)) %>%
+    # Remove row number column
+    dplyr::select(-`...1`)  %>%
+    # Create Year, Month, Quarter, Estuary, FLID columns
+    mutate(Date = as.Date(substr(SampleEventID, 8, 15), format = "%Y%m%d"),
+           Year = substr(SampleEventID, 8, 11),
+           Month = substr(SampleEventID, 12, 13),
+           Quarter = case_when(as.numeric(substr(SampleEventID, 12, 13)) < 4 ~ "Q1",
+                               as.numeric(substr(SampleEventID, 12, 13)) > 9 ~ "Q4",
+                               as.numeric(substr(SampleEventID, 12, 13)) > 3 & as.numeric(substr(SampleEventID, 12, 13)) < 7 ~ "Q2",
+                               TRUE ~ "Q3"),
+           Estuary = substr(SampleEventID, 1, 2),
+           FLID = substr(SampleEventID, 19, 22)) %>%
+    # Calculate total live/dead per m2. NOTE: 2005-2007 used 1m2, 2008+ used 1/4m2
+    mutate(TotalLive = as.numeric(case_when(Year == "2005" | Year == "2006" | Year == "2007" ~ NumLive, TRUE ~ NumLive*4)),
+           TotalDead = as.numeric(case_when(Year == "2005" | Year == "2006" | Year == "2007" ~ NumDead, TRUE ~ NumDead*4))) %>%
+    #Add DeadRatio 
+    mutate(Total = NumLive+NumDead,
+           DeadRatio = as.numeric(case_when(Total == 0 ~ 0, TRUE ~ NumDead/Total))) %>%
+    # Column types - factors
+    mutate(across(c("Year", "Month", "Quarter", "Estuary", "QuadratNumber"), as.factor)) %>% 
+    # Limit to proper data range
+    filter(Date >= Startdate & Date <= Enddate) %>%
+    # Reorganize columns
+    dplyr::select(Date, Year, Month, Quarter, Estuary, FLID, QuadratNumber, TotalLive, TotalDead, DeadRatio, everything())
+#
+# Add FLID info to Quads
+Quads_df <- left_join(Quads_c, 
+                      FLIDs,
+                      by = c("Estuary", "FLID"))
+#
+#
+## Survey shell heights 
+SHs_df <- SHs_raw %>%
+       # Remove row number column
+    dplyr::select(-`...1`)  %>%
+    # Create Year, Month, Quarter, Estuary, FLID columns
+    mutate(Date = as.Date(substr(QuadratID, 8, 15), format = "%Y%m%d"),
+           Year = substr(QuadratID, 8, 11),
+           Month = substr(QuadratID, 12, 13),
+           Quarter = case_when(as.numeric(substr(QuadratID, 12, 13)) < 4 ~ "Q1",
+                               as.numeric(substr(QuadratID, 12, 13)) > 9 ~ "Q4",
+                               as.numeric(substr(QuadratID, 12, 13)) > 3 & as.numeric(substr(QuadratID, 12, 13)) < 7 ~ "Q2",
+                               TRUE ~ "Q3"),
+           Estuary = substr(QuadratID, 1, 2),
+           FLID = substr(QuadratID, 19, 22),
+           QuadratNumber = substr(QuadratID, 26, 27),
+           SHID = as.numeric(substr(ShellHeightID, 29, 31))) %>%
+      # Limit to proper data range
+    filter(Date >= Startdate & Date <= Enddate) %>%
+      # Reorganize columns
+    dplyr::select(Date, Year, Month, Quarter, Estuary, FLID, QuadratNumber, SHID, ShellHeight, everything())
+#
+#
+```
+
+```{r Cleaned data output, include=FALSE}
+#
+#
+# Save Quads and SHs clean data sheets to Excel 
+wb = createWorkbook() 
+
+addWorksheet(wb, "FLIDs") #Adding worksheets
+writeData(wb, "FLIDs", FLIDs, rowNames=FALSE, keepNA = T)
+
+addWorksheet(wb, "Quadrats") #Adding worksheets
+writeData(wb, "Quadrats", Quads_df, rowNames=FALSE, keepNA = T)
+
+addWorksheet(wb, "ShellHeights") #Adding worksheets
+writeData(wb, "ShellHeights", SHs_df, rowNames=FALSE, keepNA = T)
+
+file_path <- "../Data/Srvy_data_clean_ELW.xlsx"
+saveWorkbook(wb, file_path, overwrite = T)
+#
+#
+```
+
+## Survey review
+**Years in which surveys were conducted at each estuary, section, and station:**\
+\
+*Fixed stations*
+```{r FLID fixed summary, echo = FALSE, results='asis'}
+#
+## Summary of sampling per Estuary, Section, Station
+Quads_df %>%
+  filter(SrvyType == "Fixed") %>%
+  group_by(Estuary, SectionName, StationNumber, StationName, Year) %>%
+  summarise(Count = n()) %>%
+  arrange(Year) %>%
+  pivot_wider(names_from = "Year", values_from = "Count") %>% 
+  ungroup() %>%
+  arrange(Estuary, SectionName) %>%
+  gt() %>%
+  sub_missing(missing_text = "")
+#
+```
+
+\
+\
+*Random stations*
+```{r FLID random summary, echo = FALSE, results='asis'}
+#
+## Summary of sampling per Estuary, Section, Station
+Quads_df %>%
+  filter(SrvyType == "Random") %>%
+  group_by(Estuary, SectionName, StationNumber, StationName, Year) %>%
+  summarise(Count = n()) %>%
+  arrange(Year) %>%
+  pivot_wider(names_from = "Year", values_from = "Count") %>% 
+  ungroup() %>%
+  arrange(Estuary, SectionName) %>%
+  gt() %>%
+  sub_missing(missing_text = "")
+#
+```
+\
+\
+\
+Cleaned data saved to `r paste(file_path)`

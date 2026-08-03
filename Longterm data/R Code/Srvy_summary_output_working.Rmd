@@ -1,0 +1,3367 @@
+---
+title: "Survey data summary"
+author: "EWilliams"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+#
+# Set data type working with (based on database coding) and initials 
+Data_type <- c("SRVY")
+Initials <- c("ELW")
+#
+#
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+#Load packages, install as needed
+#if (!require("remotes")) install.packages("remotes") pacman::p_unlock()
+if (!require("pacman")) {install.packages("pacman")}
+pacman::p_load(plyr, tidyverse, glue, purrr, #Df manipulation, 
+               ggpubr, scales, lemon, ggnewscale, gt, #ploting, tables
+               rstatix, broom, #Summary stats
+               zoo, lubridate, forecast, #Dates and times
+               readxl, #Reading excel files
+               car, emmeans, multcomp, #Basic analyses
+               lmPerm, stats, glmmTMB, AICcmodavg, DHARMa, performance,
+               install = TRUE)
+
+```
+
+```{r Formatting, include=FALSE}
+#
+# Establish consistent formatting for plots:
+basetheme <- theme_bw()+
+        # Set axis title and text parameters
+  theme(axis.title.x = element_text(size = 12, face = "bold", color = "black"), 
+        axis.text.x = element_text(size = 11, margin = margin(t=0.5, l=0.5, r=0, b=0.15, unit = "cm")),
+        axis.title.y = element_text(size = 12, face = "bold", color = "black"), 
+        axis.text.y = element_text(size = 11, margin = margin(t=0, l=0.25, r=0, b=0, unit = "cm")),
+        # Remove grid lines and box around plot
+        panel.grid = element_blank(), 
+        panel.border = element_blank(), 
+        # Modify axes
+        axis.line = element_line(color = "black"),
+        axis.ticks.length = unit(-0.15, "cm"))
+#
+#
+```
+
+```{r Load data files, include=FALSE}
+
+## Fixed Locations
+FLID_raw <- read_excel("../Data/Srvy_data_clean_ELW.xlsx", sheet = "FLIDs", 
+                       skip = 0, col_names = TRUE,  
+                       na = c("", "NULL", " ", "NAN", "na"), trim_ws = TRUE, 
+                       .name_repair = "unique") 
+#
+## Survey
+Quads_raw <- read_excel("../Data/Srvy_data_clean_ELW.xlsx", sheet = "Quadrats", 
+                       skip = 0, col_names = TRUE,  
+                       na = c("", "NULL", " ", "NAN", "na"), trim_ws = TRUE, 
+                       .name_repair = "unique") 
+#
+## Survey SHs
+SHs_raw <- read_excel("../Data/Srvy_data_clean_ELW.xlsx", sheet = "ShellHeights", 
+                        skip = 0, col_names = TRUE,  
+                        na = c("", "NULL", " ", "NAN", "na"), trim_ws = TRUE, 
+                        .name_repair = "unique") 
+#
+```
+
+```{r Data summary, include=FALSE}
+
+## Survey counts
+Quads_df <- Quads_raw %>%
+  # Group by all columns needed to keep
+  group_by(Lab, SrvyType, 
+           Date, Year, Month, Quarter,
+           Estuary, SectionName, StationName, StationNumber,
+           QuadratNumber) %>%
+  # Determine mean Live, Dead, and DeadRatio per quadrat
+  summarise(Live = mean(TotalLive, na.rm = T),
+            Dead = mean(TotalDead, na.rm = T),
+            DeadRatio = mean(DeadRatio, na.rm = T),
+            .groups = "drop")
+#
+#
+#
+## Mean survey counts per station (as rep) divided by Fixed or Random surveys
+Fixed_counts <- Quads_df %>% 
+  filter(SrvyType == "Fixed") 
+#
+Random_counts <- Quads_df %>% 
+  filter(SrvyType == "Random")
+#
+### Annual summaries:
+Fixed_Annual_summ <- Fixed_counts %>%
+  # Group by all columns needed in data output
+  group_by(Lab, Estuary, Year) %>%
+  summarise(Samples = n(),
+            # Live
+            meanLive = mean(Live, na.rm = TRUE),
+            sdLive = sd(Live, na.rm = TRUE),
+            seLive   = sdLive / sqrt(n()),
+            minLive = min(Live, na.rm = TRUE),
+            maxLive = max(Live, na.rm = TRUE),
+            # Dead
+            meanDead = mean(Dead, na.rm = TRUE),
+            sdDead = sd(Dead, na.rm = TRUE),
+            seDead   = sdDead / sqrt(n()),
+            minDead = min(Dead, na.rm = TRUE),
+            maxDead = max(Dead, na.rm = TRUE),
+            # Dead Ratio
+            meanDeadRatio = mean(DeadRatio, na.rm = TRUE),
+            sdDeadRatio = sd(DeadRatio, na.rm = TRUE),
+            seDeadRatio   = sdDeadRatio / sqrt(n()),
+            minDeadRatio = min(DeadRatio, na.rm = TRUE),
+            maxDeadRatio = max(DeadRatio, na.rm = TRUE),
+            .groups = "drop")
+#
+Random_Annual_summ <- Random_counts %>%
+  # Group by all columns needed in data output
+  group_by(Lab, Estuary, Year) %>%
+  summarise(Samples = n(),
+            # Live
+            meanLive = mean(Live, na.rm = TRUE),
+            sdLive = sd(Live, na.rm = TRUE),
+            seLive   = sdLive / sqrt(n()),
+            minLive = min(Live, na.rm = TRUE),
+            maxLive = max(Live, na.rm = TRUE),
+            # Dead
+            meanDead = mean(Dead, na.rm = TRUE),
+            sdDead = sd(Dead, na.rm = TRUE),
+            seDead   = sdDead / sqrt(n()),
+            minDead = min(Dead, na.rm = TRUE),
+            maxDead = max(Dead, na.rm = TRUE),
+            # Dead Ratio
+            meanDeadRatio = mean(DeadRatio, na.rm = TRUE),
+            sdDeadRatio = sd(DeadRatio, na.rm = TRUE),
+            seDeadRatio   = sdDeadRatio / sqrt(n()),
+            minDeadRatio = min(DeadRatio, na.rm = TRUE),
+            maxDeadRatio = max(DeadRatio, na.rm = TRUE),
+            .groups = "drop")
+#
+#
+#
+### Section summaries:
+Fixed_Section_summ <- Fixed_counts %>%
+  # Group by all columns needed in data output
+  group_by(Lab, Estuary, SectionName) %>%
+  summarise(Samples = n(),
+            # Live
+            meanLive = mean(Live, na.rm = TRUE),
+            sdLive = sd(Live, na.rm = TRUE),
+            seLive   = sdLive / sqrt(n()),
+            minLive = min(Live, na.rm = TRUE),
+            maxLive = max(Live, na.rm = TRUE),
+            # Dead
+            meanDead = mean(Dead, na.rm = TRUE),
+            sdDead = sd(Dead, na.rm = TRUE),
+            seDead   = sdDead / sqrt(n()),
+            minDead = min(Dead, na.rm = TRUE),
+            maxDead = max(Dead, na.rm = TRUE),
+            # Dead Ratio
+            meanDeadRatio = mean(DeadRatio, na.rm = TRUE),
+            sdDeadRatio = sd(DeadRatio, na.rm = TRUE),
+            seDeadRatio   = sdDeadRatio / sqrt(n()),
+            minDeadRatio = min(DeadRatio, na.rm = TRUE),
+            maxDeadRatio = max(DeadRatio, na.rm = TRUE),
+            .groups = "drop")
+#
+Random_Section_summ <- Random_counts %>%
+  # Group by all columns needed in data output
+  group_by(Lab, Estuary, SectionName) %>%
+  summarise(Samples = n(),
+            # Live
+            meanLive = mean(Live, na.rm = TRUE),
+            sdLive = sd(Live, na.rm = TRUE),
+            seLive   = sdLive / sqrt(n()),
+            minLive = min(Live, na.rm = TRUE),
+            maxLive = max(Live, na.rm = TRUE),
+            # Dead
+            meanDead = mean(Dead, na.rm = TRUE),
+            sdDead = sd(Dead, na.rm = TRUE),
+            seDead   = sdDead / sqrt(n()),
+            minDead = min(Dead, na.rm = TRUE),
+            maxDead = max(Dead, na.rm = TRUE),
+            # Dead Ratio
+            meanDeadRatio = mean(DeadRatio, na.rm = TRUE),
+            sdDeadRatio = sd(DeadRatio, na.rm = TRUE),
+            seDeadRatio   = sdDeadRatio / sqrt(n()),
+            minDeadRatio = min(DeadRatio, na.rm = TRUE),
+            maxDeadRatio = max(DeadRatio, na.rm = TRUE),
+            .groups = "drop")
+#
+#
+### Annual x Section summaries:
+Fixed_Ann_Sec_summ <- Fixed_counts %>%
+                   # Group by all columns needed in data output
+                   group_by(Lab, Estuary, Year, SectionName) %>%
+                   summarise(Samples = n(),
+            # Live
+            meanLive = mean(Live, na.rm = TRUE),
+            sdLive = sd(Live, na.rm = TRUE),
+            seLive   = sdLive / sqrt(n()),
+            minLive = min(Live, na.rm = TRUE),
+            maxLive = max(Live, na.rm = TRUE),
+            # Dead
+            meanDead = mean(Dead, na.rm = TRUE),
+            sdDead = sd(Dead, na.rm = TRUE),
+            seDead   = sdDead / sqrt(n()),
+            minDead = min(Dead, na.rm = TRUE),
+            maxDead = max(Dead, na.rm = TRUE),
+            # Dead Ratio
+            meanDeadRatio = mean(DeadRatio, na.rm = TRUE),
+            sdDeadRatio = sd(DeadRatio, na.rm = TRUE),
+            seDeadRatio   = sdDeadRatio / sqrt(n()),
+            minDeadRatio = min(DeadRatio, na.rm = TRUE),
+            maxDeadRatio = max(DeadRatio, na.rm = TRUE),
+            .groups = "drop")
+#
+#
+Random_Ann_Sec_summ <- Random_counts %>%
+                   # Group by all columns needed in data output
+                   group_by(Lab, Estuary, Year, SectionName) %>%
+                   summarise(Samples = n(),
+            # Live
+            meanLive = mean(Live, na.rm = TRUE),
+            sdLive = sd(Live, na.rm = TRUE),
+            seLive   = sdLive / sqrt(n()),
+            minLive = min(Live, na.rm = TRUE),
+            maxLive = max(Live, na.rm = TRUE),
+            # Dead
+            meanDead = mean(Dead, na.rm = TRUE),
+            sdDead = sd(Dead, na.rm = TRUE),
+            seDead   = sdDead / sqrt(n()),
+            minDead = min(Dead, na.rm = TRUE),
+            maxDead = max(Dead, na.rm = TRUE),
+            # Dead Ratio
+            meanDeadRatio = mean(DeadRatio, na.rm = TRUE),
+            sdDeadRatio = sd(DeadRatio, na.rm = TRUE),
+            seDeadRatio   = sdDeadRatio / sqrt(n()),
+            minDeadRatio = min(DeadRatio, na.rm = TRUE),
+            maxDeadRatio = max(DeadRatio, na.rm = TRUE),
+            .groups = "drop")
+#
+#
+# 
+#
+#
+#
+```
+
+# Background
+Survey data any time of year is included in comparisons. Surveys are divided by "Fixed" and "Random" for comparisons.\
+Fixed = planned repeated sampling stations\
+Random = single sampling event or station that is selected randomly for survey and has the potential for re-sampling if same station is selected across time\
+\
+
+# Fixed location surveys
+```{r Fixed Estuary annual summary, echo = FALSE, results ="asis"}
+paste("List of sites included:")
+cat("<br>")
+unique(Fixed_Annual_summ$Estuary)
+#
+Fixed_Annual_summ %>% ungroup() %>%
+  dplyr::select(Estuary, Year) %>%
+  group_by(Estuary, Year) %>%
+  summarise(Count = n()) %>%
+  arrange(Year) %>%
+  pivot_wider(names_from = "Year", values_from = "Count") %>%
+  ungroup()%>%
+  gt() %>%
+  sub_missing(missing_text = "")
+#
+#
+```
+
+## Statewide
+
+```{r Fixed Estuary summary, echo = FALSE, fig.align='center', results ="asis"}
+#
+# Filter to Estuary:
+All_Fixed_summ <- Fixed_counts %>%
+  # Group by all columns needed in data output
+  group_by(Estuary) %>%
+  summarise(Samples = n(),
+            # Live
+            meanLive = mean(Live, na.rm = TRUE),
+            sdLive = sd(Live, na.rm = TRUE),
+            seLive   = sdLive / sqrt(n()),
+            minLive = min(Live, na.rm = TRUE),
+            maxLive = max(Live, na.rm = TRUE),
+            # Dead
+            meanDead = mean(Dead, na.rm = TRUE),
+            sdDead = sd(Dead, na.rm = TRUE),
+            seDead   = sdDead / sqrt(n()),
+            minDead = min(Dead, na.rm = TRUE),
+            maxDead = max(Dead, na.rm = TRUE),
+            # Dead Ratio
+            meanDeadRatio = mean(DeadRatio, na.rm = TRUE),
+            sdDeadRatio = sd(DeadRatio, na.rm = TRUE),
+            seDeadRatio   = sdDeadRatio / sqrt(n()),
+            minDeadRatio = min(DeadRatio, na.rm = TRUE),
+            maxDeadRatio = max(DeadRatio, na.rm = TRUE),
+            .groups = "drop")
+
+
+## Live counts
+# Annual means table
+All_Fixed_summ %>%
+  ungroup() %>%
+  dplyr::select(Estuary,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density")
+
+# Annual means comps
+model_data <- Fixed_counts %>% 
+  mutate(Estuary = as.factor(Estuary)) %>% 
+  group_by(Estuary, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$Year) > 1) {
+  set.seed(54321)
+  F_All_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ Estuary + (1|Year), family = nbinom2, data = model_data))
+} else {
+  cat("Only one survey year is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("F_All_model") && !is.null(F_All_model)){
+  F_All_model_tab <<- car::Anova(F_All_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  F_All_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(F_All_summ, 
+                multcomp::cld(
+                  emmeans(F_All_model, ~ Estuary, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(Estuary, Group))
+      ))
+  
+   p <- F_All_cld %>%
+        ggplot(aes(Estuary, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        geom_text(aes(y = meanLive + seLive, label = Group), vjust = -1, color = "black")+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme
+   
+  } else {
+     p <- F_All_summ %>%
+        ggplot(aes(Estuary, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme 
+  }
+#
+#
+if(exists("F_All_model_tab")){
+  F_All_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Estuary model results")
+}
+
+p
+
+## Summary info
+F_All_min <- F_All_summ %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+F_All_max <- F_All_summ %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+F_All_mean <- F_All_summ %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("F_All_model_tab")){
+  pValue <- car::Anova(F_All_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+cat("<br><br><br><br>") 
+## Dead ratio
+# Annual means table
+All_Fixed_summ %>%
+  ungroup() %>%
+  dplyr::select(Estuary,
+                `Mean` = meanDeadRatio,
+                `SE` = seDeadRatio) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average dead ratio")
+
+# Annual means comps
+DR_model_data <- Fixed_counts %>% 
+  mutate(Estuary = as.factor(Estuary)) %>% 
+  group_by(Estuary, Year) %>%
+  summarise(MeanDeadRatio = mean(DeadRatio, na.rm =T),
+            .groups = "drop") %>%
+  mutate(MeanDR = (MeanDeadRatio * (n() - 1) + 0.5) / n()) %>% #transformation to make (0,1)
+  droplevels()
+#
+if (dplyr::n_distinct(DR_model_data$Year) > 1) {
+  set.seed(54321)
+  DR_model <- suppressWarnings(glmmTMB::glmmTMB(MeanDR ~ Estuary + (1|Year), family = beta_family(link = "logit"), data = DR_model_data))
+} else {
+  cat("Only one survey year is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("DR_model") && !is.null(DR_model)){
+  DR_model_tab <<- car::Anova(DR_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  DR_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(All_summ, 
+                multcomp::cld(
+                  emmeans(DR_model, ~ Estuary, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(Estuary, Group))
+      ))
+  
+   p <- DR_cld %>%
+        ggplot(aes(Estuary, meanDeadRatio, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanDeadRatio, ymax = meanDeadRatio + seDeadRatio), width = 0.25)+
+        geom_text(aes(y = meanDeadRatio + seDeadRatio, label = Group), vjust = -1, color = "black")+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average dead ratio per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme
+   
+  } else {
+     p <- All_summ %>%
+        ggplot(aes(Estuary, meanDeadRatio))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanDeadRatio, ymax = meanDeadRatio + seDeadRatio), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average dead ratio per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme 
+  }
+#
+#
+if(exists("DR_model_tab")){
+  DR_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Estuary model results")
+}
+
+p
+
+## Summary info
+DR_min <- All_summ %>% slice_min(meanDeadRatio, n = 1, with_ties = TRUE)
+DR_max <- All_summ %>% slice_max(meanDeadRatio, n = 1, with_ties = TRUE)
+DR_mean <- All_summ %>% ungroup() %>% summarise(mean = mean(meanDeadRatio, na.rm = T),
+                                               sd = sd(meanDeadRatio, na.rm = T))
+if(exists("DR_model_tab")){
+  pValueDR <- car::Anova(DR_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValueDR <- NULL
+}
+#
+#
+#
+```
+\
+\
+**Summary:**
+The mean number of live oysters surveyed ranged from `r round(All_min$meanLive,1)` oysters/m2 in `r All_min$Estuary` to `r round(All_max$meanLive,1)` oysters/m2 in `r All_max$Estuary` with an overall average of `r round(All_mean$mean,1)` +/- `r round(All_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among estuaries `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+The mean dead ratio of oysters surveyed ranged from `r round(DR_min$meanDeadRatio,1)` in `r DR_min$Estuary` to `r round(DR_max$meanDeadRatio,1)` in `r DR_max$Estuary` with an overall average of `r round(DR_mean$mean,1)` +/- `r round(DR_mean$sd, 1)`. Mean dead ratio `r if(!is.null(pValueDR) && pValueDR$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among estuaries `r if(!is.null(pValueDR) && pValueDR$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValueDR)){""} else {paste0("(p = ",round(pValueDR$p.value[2], 3), ")")}`.
+\
+\
+
+```{r All estuaries annual plot,  echo = FALSE, fig.align='center', results='asis'}
+Annual_summ %>%
+  group_by(Year, Estuary) %>%
+  summarise(mean = mean(meanLive, na.rm = T),
+            sd = sd(meanLive, na.rm = T)) %>%
+  ggplot(aes(Year, mean, group = Estuary))+
+  geom_line(aes(color = Estuary), linewidth = 1.5)+
+  scale_x_discrete(expand = c(0.01,0.1))+
+  scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+  scale_colour_viridis_d(option = "H")+
+  ggtitle("Annual mean oysters/m2 per estuary")+
+  basetheme + theme(axis.text.x = element_text(angle = 45))
+cat("<br><br>")
+Annual_summ %>%
+  group_by(Year, Estuary) %>%
+  summarise(mean = mean(meanDeadRatio, na.rm = T),
+            sd = sd(meanDeadRatio, na.rm = T)) %>%
+  ggplot(aes(Year, mean, group = Estuary))+
+  geom_line(aes(color = Estuary), linewidth = 1.5)+
+  scale_x_discrete(expand = c(0.01,0.1))+
+  scale_y_continuous("Average dead ratio per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+  scale_colour_viridis_d(option = "H")+
+  ggtitle("Annual mean dead ratio of oysters per estuary")+
+  basetheme + theme(axis.text.x = element_text(angle = 45))
+```
+
+
+# Eastpoint Lab 
+
+## Apalachicola Bay {.tabset}
+
+### Estuary - live
+
+```{r AB estuary summary, echo = FALSE, fig.align='center'}
+#
+# Filter to Estuary:
+AB_summ <- Annual_summ %>% 
+  filter(Estuary == "AB") %>%
+  droplevels()
+
+# Annual means table
+AB_summ %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Annual live oyster density")
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "AB") %>%
+  mutate(Year = as.factor(Year)) %>% 
+  group_by(Estuary, SectionName, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$Year) > 1) {
+  set.seed(54321)
+  AB_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ as.numeric(Year) + (1|SectionName), family = nbinom2, data = model_data))
+  AB_model2 <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ Year + (1|SectionName), family = nbinom2, data = model_data))
+} else {
+  rm(model_data)
+  cat("Only one survey year is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("AB_model") && !is.null(AB_model)){
+  AB_model_tab <- car::Anova(AB_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  AB_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(AB_summ, 
+                multcomp::cld(
+                  emmeans(AB_model2, ~ Year, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(Year, Group))
+      ))
+  
+   p <- AB_cld %>%
+        ggplot(aes(Year, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+   
+  } else {
+     p <- AB_summ %>%
+        ggplot(aes(Year, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+  }
+#
+#
+if(exists("AB_model_tab")){
+  AB_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Annual model results")
+}
+
+p
+
+## Summary info
+AB_min <- AB_summ %>% group_by(Estuary) %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+AB_max <- AB_summ %>% group_by(Estuary) %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+AB_mean <- AB_summ %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("AB_model_tab")){
+  pValue <- car::Anova(AB_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary:**
+The mean number of live oysters surveyed in `r unique(AB_summ$Estuary)` ranged from `r round(AB_min$meanLive,1)` oysters/m2 in `r AB_min$Year` to `r round(AB_max$meanLive,1)` oysters/m2 in `r AB_max$Year` with an overall average of `r round(AB_mean$mean,1)` +/- `r round(AB_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among years `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+
+### Sections - live
+
+```{r AB section summary, echo = FALSE, fig.align='center'}
+#
+# Filter to Estuary:
+AB_summ_sec <- Section_summ %>% 
+  filter(Estuary == "AB") %>%
+  droplevels()
+
+# Annual means table
+AB_summ_sec %>%
+  ungroup() %>%
+  dplyr::select(`Section` = SectionName, 
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  #pivot_wider(
+  #  names_from = SectionName,
+  #  values_from = c(Mean, SE),
+  #  names_glue = "{SectionName}_{.value}",
+  #  names_vary = "slowest") %>% #Orders columns by SectionName
+  gt() %>%
+  #tab_spanner_delim(delim = "_") %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density") 
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "AB") %>%
+  mutate(across(c(Year, SectionName, StationNumber), as.factor)) %>% 
+  group_by(SectionName, StationNumber, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$SectionName) > 1) {
+  set.seed(54321)
+  AB_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ SectionName + (1|StationNumber), family = nbinom2, data = model_data))
+} else {
+  rm(model_data)
+  cat("Only one estuary section is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("AB_model") && !is.null(AB_model)){
+  AB_model_tab <- car::Anova(AB_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  AB_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(AB_summ_sec, 
+                multcomp::cld(
+                  emmeans(AB_model, ~ SectionName, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(SectionName, Group))
+      ))
+  
+   p <- AB_cld %>%
+        ggplot(aes(SectionName, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme
+   
+  } else {
+     p <- AB_summ_sec %>%
+        ggplot(aes(SectionName, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme 
+  }
+#
+#
+if(exists("AB_model_tab")){
+  AB_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Section model results")
+}
+
+p
+
+## Summary info
+AB_sec_min <- AB_summ_sec %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+AB_sec_max <- AB_summ_sec %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+AB_sec_mean <- AB_summ_sec %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("AB_model_tab")){
+  pValue <- car::Anova(All_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary:**
+The mean number of live oysters surveyed in `r unique(AB_summ$Estuary)` ranged from `r round(AB_sec_min$meanLive,1)` oysters/m2 in `r AB_sec_min$SectionName` to `r round(AB_sec_max$meanLive,1)` oysters/m2 in `r AB_sec_max$SectionName` with an overall average of `r round(AB_sec_mean$mean,1)` +/- `r round(AB_sec_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among estuary sections `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+```{r AB sections annual plot, echo = FALSE, fig.align='center'}
+Section_Ann_summ %>%
+  filter(Estuary == "AB") %>%
+  group_by(Year, SectionName) %>%
+  ggplot(aes(Year, meanLive, group = SectionName))+
+  geom_line(aes(color = SectionName), linewidth = 1.5)+
+  geom_point(aes(color = SectionName), size = 3)+
+  scale_x_discrete(expand = c(0.01,0.1))+
+  scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+  scale_colour_viridis_d("Section")+
+  ggtitle("Annual mean oysters/m2 per section")+
+  basetheme + theme(axis.text.x = element_text(angle = 45))
+```
+
+### Estuary - dead ratio
+
+```{r AB estuary DR summary, echo = FALSE, fig.align='center'}
+#
+# Filter to Estuary:
+AB_summ <- Annual_summ %>% 
+  filter(Estuary == "AB") %>%
+  droplevels()
+
+# Annual means table
+AB_summ %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanDeadRatio,
+                `SE` = seDeadRatio) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Annual dead ratio")
+
+# Annual means comps
+DRmodel_data <- Quads_df %>% 
+  filter(Estuary == "AB") %>%
+  mutate(Year = as.factor(Year)) %>% 
+  group_by(Estuary, SectionName, Year) %>%
+  summarise(MeanDeadRatio = mean(DeadRatio, na.rm =T),
+            .groups = "drop") %>%
+  mutate(MeanDR = (MeanDeadRatio * (n() - 1) + 0.5) / n()) %>% #transformation to make (0,1) %>%
+  droplevels()
+#
+if (dplyr::n_distinct(DRmodel_data$Year) > 1) {
+  set.seed(54321)
+  AB_DR_model <- suppressWarnings(glmmTMB::glmmTMB(MeanDR ~ as.numeric(Year) + (1|SectionName), family = beta_family(link = "logit"), data = DRmodel_data))
+  AB_DR_model2 <- suppressWarnings(glmmTMB::glmmTMB(MeanDR ~ Year + (1|SectionName), family = beta_family(link = "logit"), data = DRmodel_data))
+} else {
+  rm(DRmodel_data)
+  cat("Only one survey year is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("AB_DR_model") && !is.null(AB_DR_model)){
+  AB_DR_model_tab <- car::Anova(AB_DR_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  AB_DR_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(AB_summ, 
+                multcomp::cld(
+                  emmeans(AB_DR_model2, ~ Year, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(Year, Group))
+      ))
+  
+   p <- AB_DR_cld %>%
+        ggplot(aes(Year, meanDeadRatio, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanDeadRatio, ymax = meanDeadRatio + seDeadRatio), width = 0.25)+
+        geom_text(aes(y = meanDeadRatio + seDeadRatio, label = Group), vjust = -1, color = "black")+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average dead ratio", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+   
+  } else {
+     p <- AB_summ %>%
+        ggplot(aes(Year, meanDeadRatio))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanDeadRatio, ymax = meanDeadRatio + seDeadRatio), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average dead ratio", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+  }
+#
+#
+if(exists("AB_DR-model_tab")){
+  AB_DR_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Annual model results")
+}
+
+p
+
+## Summary info
+AB_DR_min <- AB_summ %>% group_by(Estuary) %>% slice_min(meanDeadRatio, n = 1, with_ties = TRUE)
+AB_DR_max <- AB_summ %>% group_by(Estuary) %>% slice_max(meanDeadRatio, n = 1, with_ties = TRUE)
+AB_DR_mean <- AB_summ %>% ungroup() %>% summarise(mean = mean(meanDeadRatio, na.rm = T),
+                                               sd = sd(meanDeadRatio, na.rm = T))
+if(exists("AB_DR_model_tab")){
+  pValueDR <- car::Anova(AB_DR_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValueDR <- NULL
+}
+#
+#
+```
+\
+\
+**Summary:**
+The mean dead ratio of oysters surveyed in `r unique(AB_summ$Estuary)` ranged from `r round(AB_DR_min$meanDeadRatio,1)` in `r AB_DR_min$Year` to `r round(AB_DR_max$meanDeadRatio,1)` in `r AB_DR_max$Year` with an overall average of `r round(AB_DR_mean$mean,1)` +/- `r round(AB_DR_mean$sd, 1)`. Mean dead ratio `r if(!is.null(pValueDR) && pValueDR$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among years `r if(!is.null(pValueDR) && pValueDR$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValueDR)){""} else {paste0("(p = ",round(pValueDR$p.value[2], 3), ")")}`.
+\
+
+### {-} 
+
+## Saint Andrews {.tabset}
+
+### Estuary 
+
+```{r SA summary, echo = FALSE, fig.align='center', asis = TRUE}
+#
+# Filter to Estuary:
+SA_summ <- Annual_summ %>% 
+  filter(Estuary == "SA") %>%
+  droplevels()
+
+# Annual means table
+SA_summ %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Annual live oyster density")
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "SA") %>%
+  mutate(Year = as.factor(Year)) %>% 
+  group_by(Estuary, SectionName, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$Year) > 1) {
+  set.seed(54321)
+  SA_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ as.numeric(Year) + (1|SectionName), family = nbinom2, data = model_data))
+  SA_model2 <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ Year + (1|SectionName), family = nbinom2, data = model_data))
+  } else {
+    rm(model_data)
+    cat("Only one survey year is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("SA_model") && !is.null(SA_model)){
+  SA_model_tab <- car::Anova(SA_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  SA_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(SA_summ, 
+                multcomp::cld(
+                  emmeans(SA_model2, ~ Year, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(Year, Group))
+      ))
+  
+   p <- SA_cld %>%
+        ggplot(aes(Year, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+   
+  } else {
+     p <- SA_summ %>%
+        ggplot(aes(Year, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+  }
+#
+#
+if(exists("SA_model_tab")){
+  SA_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Annual model results")
+}
+
+p
+
+## Summary info
+SA_min <- SA_summ %>% group_by(Estuary) %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+SA_max <- SA_summ %>% group_by(Estuary) %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+SA_mean <- SA_summ %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("SA_model_tab")){
+  pValue <- car::Anova(SA_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary**
+The mean number of live oysters surveyed in `r unique(SA_summ$Estuary)` ranged from `r round(SA_min$meanLive,1)` oysters/m2 in `r SA_min$Year` to `r round(SA_max$meanLive,1)` oysters/m2 in `r SA_max$Year` with an overall average of `r round(SA_mean$mean,1)` +/- `r round(SA_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among years `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+
+### Sections
+
+```{r SA section summary, echo = FALSE, fig.align='center'}
+#
+# Filter to Estuary:
+SA_summ_sec <- Section_summ %>% 
+  filter(Estuary == "SA") %>%
+  droplevels()
+
+# Annual means table
+SA_summ_sec %>%
+  ungroup() %>%
+  dplyr::select(`Section` = SectionName, 
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  #pivot_wider(
+  #  names_from = SectionName,
+  #  values_from = c(Mean, SE),
+  #  names_glue = "{SectionName}_{.value}",
+  #  names_vary = "slowest") %>% #Orders columns by SectionName
+  gt() %>%
+  #tab_spanner_delim(delim = "_") %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density") 
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "SA") %>%
+  mutate(across(c(Year, SectionName, StationNumber), as.factor)) %>% 
+  group_by(SectionName, StationNumber, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$SectionName) > 1) {
+  set.seed(54321)
+  SA_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ SectionName + (1|StationNumber), family = nbinom2, data = model_data))
+} else {
+  rm(model_data)
+  cat("Only one estuary section is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("SA_model") && !is.null(SA_model)){
+  SA_model_tab <- car::Anova(SA_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  SA_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(SA_summ_sec, 
+                multcomp::cld(
+                  emmeans(SA_model, ~ SectionName, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(SectionName, Group))
+      ))
+  
+   p <- SA_cld %>%
+        ggplot(aes(SectionName, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme
+   
+  } else {
+     p <- SA_summ_sec %>%
+        ggplot(aes(SectionName, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme 
+  }
+#
+#
+if(exists("SA_model_tab")){
+  SA_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Section model results")
+}
+
+p
+
+## Summary info
+SA_sec_min <- SA_summ_sec %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+SA_sec_max <- SA_summ_sec %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+SA_sec_mean <- SA_summ_sec %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("SA_model_tab")){
+  pValue <- car::Anova(All_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary:**
+The mean number of live oysters surveyed in `r unique(SA_summ$Estuary)` ranged from `r round(SA_sec_min$meanLive,1)` oysters/m2 in `r SA_sec_min$SectionName` to `r round(SA_sec_max$meanLive,1)` oysters/m2 in `r SA_sec_max$SectionName` with an overall average of `r round(SA_sec_mean$mean,1)` +/- `r round(SA_sec_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among estuary sections `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+```{r SA sections annual plot, echo = FALSE, fig.align='center'}
+Section_Ann_summ %>%
+  filter(Estuary == "SA") %>%
+  ggplot(aes(Year, meanLive, group = SectionName))+
+  geom_line(aes(color = SectionName), linewidth = 1.5)+
+  geom_point(aes(color = SectionName), size = 3)+
+  scale_x_discrete(expand = c(0.01,0.1))+
+  scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+  scale_colour_viridis_d("Section")+
+  ggtitle("Annual mean oysters/m2 per section")+
+  basetheme + theme(axis.text.x = element_text(angle = 45))
+```
+
+### {-}
+
+# Crystal River Lab 
+
+## Suwannee Sound {.tabset}
+
+### Estuary 
+
+```{r SS summary, echo = FALSE, fig.align='center', asis = TRUE}
+#
+# Filter to Estuary:
+SS_summ <- Annual_summ %>% 
+  filter(Estuary == "SS") %>%
+  droplevels()
+
+# Annual means table
+SS_summ %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Annual live oyster density")
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "SS") %>%
+  mutate(Year = as.factor(Year)) %>% 
+  group_by(Estuary, SectionName, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$Year) > 1) {
+  set.seed(54321)
+  SS_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ as.numeric(Year) + (1|SectionName), family = nbinom2, data = model_data))
+  SS_model2 <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ Year + (1|SectionName), family = nbinom2, data = model_data))
+  } else {
+    rm(model_data)
+    cat("Only one survey year is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("SS_model") && !is.null(SS_model)){
+  SS_model_tab <- car::Anova(SS_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  SS_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(SS_summ, 
+                multcomp::cld(
+                  emmeans(SS_model2, ~ Year, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(Year, Group))
+      ))
+  
+   p <- SS_cld %>%
+        ggplot(aes(Year, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+   
+  } else {
+     p <- SS_summ %>%
+        ggplot(aes(Year, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+  }
+#
+#
+if(exists("SS_model_tab")){
+  SS_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Annual model results")
+}
+
+p
+
+## Summary info
+SS_min <- SS_summ %>% group_by(Estuary) %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+SS_max <- SS_summ %>% group_by(Estuary) %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+SS_mean <- SS_summ %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("SS_model_tab")){
+  pValue <- car::Anova(SS_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary**
+The mean number of live oysters surveyed in `r unique(SS_summ$Estuary)` ranged from `r round(SS_min$meanLive,1)` oysters/m2 in `r SS_min$Year` to `r round(SS_max$meanLive,1)` oysters/m2 in `r SS_max$Year` with an overall average of `r round(SS_mean$mean,1)` +/- `r round(SS_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among years `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+
+### Sections
+
+```{r SS section summary, echo = FALSE, fig.align='center'}
+#
+# Filter to Estuary:
+SS_summ_sec <- Section_summ %>% 
+  filter(Estuary == "SS") %>%
+  droplevels()
+
+# Annual means table
+SS_summ_sec %>%
+  ungroup() %>%
+  dplyr::select(`Section` = SectionName, 
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  #pivot_wider(
+  #  names_from = SectionName,
+  #  values_from = c(Mean, SE),
+  #  names_glue = "{SectionName}_{.value}",
+  #  names_vary = "slowest") %>% #Orders columns by SectionName
+  gt() %>%
+  #tab_spanner_delim(delim = "_") %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density") 
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "SS") %>%
+  mutate(across(c(Year, SectionName, StationNumber), as.factor)) %>% 
+  group_by(SectionName, StationNumber, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$SectionName) > 1) {
+  set.seed(54321)
+  SS_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ SectionName + (1|StationNumber), family = nbinom2, data = model_data))
+} else {
+  rm(model_data)
+  cat("Only one estuary section is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("SS_model") && !is.null(SS_model)){
+  SS_model_tab <- car::Anova(SS_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  SS_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(SS_summ_sec, 
+                multcomp::cld(
+                  emmeans(SS_model, ~ SectionName, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(SectionName, Group))
+      ))
+  
+   p <- SS_cld %>%
+        ggplot(aes(SectionName, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme
+   
+  } else {
+     p <- SS_summ_sec %>%
+        ggplot(aes(SectionName, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme 
+  }
+#
+#
+if(exists("SS_model_tab")){
+  SS_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Section model results")
+}
+
+p
+
+## Summary info
+SS_sec_min <- SS_summ_sec %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+SS_sec_max <- SS_summ_sec %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+SS_sec_mean <- SS_summ_sec %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("SS_model_tab")){
+  pValue <- car::Anova(All_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary:**
+The mean number of live oysters surveyed in `r unique(SS_summ$Estuary)` ranged from `r round(SS_sec_min$meanLive,1)` oysters/m2 in `r SS_sec_min$SectionName` to `r round(SS_sec_max$meanLive,1)` oysters/m2 in `r SS_sec_max$SectionName` with an overall average of `r round(SS_sec_mean$mean,1)` +/- `r round(SS_sec_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among estuary sections `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+```{r SS sections annual plot, echo = FALSE, fig.align='center'}
+Section_Ann_summ %>%
+  filter(Estuary == "SS") %>%
+  ggplot(aes(Year, meanLive, group = SectionName))+
+  geom_line(aes(color = SectionName), linewidth = 1.5)+
+  geom_point(aes(color = SectionName), size = 3)+
+  scale_x_discrete(expand = c(0.01,0.1))+
+  scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+  scale_colour_viridis_d("Section")+
+  ggtitle("Annual mean oysters/m2 per section")+
+  basetheme + theme(axis.text.x = element_text(angle = 45))
+```
+
+### {-}
+
+# St Pete Lab 
+
+## Lake Worth {.tabset}
+
+### Estuary 
+
+```{r LW summary, echo = FALSE, fig.align='center', asis = TRUE}
+#
+# Filter to Estuary:
+LW_summ <- Annual_summ %>% 
+  filter(Estuary == "LW") %>%
+  droplevels()
+
+# Annual means table
+LW_summ %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Annual live oyster density")
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "LW") %>%
+  mutate(Year = as.factor(Year)) %>% 
+  group_by(Estuary, SectionName, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$Year) > 1) {
+  set.seed(54321)
+  LW_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ as.numeric(Year) + (1|SectionName), family = nbinom2, data = model_data))
+  LW_model2 <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ Year + (1|SectionName), family = nbinom2, data = model_data))
+  } else {
+    rm(model_data)
+    cat("Only one survey year is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("LW_model") && !is.null(LW_model)){
+  LW_model_tab <- car::Anova(LW_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  LW_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(LW_summ, 
+                multcomp::cld(
+                  emmeans(LW_model2, ~ Year, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(Year, Group))
+      ))
+  
+   p <- LW_cld %>%
+        ggplot(aes(Year, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+   
+  } else {
+     p <- LW_summ %>%
+        ggplot(aes(Year, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+  }
+#
+#
+if(exists("LW_model_tab")){
+  LW_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Annual model results")
+}
+
+p
+
+## Summary info
+LW_min <- LW_summ %>% group_by(Estuary) %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+LW_max <- LW_summ %>% group_by(Estuary) %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+LW_mean <- LW_summ %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("LW_model_tab")){
+  pValue <- car::Anova(LW_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary**
+The mean number of live oysters surveyed in `r unique(LW_summ$Estuary)` ranged from `r round(LW_min$meanLive,1)` oysters/m2 in `r LW_min$Year` to `r round(LW_max$meanLive,1)` oysters/m2 in `r LW_max$Year` with an overall average of `r round(LW_mean$mean,1)` +/- `r round(LW_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among years `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+
+### Sections
+
+```{r LW section summary, echo = FALSE, fig.align='center'}
+#
+# Filter to Estuary:
+LW_summ_sec <- Section_summ %>% 
+  filter(Estuary == "LW") %>%
+  droplevels()
+
+# Annual means table
+LW_summ_sec %>%
+  ungroup() %>%
+  dplyr::select(`Section` = SectionName, 
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  #pivot_wider(
+  #  names_from = SectionName,
+  #  values_from = c(Mean, SE),
+  #  names_glue = "{SectionName}_{.value}",
+  #  names_vary = "slowest") %>% #Orders columns by SectionName
+  gt() %>%
+  #tab_spanner_delim(delim = "_") %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density") 
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "LW") %>%
+  mutate(across(c(Year, SectionName, StationNumber), as.factor)) %>% 
+  group_by(SectionName, StationNumber, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$SectionName) > 1) {
+  set.seed(54321)
+  LW_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ SectionName + (1|StationNumber), family = nbinom2, data = model_data))
+} else {
+  rm(model_data)
+  cat("Only one estuary section is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("LW_model") && !is.null(LW_model)){
+  LW_model_tab <- car::Anova(LW_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  LW_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(LW_summ_sec, 
+                multcomp::cld(
+                  emmeans(LW_model, ~ SectionName, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(SectionName, Group))
+      ))
+  
+   p <- LW_cld %>%
+        ggplot(aes(SectionName, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme
+   
+  } else {
+     p <- LW_summ_sec %>%
+        ggplot(aes(SectionName, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme 
+  }
+#
+#
+if(exists("LW_model_tab")){
+  LW_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Section model results")
+}
+
+p
+
+## Summary info
+LW_sec_min <- LW_summ_sec %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+LW_sec_max <- LW_summ_sec %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+LW_sec_mean <- LW_summ_sec %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("LW_model_tab")){
+  pValue <- car::Anova(All_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary:**
+The mean number of live oysters surveyed in `r unique(LW_summ$Estuary)` ranged from `r round(LW_sec_min$meanLive,1)` oysters/m2 in `r LW_sec_min$SectionName` to `r round(LW_sec_max$meanLive,1)` oysters/m2 in `r LW_sec_max$SectionName` with an overall average of `r round(LW_sec_mean$mean,1)` +/- `r round(LW_sec_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among estuary sections `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+```{r LW sections annual plot, echo = FALSE, fig.align='center'}
+Section_Ann_summ %>%
+  filter(Estuary == "LW") %>%
+  ggplot(aes(Year, meanLive, group = SectionName))+
+  geom_line(aes(color = SectionName), linewidth = 1.5)+
+  geom_point(aes(color = SectionName), size = 3)+
+  scale_x_discrete(expand = c(0.01,0.1))+
+  scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+  scale_colour_viridis_d("Section")+
+  ggtitle("Annual mean oysters/m2 per section")+
+  basetheme + theme(axis.text.x = element_text(angle = 45))
+```
+
+### {-}
+
+## Loxahatchee {.tabset}
+
+### Estuary 
+
+```{r LX summary, echo = FALSE, fig.align='center', asis = TRUE}
+#
+# Filter to Estuary:
+LX_summ <- Annual_summ %>% 
+  filter(Estuary == "LX") %>%
+  droplevels()
+
+# Annual means table
+LX_summ %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Annual live oyster density")
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "LX") %>%
+  mutate(Year = as.factor(Year)) %>% 
+  group_by(Estuary, SectionName, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$Year) > 1) {
+  set.seed(54321)
+  LX_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ as.numeric(Year) + (1|SectionName), family = nbinom2, data = model_data))
+  LX_model2 <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ Year + (1|SectionName), family = nbinom2, data = model_data))
+  } else {
+    rm(model_data)
+    cat("Only one survey year is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("LX_model") && !is.null(LX_model)){
+  LX_model_tab <- car::Anova(LX_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  LX_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(LX_summ, 
+                multcomp::cld(
+                  emmeans(LX_model2, ~ Year, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(Year, Group))
+      ))
+  
+   p <- LX_cld %>%
+        ggplot(aes(Year, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+   
+  } else {
+     p <- LX_summ %>%
+        ggplot(aes(Year, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+  }
+#
+#
+if(exists("LX_model_tab")){
+  LX_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Annual model results")
+}
+
+p
+
+## Summary info
+LX_min <- LX_summ %>% group_by(Estuary) %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+LX_max <- LX_summ %>% group_by(Estuary) %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+LX_mean <- LX_summ %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("LX_model_tab")){
+  pValue <- car::Anova(LX_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary**
+The mean number of live oysters surveyed in `r unique(LX_summ$Estuary)` ranged from `r round(LX_min$meanLive,1)` oysters/m2 in `r LX_min$Year` to `r round(LX_max$meanLive,1)` oysters/m2 in `r LX_max$Year` with an overall average of `r round(LX_mean$mean,1)` +/- `r round(LX_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among years `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+
+### Sections
+
+```{r LX section summary, echo = FALSE, fig.align='center'}
+#
+# Filter to Estuary:
+LX_summ_sec <- Section_summ %>% 
+  filter(Estuary == "LX") %>%
+  droplevels()
+
+# Annual means table
+LX_summ_sec %>%
+  ungroup() %>%
+  dplyr::select(`Section` = SectionName, 
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  #pivot_wider(
+  #  names_from = SectionName,
+  #  values_from = c(Mean, SE),
+  #  names_glue = "{SectionName}_{.value}",
+  #  names_vary = "slowest") %>% #Orders columns by SectionName
+  gt() %>%
+  #tab_spanner_delim(delim = "_") %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density") 
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "LX") %>%
+  mutate(across(c(Year, SectionName, StationNumber), as.factor)) %>% 
+  group_by(SectionName, StationNumber, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$SectionName) > 1) {
+  set.seed(54321)
+  LX_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ SectionName + (1|StationNumber), family = nbinom2, data = model_data))
+} else {
+  rm(model_data)
+  cat("Only one estuary section is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("LX_model") && !is.null(LX_model)){
+  LX_model_tab <- car::Anova(LX_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  LX_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(LX_summ_sec, 
+                multcomp::cld(
+                  emmeans(LX_model, ~ SectionName, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(SectionName, Group))
+      ))
+  
+   p <- LX_cld %>%
+        ggplot(aes(SectionName, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme
+   
+  } else {
+     p <- LX_summ_sec %>%
+        ggplot(aes(SectionName, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme 
+  }
+#
+#
+if(exists("LX_model_tab")){
+  LX_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Section model results")
+}
+
+p
+
+## Summary info
+LX_sec_min <- LX_summ_sec %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+LX_sec_max <- LX_summ_sec %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+LX_sec_mean <- LX_summ_sec %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("LX_model_tab")){
+  pValue <- car::Anova(All_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary:**
+The mean number of live oysters surveyed in `r unique(LX_summ$Estuary)` ranged from `r round(LX_sec_min$meanLive,1)` oysters/m2 in `r LX_sec_min$SectionName` to `r round(LX_sec_max$meanLive,1)` oysters/m2 in `r LX_sec_max$SectionName` with an overall average of `r round(LX_sec_mean$mean,1)` +/- `r round(LX_sec_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among estuary sections `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+```{r LX sections annual plot, echo = FALSE, fig.align='center'}
+Section_Ann_summ %>%
+  filter(Estuary == "LX") %>%
+  ggplot(aes(Year, meanLive, group = SectionName))+
+  geom_line(aes(color = SectionName), linewidth = 1.5)+
+  geom_point(aes(color = SectionName), size = 3)+
+  scale_x_discrete(expand = c(0.01,0.1))+
+  scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+  scale_colour_viridis_d("Section")+
+  ggtitle("Annual mean oysters/m2 per section")+
+  basetheme + theme(axis.text.x = element_text(angle = 45))
+```
+
+### {-}
+
+## St. Lucie {.tabset}
+
+### Estuary 
+
+```{r SL summary, echo = FALSE, fig.align='center', asis = TRUE}
+#
+# Filter to Estuary:
+SL_summ <- Annual_summ %>% 
+  filter(Estuary == "SL") %>%
+  droplevels()
+
+# Annual means table
+SL_summ %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Annual live oyster density")
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "SL") %>%
+  mutate(Year = as.factor(Year)) %>% 
+  group_by(Estuary, SectionName, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$Year) > 1) {
+  set.seed(54321)
+  SL_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ as.numeric(Year) + (1|SectionName), family = nbinom2, data = model_data))
+  SL_model2 <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ Year + (1|SectionName), family = nbinom2, data = model_data))
+  } else {
+    rm(model_data)
+    cat("Only one survey year is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("SL_model") && !is.null(SL_model)){
+  SL_model_tab <- car::Anova(SL_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  SL_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(SL_summ, 
+                multcomp::cld(
+                  emmeans(SL_model2, ~ Year, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(Year, Group))
+      ))
+  
+   p <- SL_cld %>%
+        ggplot(aes(Year, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+   
+  } else {
+     p <- SL_summ %>%
+        ggplot(aes(Year, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+  }
+#
+#
+if(exists("SL_model_tab")){
+  SL_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Annual model results")
+}
+
+p
+
+## Summary info
+SL_min <- SL_summ %>% group_by(Estuary) %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+SL_max <- SL_summ %>% group_by(Estuary) %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+SL_mean <- SL_summ %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("SL_model_tab")){
+  pValue <- car::Anova(SL_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary**
+The mean number of live oysters surveyed in `r unique(SL_summ$Estuary)` ranged from `r round(SL_min$meanLive,1)` oysters/m2 in `r SL_min$Year` to `r round(SL_max$meanLive,1)` oysters/m2 in `r SL_max$Year` with an overall average of `r round(SL_mean$mean,1)` +/- `r round(SL_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among years `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+
+### Sections
+
+```{r SL section summary, echo = FALSE, fig.align='center'}
+#
+# Filter to Estuary:
+SL_summ_sec <- Section_summ %>% 
+  filter(Estuary == "SL") %>%
+  droplevels()
+
+# Annual means table
+SL_summ_sec %>%
+  ungroup() %>%
+  dplyr::select(`Section` = SectionName, 
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  #pivot_wider(
+  #  names_from = SectionName,
+  #  values_from = c(Mean, SE),
+  #  names_glue = "{SectionName}_{.value}",
+  #  names_vary = "slowest") %>% #Orders columns by SectionName
+  gt() %>%
+  #tab_spanner_delim(delim = "_") %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density") 
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "SL") %>%
+  mutate(across(c(Year, SectionName, StationNumber), as.factor)) %>% 
+  group_by(SectionName, StationNumber, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$SectionName) > 1) {
+  set.seed(54321)
+  SL_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ SectionName + (1|StationNumber), family = nbinom2, data = model_data))
+} else {
+  rm(model_data)
+  cat("Only one estuary section is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("SL_model") && !is.null(SL_model)){
+  SL_model_tab <- car::Anova(SL_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  SL_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(SL_summ_sec, 
+                multcomp::cld(
+                  emmeans(SL_model, ~ SectionName, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(SectionName, Group))
+      ))
+  
+   p <- SL_cld %>%
+        ggplot(aes(SectionName, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme
+   
+  } else {
+     p <- SL_summ_sec %>%
+        ggplot(aes(SectionName, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme 
+  }
+#
+#
+if(exists("SL_model_tab")){
+  SL_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Section model results")
+}
+
+p
+
+## Summary info
+SL_sec_min <- SL_summ_sec %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+SL_sec_max <- SL_summ_sec %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+SL_sec_mean <- SL_summ_sec %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("SL_model_tab")){
+  pValue <- car::Anova(All_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary:**
+The mean number of live oysters surveyed in `r unique(SL_summ$Estuary)` ranged from `r round(SL_sec_min$meanLive,1)` oysters/m2 in `r SL_sec_min$SectionName` to `r round(SL_sec_max$meanLive,1)` oysters/m2 in `r SL_sec_max$SectionName` with an overall average of `r round(SL_sec_mean$mean,1)` +/- `r round(SL_sec_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among estuary sections `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+```{r SL sections annual plot, echo = FALSE, fig.align='center'}
+Section_Ann_summ %>%
+  filter(Estuary == "SL") %>%
+  ggplot(aes(Year, meanLive, group = SectionName))+
+  geom_line(aes(color = SectionName), linewidth = 1.5)+
+  geom_point(aes(color = SectionName), size = 3)+
+  scale_x_discrete(expand = c(0.01,0.1))+
+  scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+  scale_colour_viridis_d("Section")+
+  ggtitle("Annual mean oysters/m2 per section")+
+  basetheme + theme(axis.text.x = element_text(angle = 45))
+```
+
+### {-}
+
+## Caloosahatchee {.tabset}
+
+### Estuary 
+
+```{r CR summary, echo = FALSE, fig.align='center', asis = TRUE}
+#
+# Filter to Estuary:
+CR_summ <- Annual_summ %>% 
+  filter(Estuary == "CR") %>%
+  droplevels()
+
+# Annual means table
+CR_summ %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Annual live oyster density")
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "CR") %>%
+  mutate(Year = as.factor(Year)) %>% 
+  group_by(Estuary, SectionName, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$Year) > 1) {
+  set.seed(54321)
+  CR_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ as.numeric(Year) + (1|SectionName), family = nbinom2, data = model_data))
+  CR_model2 <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ Year + (1|SectionName), family = nbinom2, data = model_data))
+  } else {
+    rm(model_data)
+    cat("Only one survey year is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("CR_model") && !is.null(CR_model)){
+  CR_model_tab <- car::Anova(CR_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  CR_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(CR_summ, 
+                multcomp::cld(
+                  emmeans(CR_model2, ~ Year, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(Year, Group))
+      ))
+  
+   p <- CR_cld %>%
+        ggplot(aes(Year, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+   
+  } else {
+     p <- CR_summ %>%
+        ggplot(aes(Year, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+  }
+#
+#
+if(exists("CR_model_tab")){
+  CR_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Annual model results")
+}
+
+p
+
+## Summary info
+CR_min <- CR_summ %>% group_by(Estuary) %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+CR_max <- CR_summ %>% group_by(Estuary) %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+CR_mean <- CR_summ %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("CR_model_tab")){
+  pValue <- car::Anova(CR_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary**
+The mean number of live oysters surveyed in `r unique(CR_summ$Estuary)` ranged from `r round(CR_min$meanLive,1)` oysters/m2 in `r CR_min$Year` to `r round(CR_max$meanLive,1)` oysters/m2 in `r CR_max$Year` with an overall average of `r round(CR_mean$mean,1)` +/- `r round(CR_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among years `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+
+### Sections
+
+```{r CR section summary, echo = FALSE, fig.align='center'}
+#
+# Filter to Estuary:
+CR_summ_sec <- Section_summ %>% 
+  filter(Estuary == "CR") %>%
+  droplevels()
+
+# Annual means table
+CR_summ_sec %>%
+  ungroup() %>%
+  dplyr::select(`Section` = SectionName, 
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  #pivot_wider(
+  #  names_from = SectionName,
+  #  values_from = c(Mean, SE),
+  #  names_glue = "{SectionName}_{.value}",
+  #  names_vary = "slowest") %>% #Orders columns by SectionName
+  gt() %>%
+  #tab_spanner_delim(delim = "_") %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density") 
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "CR") %>%
+  mutate(across(c(Year, SectionName, StationNumber), as.factor)) %>% 
+  group_by(SectionName, StationNumber, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$SectionName) > 1) {
+  set.seed(54321)
+  CR_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ SectionName + (1|StationNumber), family = nbinom2, data = model_data))
+} else {
+  rm(model_data)
+  cat("Only one estuary section is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("CR_model") && !is.null(CR_model)){
+  CR_model_tab <- car::Anova(CR_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  CR_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(CR_summ_sec, 
+                multcomp::cld(
+                  emmeans(CR_model, ~ SectionName, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(SectionName, Group))
+      ))
+  
+   p <- CR_cld %>%
+        ggplot(aes(SectionName, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme
+   
+  } else {
+     p <- CR_summ_sec %>%
+        ggplot(aes(SectionName, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme 
+  }
+#
+#
+if(exists("CR_model_tab")){
+  CR_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Section model results")
+}
+
+p
+
+## Summary info
+CR_sec_min <- CR_summ_sec %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+CR_sec_max <- CR_summ_sec %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+CR_sec_mean <- CR_summ_sec %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("CR_model_tab")){
+  pValue <- car::Anova(All_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary:**
+The mean number of live oysters surveyed in `r unique(CR_summ$Estuary)` ranged from `r round(CR_sec_min$meanLive,1)` oysters/m2 in `r CR_sec_min$SectionName` to `r round(CR_sec_max$meanLive,1)` oysters/m2 in `r CR_sec_max$SectionName` with an overall average of `r round(CR_sec_mean$mean,1)` +/- `r round(CR_sec_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among estuary sections `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+```{r CR sections annual plot, echo = FALSE, fig.align='center'}
+Section_Ann_summ %>%
+  filter(Estuary == "CR") %>%
+  ggplot(aes(Year, meanLive, group = SectionName))+
+  geom_line(aes(color = SectionName), linewidth = 1.5)+
+  geom_point(aes(color = SectionName), size = 3)+
+  scale_x_discrete(expand = c(0.01,0.1))+
+  scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+  scale_colour_viridis_d("Section")+
+  ggtitle("Annual mean oysters/m2 per section")+
+  basetheme + theme(axis.text.x = element_text(angle = 45))
+```
+
+### {-}
+
+## Tampa Bay {.tabset}
+
+### Estuary 
+
+```{r TB summary, echo = FALSE, fig.align='center', asis = TRUE}
+#
+# Filter to Estuary:
+TB_summ <- Annual_summ %>% 
+  filter(Estuary == "TB") %>%
+  droplevels()
+
+# Annual means table
+TB_summ %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Annual live oyster density")
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "TB") %>%
+  mutate(Year = as.factor(Year)) %>% 
+  group_by(Estuary, SectionName, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$Year) > 1) {
+  set.seed(54321)
+  TB_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ as.numeric(Year) + (1|SectionName), family = nbinom2, data = model_data))
+  TB_model2 <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ Year + (1|SectionName), family = nbinom2, data = model_data))
+  } else {
+    rm(model_data)
+    cat("Only one survey year is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("TB_model") && !is.null(TB_model)){
+  TB_model_tab <- car::Anova(TB_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  TB_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(TB_summ, 
+                multcomp::cld(
+                  emmeans(TB_model2, ~ Year, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(Year, Group))
+      ))
+  
+   p <- TB_cld %>%
+        ggplot(aes(Year, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+   
+  } else {
+     p <- TB_summ %>%
+        ggplot(aes(Year, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+  }
+#
+#
+if(exists("TB_model_tab")){
+  TB_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Annual model results")
+}
+
+p
+
+## Summary info
+TB_min <- TB_summ %>% group_by(Estuary) %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+TB_max <- TB_summ %>% group_by(Estuary) %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+TB_mean <- TB_summ %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("TB_model_tab")){
+  pValue <- car::Anova(TB_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary**
+The mean number of live oysters surveyed in `r unique(TB_summ$Estuary)` ranged from `r round(TB_min$meanLive,1)` oysters/m2 in `r TB_min$Year` to `r round(TB_max$meanLive,1)` oysters/m2 in `r TB_max$Year` with an overall average of `r round(TB_mean$mean,1)` +/- `r round(TB_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among years `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+
+### Sections
+
+```{r TB section summary, echo = FALSE, fig.align='center'}
+#
+# Filter to Estuary:
+TB_summ_sec <- Section_summ %>% 
+  filter(Estuary == "TB") %>%
+  droplevels()
+
+# Annual means table
+TB_summ_sec %>%
+  ungroup() %>%
+  dplyr::select(`Section` = SectionName, 
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  #pivot_wider(
+  #  names_from = SectionName,
+  #  values_from = c(Mean, SE),
+  #  names_glue = "{SectionName}_{.value}",
+  #  names_vary = "slowest") %>% #Orders columns by SectionName
+  gt() %>%
+  #tab_spanner_delim(delim = "_") %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density") 
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "TB") %>%
+  mutate(across(c(Year, SectionName, StationNumber), as.factor)) %>% 
+  group_by(SectionName, StationNumber, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$SectionName) > 1) {
+  set.seed(54321)
+  TB_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ SectionName + (1|StationNumber), family = nbinom2, data = model_data))
+} else {
+  rm(model_data)
+  cat("Only one estuary section is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("TB_model") && !is.null(TB_model)){
+  TB_model_tab <- car::Anova(TB_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  TB_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(TB_summ_sec, 
+                multcomp::cld(
+                  emmeans(TB_model, ~ SectionName, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(SectionName, Group))
+      ))
+  
+   p <- TB_cld %>%
+        ggplot(aes(SectionName, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme
+   
+  } else {
+     p <- TB_summ_sec %>%
+        ggplot(aes(SectionName, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme 
+  }
+#
+#
+if(exists("TB_model_tab")){
+  TB_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Section model results")
+}
+
+p
+
+## Summary info
+TB_sec_min <- TB_summ_sec %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+TB_sec_max <- TB_summ_sec %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+TB_sec_mean <- TB_summ_sec %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("TB_model_tab")){
+  pValue <- car::Anova(All_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary:**
+The mean number of live oysters surveyed in `r unique(TB_summ$Estuary)` ranged from `r round(TB_sec_min$meanLive,1)` oysters/m2 in `r TB_sec_min$SectionName` to `r round(TB_sec_max$meanLive,1)` oysters/m2 in `r TB_sec_max$SectionName` with an overall average of `r round(TB_sec_mean$mean,1)` +/- `r round(TB_sec_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among estuary sections `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+```{r TB sections annual plot, echo = FALSE, fig.align='center'}
+Section_Ann_summ %>%
+  filter(Estuary == "TB") %>%
+  ggplot(aes(Year, meanLive, group = SectionName))+
+  geom_line(aes(color = SectionName), linewidth = 1.5)+
+  geom_point(aes(color = SectionName), size = 3)+
+  scale_x_discrete(expand = c(0.01,0.1))+
+  scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+  scale_colour_viridis_d("Section")+
+  ggtitle("Annual mean oysters/m2 per section")+
+  basetheme + theme(axis.text.x = element_text(angle = 45))
+```
+
+### {-}
+
+## Biscayne Bay {.tabset}
+
+### Estuary 
+
+```{r BB summary, echo = FALSE, fig.align='center', asis = TRUE}
+#
+# Filter to Estuary:
+BB_summ <- Annual_summ %>% 
+  filter(Estuary == "BB") %>%
+  droplevels()
+
+# Annual means table
+BB_summ %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Annual live oyster density")
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "BB") %>%
+  mutate(Year = as.factor(Year)) %>% 
+  group_by(Estuary, SectionName, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$Year) > 1) {
+  set.seed(54321)
+  BB_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ as.numeric(Year) + (1|SectionName), family = nbinom2, data = model_data))
+  BB_model2 <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ Year + (1|SectionName), family = nbinom2, data = model_data))
+  } else {
+    rm(model_data)
+    cat("Only one survey year is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("BB_model") && !is.null(BB_model)){
+  BB_model_tab <- car::Anova(BB_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  BB_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(BB_summ, 
+                multcomp::cld(
+                  emmeans(BB_model2, ~ Year, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(Year, Group))
+      ))
+  
+   p <- BB_cld %>%
+        ggplot(aes(Year, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+   
+  } else {
+     p <- BB_summ %>%
+        ggplot(aes(Year, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+  }
+#
+#
+if(exists("BB_model_tab")){
+  BB_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Annual model results")
+}
+
+p
+
+## Summary info
+BB_min <- BB_summ %>% group_by(Estuary) %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+BB_max <- BB_summ %>% group_by(Estuary) %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+BB_mean <- BB_summ %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("BB_model_tab")){
+  pValue <- car::Anova(BB_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary**
+The mean number of live oysters surveyed in `r unique(BB_summ$Estuary)` ranged from `r round(BB_min$meanLive,1)` oysters/m2 in `r BB_min$Year` to `r round(BB_max$meanLive,1)` oysters/m2 in `r BB_max$Year` with an overall average of `r round(BB_mean$mean,1)` +/- `r round(BB_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5 && !is.na(pValue$p.value[2])){paste("varied significantly")} else {paste("did not vary significantly")}` among years `r if(!is.null(pValue) && pValue$p.value[2] < 0.001 && !is.na(pValue$p.value[2])){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+
+### Sections
+
+```{r BB section summary, echo = FALSE, fig.align='center'}
+#
+# Filter to Estuary:
+BB_summ_sec <- Section_summ %>% 
+  filter(Estuary == "BB") %>%
+  droplevels()
+
+# Annual means table
+BB_summ_sec %>%
+  ungroup() %>%
+  dplyr::select(`Section` = SectionName, 
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  #pivot_wider(
+  #  names_from = SectionName,
+  #  values_from = c(Mean, SE),
+  #  names_glue = "{SectionName}_{.value}",
+  #  names_vary = "slowest") %>% #Orders columns by SectionName
+  gt() %>%
+  #tab_spanner_delim(delim = "_") %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density") 
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "BB") %>%
+  mutate(across(c(Year, SectionName, StationNumber), as.factor)) %>% 
+  group_by(SectionName, StationNumber, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$SectionName) > 1) {
+  set.seed(54321)
+  BB_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ SectionName + (1|StationNumber), family = nbinom2, data = model_data))
+} else {
+  rm(model_data)
+  cat("Only one estuary section is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("BB_model") && !is.null(BB_model)){
+  BB_model_tab <- car::Anova(BB_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  BB_cld <- BB_summ_sec
+  
+   p <- BB_cld %>%
+        ggplot(aes(SectionName, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme
+   
+  } else {
+     p <- BB_summ_sec %>%
+        ggplot(aes(SectionName, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme 
+  }
+#
+#
+if(exists("BB_model_tab")){
+  BB_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Section model results")
+}
+
+p
+
+## Summary info
+BB_sec_min <- BB_summ_sec %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+BB_sec_max <- BB_summ_sec %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+BB_sec_mean <- BB_summ_sec %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("BB_model_tab")){
+  pValue <- car::Anova(All_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary:**
+The mean number of live oysters surveyed in `r unique(BB_summ$Estuary)` ranged from `r round(BB_sec_min$meanLive,1)` oysters/m2 in `r BB_sec_min$SectionName` to `r round(BB_sec_max$meanLive,1)` oysters/m2 in `r BB_sec_max$SectionName` with an overall average of `r round(BB_sec_mean$mean,1)` +/- `r round(BB_sec_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among estuary sections `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+```{r BB sections annual plot, echo = FALSE, fig.align='center'}
+Section_Ann_summ %>%
+  filter(Estuary == "BB") %>%
+  ggplot(aes(Year, meanLive, group = SectionName))+
+  geom_line(aes(color = SectionName), linewidth = 1.5)+
+  geom_point(aes(color = SectionName), size = 3)+
+  scale_x_discrete(expand = c(0.01,0.1))+
+  scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+  scale_colour_viridis_d("Section")+
+  ggtitle("Annual mean oysters/m2 per section")+
+  basetheme + theme(axis.text.x = element_text(angle = 45))
+```
+
+### {-}
+
+## Mosquito Lagoon {.tabset}
+
+### Estuary 
+
+```{r ML summary, echo = FALSE, fig.align='center', asis = TRUE}
+#
+# Filter to Estuary:
+ML_summ <- Annual_summ %>% 
+  filter(Estuary == "ML") %>%
+  droplevels()
+
+# Annual means table
+ML_summ %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Annual live oyster density")
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "ML") %>%
+  mutate(Year = as.factor(Year)) %>% 
+  group_by(Estuary, SectionName, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$Year) > 1) {
+  set.seed(54321)
+  ML_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ as.numeric(Year) + (1|SectionName), family = nbinom2, data = model_data))
+  ML_model2 <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ Year + (1|SectionName), family = nbinom2, data = model_data))
+  } else {
+    rm(model_data)
+    cat("Only one survey year is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("ML_model") && !is.null(ML_model)){
+  ML_model_tab <- car::Anova(ML_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  ML_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(ML_summ, 
+                multcomp::cld(
+                  emmeans(ML_model2, ~ Year, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(Year, Group))
+      ))
+  
+   p <- ML_cld %>%
+        ggplot(aes(Year, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+   
+  } else {
+     p <- ML_summ %>%
+        ggplot(aes(Year, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+  }
+#
+#
+if(exists("ML_model_tab")){
+  ML_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Annual model results")
+}
+
+p
+
+## Summary info
+ML_min <- ML_summ %>% group_by(Estuary) %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+ML_max <- ML_summ %>% group_by(Estuary) %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+ML_mean <- ML_summ %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("ML_model_tab")){
+  pValue <- car::Anova(ML_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary**
+The mean number of live oysters surveyed in `r unique(ML_summ$Estuary)` ranged from `r round(ML_min$meanLive,1)` oysters/m2 in `r ML_min$Year` to `r round(ML_max$meanLive,1)` oysters/m2 in `r ML_max$Year` with an overall average of `r round(ML_mean$mean,1)` +/- `r round(ML_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among years `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+
+### Sections
+
+```{r ML section summary, echo = FALSE, fig.align='center'}
+#
+# Filter to Estuary:
+ML_summ_sec <- Section_summ %>% 
+  filter(Estuary == "ML") %>%
+  droplevels()
+
+# Annual means table
+ML_summ_sec %>%
+  ungroup() %>%
+  dplyr::select(`Section` = SectionName, 
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  #pivot_wider(
+  #  names_from = SectionName,
+  #  values_from = c(Mean, SE),
+  #  names_glue = "{SectionName}_{.value}",
+  #  names_vary = "slowest") %>% #Orders columns by SectionName
+  gt() %>%
+  #tab_spanner_delim(delim = "_") %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density") 
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "ML") %>%
+  mutate(across(c(Year, SectionName, StationNumber), as.factor)) %>% 
+  group_by(SectionName, StationNumber, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$SectionName) > 1) {
+  set.seed(54321)
+  ML_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ SectionName + (1|StationNumber), family = nbinom2, data = model_data))
+} else {
+  rm(model_data)
+  cat("Only one estuary section is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("ML_model") && !is.null(ML_model)){
+  ML_model_tab <- car::Anova(ML_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  ML_cld <-ML_summ_sec
+  
+   p <- ML_cld %>%
+        ggplot(aes(SectionName, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme
+   
+  } else {
+     p <- ML_summ_sec %>%
+       ggplot(aes(SectionName, meanLive))+
+       geom_bar(stat = "identity")+
+       geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+       scale_x_discrete(expand = c(0.05,0.1))+
+       scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+       basetheme 
+  }
+#
+#
+if(exists("ML_model_tab")){
+  ML_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Section model results")
+}
+
+p
+
+## Summary info
+ML_sec_min <- ML_summ_sec %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+ML_sec_max <- ML_summ_sec %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+ML_sec_mean <- ML_summ_sec %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("ML_model_tab")){
+  pValue <- car::Anova(All_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary:**
+The mean number of live oysters surveyed in `r unique(ML_summ$Estuary)` ranged from `r round(ML_sec_min$meanLive,1)` oysters/m2 in `r ML_sec_min$SectionName` to `r round(ML_sec_max$meanLive,1)` oysters/m2 in `r ML_sec_max$SectionName` with an overall average of `r round(ML_sec_mean$mean,1)` +/- `r round(ML_sec_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among estuary sections `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+```{r ML sections annual plot, echo = FALSE, fig.align='center'}
+Section_Ann_summ %>%
+  filter(Estuary == "ML") %>%
+  ggplot(aes(Year, meanLive, group = SectionName))+
+  geom_line(aes(color = SectionName), linewidth = 1.5)+
+  geom_point(aes(color = SectionName), size = 3)+
+  scale_x_discrete(expand = c(0.01,0.1))+
+  scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+  scale_colour_viridis_d("Section")+
+  ggtitle("Annual mean oysters/m2 per section")+
+  basetheme + theme(axis.text.x = element_text(angle = 45))
+```
+
+### {-}
+
+## Sebastian River {.tabset}
+
+### Estuary 
+
+```{r SR summary, echo = FALSE, fig.align='center', asis = TRUE}
+#
+# Filter to Estuary:
+SR_summ <- Annual_summ %>% 
+  filter(Estuary == "SR") %>%
+  droplevels()
+
+# Annual means table
+SR_summ %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Annual live oyster density")
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "SR") %>%
+  mutate(Year = as.factor(Year)) %>% 
+  group_by(Estuary, SectionName, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$Year) > 1) {
+  set.seed(54321)
+  SR_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ as.numeric(Year) + (1|SectionName), family = nbinom2, data = model_data))
+  SR_model2 <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ Year + (1|SectionName), family = nbinom2, data = model_data))
+  } else {
+    rm(model_data)
+    cat("Only one survey year is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("SR_model") && !is.null(SR_model)){
+  SR_model_tab <- car::Anova(SR_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  SR_cld <- suppressMessages(
+    suppressWarnings(
+      left_join(SR_summ, 
+                multcomp::cld(
+                  emmeans(SR_model2, ~ Year, type = "response"),
+                  Letters = letters, adjust = "sidak") %>%
+                  as.data.frame() %>%
+                  rename(Group = .group) %>%
+                  mutate(Group = stringr::str_trim(Group)) %>%
+                  dplyr::select(Year, Group))
+      ))
+  
+   p <- SR_cld %>%
+        ggplot(aes(Year, meanLive, fill = Group))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+   
+  } else {
+     p <- SR_summ %>%
+        ggplot(aes(Year, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme + 
+        theme(axis.text.x = element_text(angle = 45))
+  }
+#
+#
+if(exists("SR_model_tab")){
+  SR_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Annual model results")
+}
+
+p
+
+## Summary info
+SR_min <- SR_summ %>% group_by(Estuary) %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+SR_max <- SR_summ %>% group_by(Estuary) %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+SR_mean <- SR_summ %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("SR_model_tab")){
+  pValue <- car::Anova(SR_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary**
+The mean number of live oysters surveyed in `r unique(SR_summ$Estuary)` ranged from `r round(SR_min$meanLive,1)` oysters/m2 in `r SR_min$Year` to `r round(SR_max$meanLive,1)` oysters/m2 in `r SR_max$Year` with an overall average of `r round(SR_mean$mean,1)` +/- `r round(SR_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among years `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+
+### Sections
+
+```{r SR section summary, echo = FALSE, fig.align='center'}
+#
+# Filter to Estuary:
+SR_summ_sec <- Section_summ %>% 
+  filter(Estuary == "SR") %>%
+  droplevels()
+
+# Annual means table
+SR_summ_sec %>%
+  ungroup() %>%
+  dplyr::select(`Section` = SectionName, 
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  #pivot_wider(
+  #  names_from = SectionName,
+  #  values_from = c(Mean, SE),
+  #  names_glue = "{SectionName}_{.value}",
+  #  names_vary = "slowest") %>% #Orders columns by SectionName
+  gt() %>%
+  #tab_spanner_delim(delim = "_") %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density") 
+
+# Annual means comps
+model_data <- Quads_df %>% 
+  filter(Estuary == "SR") %>%
+  mutate(across(c(Year, SectionName, StationNumber), as.factor)) %>% 
+  group_by(SectionName, StationNumber, Year) %>%
+  summarise(MeanLive = mean(TotalLive, na.rm =T),
+            .groups = "drop") %>%
+  droplevels()
+#
+if (dplyr::n_distinct(model_data$SectionName) > 1) {
+  set.seed(54321)
+  SR_model <- suppressWarnings(glmmTMB::glmmTMB(MeanLive ~ SectionName + (1|StationNumber), family = nbinom2, data = model_data))
+} else {
+  rm(model_data)
+  cat("Only one estuary section is available. Model fitting was skipped.\n\n")
+}
+#
+# Model output
+if(exists("SR_model") && !is.null(SR_model)){
+  SR_model_tab <- car::Anova(SR_model, type = 3) %>%
+    broom::tidy() %>% 
+    as.data.frame() %>%
+    mutate(statistic = round(statistic, 3),
+           p.value = round(p.value, 3))
+  SR_cld <- SR_summ_sec
+  
+   p <- SR_cld %>%
+        ggplot(aes(SectionName, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        scale_fill_viridis_d()+
+        basetheme
+   
+  } else {
+     p <- SR_summ_sec %>%
+        ggplot(aes(SectionName, meanLive))+
+        geom_bar(stat = "identity")+
+        geom_errorbar(aes(ymin = meanLive, ymax = meanLive + seLive), width = 0.25)+
+        scale_x_discrete(expand = c(0.05,0.1))+
+        scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+        basetheme 
+  }
+#
+#
+if(exists("SR_model_tab")){
+  SR_model_tab %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Section model results")
+}
+
+p
+
+## Summary info
+SR_sec_min <- SR_summ_sec %>% slice_min(meanLive, n = 1, with_ties = TRUE)
+SR_sec_max <- SR_summ_sec %>% slice_max(meanLive, n = 1, with_ties = TRUE)
+SR_sec_mean <- SR_summ_sec %>% ungroup() %>% summarise(mean = mean(meanLive, na.rm = T),
+                                               sd = sd(meanLive, na.rm = T))
+if(exists("SR_model_tab")){
+  pValue <- car::Anova(All_model, type = 3) %>%
+     broom::tidy() %>% 
+     as.data.frame()
+} else {
+  pValue <- NULL
+}
+#
+#
+```
+\
+\
+**Summary:**
+The mean number of live oysters surveyed in `r unique(SR_summ$Estuary)` ranged from `r round(SR_sec_min$meanLive,1)` oysters/m2 in `r SR_sec_min$SectionName` to `r round(SR_sec_max$meanLive,1)` oysters/m2 in `r SR_sec_max$SectionName` with an overall average of `r round(SR_sec_mean$mean,1)` +/- `r round(SR_sec_mean$sd, 1)` oysters/m2. Mean live oyster density `r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` among estuary sections `r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+\
+\
+```{r SR sections annual plot, echo = FALSE, fig.align='center'}
+Section_Ann_summ %>%
+  filter(Estuary == "SR") %>%
+  ggplot(aes(Year, meanLive, group = SectionName))+
+  geom_line(aes(color = SectionName), linewidth = 1.5)+
+  geom_point(aes(color = SectionName), size = 3)+
+  scale_x_discrete(expand = c(0.01,0.1))+
+  scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
+  scale_colour_viridis_d("Section")+
+  ggtitle("Annual mean oysters/m2 per section")+
+  basetheme + theme(axis.text.x = element_text(angle = 45))
+```
+
+### {-}
