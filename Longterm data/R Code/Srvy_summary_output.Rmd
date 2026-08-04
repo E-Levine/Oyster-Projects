@@ -116,6 +116,27 @@ SHs_raw <- read_excel("../Data/Srvy_data_clean_ELW.xlsx", sheet = "ShellHeights"
 ```{r Data checks, echo = FALSE, results ="asis", fig.align='center', fig.dim=c(14, 8)}
 #
 cat("**FIXED STATIONS**")
+cat("<br>Summary information:<br>")
+Quads_sf %>% 
+  filter(SrvyType == "Fixed") %>%
+  group_by(Estuary) %>%
+  summarise(Start = min(Year),
+            End = max(Year)) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything())
+cat("<br>")
+Quads_sf %>% 
+  filter(SrvyType == "Fixed") %>%
+  group_by(Estuary, Year, Quarter) %>%
+  summarise(Quads = max(as.numeric(QuadratNumber))) %>%
+  arrange(Year) %>%
+  pivot_wider(names_from = Year, values_from = Quads) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  sub_missing()
+cat("<br>Notes: 
+    <br> AB: Some surevys were less than 10 quads in 2015
+    <br> 2007 BB, LX, LW, ML, SL, SR, TB counts performed for 1/4, 3/4, and 1 m2 quads, adjusted to fit schema: Quads 11-20 from 3/4, 21-30 from 1m2. 1-10 are 1/4m2")
 cat("<br><br>*Check for empty data and small sample sizes within years and quarters.*<br>")
 xtabs(~Estuary + Year, data = Quads_sf %>% filter(SrvyType == "Fixed")) %>% 
   as.data.frame() %>%
@@ -530,7 +551,7 @@ model_cld <- suppressMessages(
                 dplyr::select(-minLive, -maxLive), 
               multcomp::cld(
                 emmeans(model5, ~ Estuary, type = "response"),
-                Letters = letters, adjust = "sidak") %>%
+                Letters = letters, adjust = "tukey") %>%
                 as.data.frame() %>%
                 rename(Group = .group) %>%
                 mutate(Group = stringr::str_trim(Group)) %>%
@@ -622,12 +643,15 @@ confint(emmeans(model5, ~ Estuary, type = "response")) %>%
   fmt_number(
     decimals = 3) %>%
   sub_missing()
-confint(emmeans(model5, ~ Estuary, type = "response")) %>%
-  ggplot(aes(Estuary, response))+
+confint(emmeans(model5, ~ Estuary, type = "response")) %>% 
+  left_join(model_cld %>% dplyr::select(Estuary, Group)) %>%
+  ggplot(aes(Estuary, response, color = Group))+
   geom_point(size = 4)+
-  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), width = 0.25) + 
+  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), width = 0.25, linewidth = 1) +
+  geom_text(aes(y = asymp.UCL, label = Group), vjust = -0.75, size = 5, show.legend = FALSE)+
   basetheme + scale_x_discrete(expand =  c(0,0))+ 
-  scale_y_continuous("Estimated marginal means", expand = c(0,0),limits = c(0, 2000))
+  scale_y_continuous("Estimated mean live oysters/m2", expand = c(0,0),limits = c(0, 2500))+
+  scale_color_viridis_d() + theme(legend.position = "none")
 cat("<br><br>*Pairwise comparisons*: Correction for multiple comparisons.
     <br>")
 pairs(emmeans(model5, ~ Estuary, type = "response"), adjust = "tukey") %>% 
@@ -691,11 +715,19 @@ confint(emmeans(model5, ~ Quarter, type = "response")) %>%
   sub_missing()
 cat("<br>")
 confint(emmeans(model5, ~ Quarter, type = "response")) %>%
-  ggplot(aes(Quarter, response))+
+  left_join(multcomp::cld(emmeans(model5, ~ Quarter, type = "response"),
+                Letters = letters, adjust = "tukey") %>%
+                as.data.frame() %>%
+                rename(Group = .group) %>%
+                mutate(Group = stringr::str_trim(Group)) %>%
+                dplyr::select(Quarter, Group)) %>%
+  ggplot(aes(Quarter, response, color = Group))+
   geom_point(size = 4)+
   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), width = 0.25) + 
+  geom_text(aes(y = asymp.UCL, label = Group), vjust = -0.75, size = 5, show.legend = FALSE)+
   basetheme + scale_x_discrete(expand =  c(0.25,0))+ 
-  scale_y_continuous("Estimated marginal means", expand = c(0,0),limits = c(0, 300))
+  scale_y_continuous("Estimated mean live oysters/m2", expand = c(0,0),limits = c(0, 400))+
+  scale_color_viridis_d() + theme(legend.position = "none")
 cat("<br><br>*Pairwise comparisons*: Correction for multiple comparisons.
     <br>")
 pairs(emmeans(model5, ~ Quarter, type = "response"), adjust = "tukey") %>% 
@@ -767,13 +799,21 @@ confint(emmeans(model5, ~ Estuary|Quarter, type = "response")) %>%
   sub_missing()
 cat("<br>")
 confint(emmeans(model5, ~ Estuary|Quarter, type = "response")) %>%
+  left_join( multcomp::cld(
+                emmeans(model5, ~ Estuary|Quarter, type = "response"),
+                Letters = letters, adjust = "tukey") %>%
+                as.data.frame() %>%
+                rename(Group = .group) %>%
+                mutate(Group = stringr::str_trim(Group)) %>%
+                dplyr::select(Estuary, Quarter, Group)) %>%
   ggplot(aes(Estuary, response, color = Estuary))+
   geom_point(size = 5)+
-  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), width = 0.25, linewdith = 1.5) + 
+  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), width = 0.25, linewdith = 1.5)+
+  geom_text(aes(y = asymp.UCL, label = Group), vjust = -0.75, size = 5, show.legend = FALSE)+
   lemon::facet_rep_grid(.~Quarter)+
   basetheme + scale_x_discrete(expand =  c(0.05,0))+ 
-  scale_y_continuous("Estimated marginal means", expand = c(0,0),limits = c(0, 2000))+
-    scale_color_viridis_d()
+  scale_y_continuous("Estimated mean live oysters/m2", expand = c(0,0),limits = c(0, 2500))+
+    scale_color_viridis_d() + theme(legend.position = "none")
 cat("<br><br>*Pairwise comparisons*: Correction for multiple comparisons.
     <br>")
 pairs(emmeans(model5, ~ Estuary|Quarter, type = "response"), adjust = "tukey") %>% 

@@ -121,9 +121,15 @@ Quads_c <- Quads_raw %>%
                                TRUE ~ "Q3"),
            Estuary = substr(SampleEventID, 1, 2),
            FLID = substr(SampleEventID, 19, 22)) %>%
-    # Calculate total live/dead per m2. NOTE: 2005-2007 used 1m2, 2008+ used 1/4m2
-    mutate(TotalLive = as.numeric(case_when(Year == "2005" | Year == "2006" | Year == "2007" ~ NumLive, TRUE ~ NumLive*4)),
-           TotalDead = as.numeric(case_when(Year == "2005" | Year == "2006" | Year == "2007" ~ NumDead, TRUE ~ NumDead*4))) %>%
+    # Calculate total live/dead per m2. NOTE: 2005-2007 used 1/4-1m2, 2008+ used 1/4m2
+    mutate(TotalLive = as.numeric(case_when(
+      (Year == "2005" | Year == "2006" | Year == "2007") & (QuadratNumber > 20) ~ NumLive, 
+      (Year == "2005" | Year == "2006" | Year == "2007") & (QuadratNumber > 10 & QuadratNumber < 21) ~ NumLive*(4/3), 
+      TRUE ~ NumLive*4)),
+           TotalDead = as.numeric(case_when(
+             (Year == "2005" | Year == "2006" | Year == "2007") & (QuadratNumber > 20) ~ NumDead,
+             (Year == "2005" | Year == "2006" | Year == "2007") & (QuadratNumber > 10 & QuadratNumber < 21) ~ NumDead*(4/3),
+             TRUE ~ NumDead*4))) %>%
     #Add DeadRatio 
     mutate(Total = NumLive+NumDead,
            DeadRatio = as.numeric(case_when(Total == 0 ~ 0, TRUE ~ NumDead/Total))) %>%
