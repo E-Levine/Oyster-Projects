@@ -39,10 +39,12 @@ basetheme <- theme_bw()+
         # Remove grid lines and box around plot
         panel.grid = element_blank(), 
         panel.border = element_blank(), 
+        plot.margin = margin(t = 10, r = 15, b = 5, l = 5, unit = "pt"),
         # Modify axes
         axis.line = element_line(color = "black"),
         axis.ticks.length = unit(-0.15, "cm"))
 #
+facettheme <- theme(strip.text = element_text(size = 12, face = "bold", color = "black", family = "serif"))
 # Uniform scaling
 adaptive_discrete_breaks <- function(categories) {
   n_breaks <- length(categories)
@@ -388,7 +390,11 @@ Fixed_counts %>% ungroup() %>%
 \
 \
 
-## Statewide
+# Statewide
+
+## Analayses {.tabset}
+
+### Model comps 
 
 ```{r Fixed Estuary model comps, echo = FALSE, fig.align='center', results ="asis"}
 #
@@ -606,6 +612,8 @@ cat("<br><br>")
 #
 #
 ```
+
+### Model post-hoc
 
 ```{r Fixed Estuary model posthoc, echo = FALSE, fig.align='center', results ="asis"}
 #
@@ -872,13 +880,28 @@ confint(emmeans(model5, ~ Quarter|Estuary, type = "response")) %>%
   sub_missing()
 cat("<br>")
 confint(emmeans(model5, ~ Quarter|Estuary, type = "response")) %>%
+  left_join(pairs(emmeans(model5, ~ Quarter|Estuary, type = "response"), adjust = "tukey") %>% 
+     as.data.frame() %>% 
+       group_by(Estuary) %>%
+       summarise(p.value = min(p.value), .groups = "drop") %>%
+     mutate(
+         Significance = case_when(
+             p.value < 0.001 ~ "***",
+             p.value < 0.01  ~ "**",
+             p.value < 0.05  ~ "*",
+             TRUE            ~ ""
+         ),
+         x = (1 + nlevels(factor(model_data$Quarter))) / 2, y = 1800
+     )) %>%
   ggplot(aes(Quarter, response, color = Quarter))+
   geom_point(size = 5)+
   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), width = 0.25, linewdith = 1.5) + 
+  geom_text(aes(x = x , y = y, label = Significance), vjust = -0.7, color = "black", size = 6)+
   lemon::facet_rep_grid(.~Estuary)+
-  basetheme + scale_x_discrete(expand =  c(0.15,0))+ 
+  basetheme + scale_x_discrete(expand =  c(0.4,0))+ 
   scale_y_continuous("Estimated marginal means", expand = c(0,0),limits = c(0, 2000))+
-  scale_color_viridis_d()
+  scale_color_viridis_d(begin = 0.1, end = 0.8) + theme(panel.spacing.x =  unit(0.01, "cm"), legend.position = "none") +
+  facettheme
 cat("<br><br>*Pairwise comparisons*: Correction for multiple comparisons.
     <br>")
 pairs(emmeans(model5, ~ Quarter|Estuary, type = "response"), adjust = "tukey") %>% 
@@ -979,15 +1002,8 @@ cat("<br><br><br><br>")
 #
 ```
 
-```{r Fixed estaury model comps, echo = FALSE, results='asis', fig.align='center'}
-#
-#
+## {-}
 
-#
-#m3 outlier n.s., dispersion 0.04, KS 0, zi 1.0535 p = 0.008 
-#m5 outlier n.s., dispersion 0.024, KS 0, zi 1.0554 p = 0.016 
-#
-```
 \
 **Summary:**
 The mean number of live oysters surveyed ranged from 
@@ -1002,15 +1018,12 @@ with an overall average of
 `r round(model_mean$mean,1)` 
 +/- 
 `r round(model_mean$sd, 1)` 
-oysters/m2. Mean live oyster density 
-`r if(!is.null(pValue) && pValue$p.value[2] < 0.5){paste("varied significantly")} else {paste("did not vary significantly")}` 
-among estuaries 
-`r if(!is.null(pValue) && pValue$p.value[2] < 0.001){paste("(p < 0.001)")} else if(is.null(pValue)){""} else {paste0("(p = ",round(pValue$p.value[2], 3), ")")}`.
+oysters/m2. 
 \
 \
-
 ```{r All estuaries annual plot,  echo = FALSE, fig.align='center', results='asis'}
 Fixed_Annual_summ %>%
+  complete(Estuary, Year) %>%
   group_by(Year, Estuary) %>%
   summarise(mean = mean(meanLive, na.rm = T),
             sd = sd(meanLive, na.rm = T)) %>%
@@ -1020,6 +1033,1595 @@ Fixed_Annual_summ %>%
   scale_y_continuous("Average live oysters per m2", limits = c(0, NA), expand = expansion(mult = c(0,0.05)))+
   scale_colour_viridis_d(option = "H")+
   ggtitle("Annual mean oysters/m2 per estuary")+
-  basetheme + theme(axis.text.x = element_text(angle = 45))
+  basetheme + theme(axis.text.x = element_text(angle = 45, vjust = 0.8))
 cat("<br><br>")
 ```
+
+
+# Panhandle estuaries 
+
+## Apalachicola Bay {.tabset}
+
+### Estuary-wide
+
+```{r Apalachicola estuary comps, echo = FALSE, fig.align='center', results ="asis"}
+#
+cat("**Background information:**<br>")
+# Annual means
+AB_annual_data <- Fixed_counts %>%
+  # Group by all columns needed in data output
+  filter(Estuary == "AB") %>%
+  group_by(Year) %>%
+  summarise(Samples = n(),
+            # Live
+            meanLive = mean(Live, na.rm = TRUE),
+            sdLive = sd(Live, na.rm = TRUE),
+            seLive   = sdLive / sqrt(n()),
+            minLive = min(Live, na.rm = TRUE),
+            maxLive = max(Live, na.rm = TRUE),
+            .groups = "drop")
+#
+# Annual means table
+AB_annual_data %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density")
+#
+# Model data:
+AB_model_data <- Fixed_counts %>% 
+    filter(Estuary == "AB") %>%
+  dplyr::select(Year, Quarter, Estuary, SectionName, StationNumber, QuadratNumber, Live) %>%
+  drop_na() %>%
+     mutate(SectionID = interaction(Estuary, SectionName, drop = TRUE),
+            StationID = interaction(Estuary, SectionName, StationNumber, drop = TRUE),
+            Year_n = as.integer(Year),
+            Year_c = Year_n - mean(Year_n, na.rm = TRUE))
+#
+cat("<br>")
+ggplot(AB_model_data, aes(x = Year_n, y = Live)) +
+  geom_jitter(width = 0.15, height = 0, alpha = 0.25) +
+  geom_smooth(method = "lm", se = FALSE) +
+  XYscales_cc+
+  labs(x = "Year",
+       y = "Live oysters",
+       title = "Raw means - linear") +
+  basetheme
+cat("<br>")
+AB_years <- AB_model_data %>%
+  group_by(Year_n) %>%
+  summarise(
+    n = n(),
+    meanLive = mean(Live, na.rm = TRUE),
+    sdLive = sd(Live, na.rm = TRUE),
+    .groups = "drop"
+  )
+ggplot(AB_years, 
+       aes(Year_n, meanLive)) +
+  geom_point(aes(size = n)) +
+  geom_line() +
+  labs(x = "Year_n",
+       y = "Mean live oysters",
+       title = "Annual means trends") +
+  basetheme
+cat("<br>")
+AB_model_data %>%
+  group_by(Year) %>%
+  summarise(n = n(),
+            zeros = sum(Live == 0, na.rm = TRUE),
+            zero_pct = mean(Live == 0, na.rm = TRUE) * 100,
+            mean = mean(Live, na.rm = TRUE),
+            .groups = "drop") %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Amount of 0s")
+#
+cat("<br><br><br>
+  **Analyses:** <br>
+    GLMM model with negative binomial distribution, log link
+    Fixed effects - Year, Quarter <br>
+    Random effects - Station (sampling unit)<br>
+    Year = continuous to identify trend. Centered to interpret trend at middle timepoint of surveys. <br>")
+#
+#
+cat("<br>*Has density changed over time?*<br>")
+set.seed(54321)
+# Starting model
+ABm0 <- suppressWarnings(
+  glmmTMB::glmmTMB(Live ~ Year_c + Quarter +  (1 | SectionID) + (1|StationID), 
+                   family = nbinom2, data = AB_model_data)
+)
+# zero-inflation
+ABm01 <- suppressWarnings(
+  glmmTMB::glmmTMB(Live ~ Year_c + Quarter +  (1 | SectionID) + (1|StationID), 
+                   ziformula = ~ Quarter,
+                   family = nbinom2, data = AB_model_data)
+)
+AIC(ABm0, ABm01) %>% 
+  rownames_to_column() %>% 
+  gt() %>% 
+  tab_header(
+    title = "Standard vs 0-inflated")
+cat("<br>")
+# Model assessment
+cat("<br> **Estuary model assessment:** ABm01<br>
+    Residuals:<br>")
+sim <- DHARMa::simulateResiduals(ABm01)
+plot(sim)
+cat("<br>")
+cat("Overdispersion:<br>
+    Dispersion ratio > 1 → overdispersion <br>
+    Dispersion ratio < 1 → underdispersion <br><br>")
+DHARMa::testDispersion(sim)
+cat("<br>")
+DHARMa::testZeroInflation(sim)
+cat("<br>")
+temp <- DHARMa::testOutliers(sim)
+cat("<br>")
+DHARMa::plotResiduals(ABm01, AB_model_data$Year_n)
+cat("<br>")
+DHARMa::plotResiduals(ABm01, AB_model_data$Quarter)
+cat("<br>")
+temp$statistic
+cat("<br>Parameter: ")
+temp$parameter
+cat("<br>p_value: ")
+temp$p.value
+cat("<br>Conf int: ")
+temp$conf.int
+cat("<br><br><br>")
+#model summ
+AB_model_tab_E <- car::Anova(ABm01, type = 2) %>%
+  broom::tidy() %>% 
+  as.data.frame() %>%
+  mutate(statistic = round(statistic, 3),
+         p.value = round(p.value, 3))
+#
+# 
+#
+AB_model_tab_E %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Apalachicola estuary-wide model results")
+#
+#
+cat("<br><br>")
+cat("<br> **Model post-hoc:**
+    <br><u>Q: Has oyster abundance changed over time after accounting for Quarter?</u>
+    <br>")
+#
+cat("<br><br>*Estimated marginal means*: Adjusted means accounting for quarter, random effects, and zero-inflation.
+    <br>")
+summary(emtrends(ABm01, ~ 1, var = "Year_c"), type = "response") %>%
+  as.data.frame() %>%
+  mutate(annual_pct_change =
+      (exp(Year_c.trend) - 1) * 100) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing() %>%
+  tab_header(
+    title = "Emmeans on response scale:")
+#
+test(emtrends(ABm01, ~ 1, var = "Year_c"), null = 0)
+cat("<br>There is evidence of an overall increasing temporal trend.<br>")
+#
+pairs(emmeans(ABm01, ~ Year_c, at = list(
+  Year_c = c(  min(AB_model_data$Year_c),
+               max(AB_model_data$Year_c))),
+  type = "response"), 
+  adjust = "none") %>% 
+  as.data.frame() %>% 
+   mutate(
+    Significance = case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01  ~ "**",
+      p.value < 0.05  ~ "*",
+      TRUE            ~ ""
+    )
+  ) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing() %>%
+  tab_header(
+    title = "Trend significance")
+#
+cat("<br><br>")
+AB_model_data %>% 
+  dplyr::select(Year, Year_n, Year_c) %>% 
+  distinct() %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything())
+#
+cat("<br><br>")
+#
+AB_Epred <- ggeffects::ggpredict(ABm01, terms = c("Year_c [all]")) %>% 
+  as.data.frame() %>%
+  mutate(Year_n = round(x + mean(AB_model_data$Year_n, na.rm = TRUE))) %>%
+  left_join(AB_model_data %>%
+              distinct(Year_n, Year = as.numeric(paste(Year))) %>%
+              arrange(Year_n), 
+            by = "Year_n")
+#
+AB_Epred %>%
+  ggplot(aes(Year, predicted))+
+  #geom_jitter(data = AB_model_data,
+  #            aes(x = Year_n, y = Live, color = SectionID),
+  #            width = 0.15, height = 0, alpha = 0.15, inherit.aes = FALSE)+
+  geom_line(linewidth = 1.5)+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.25, color = NA)+
+  #lemon::facet_rep_grid(Section~.)+
+  scale_x_continuous("Year", expand = c(0.01,0), limits = c(2005, 2025), breaks = seq(2005, 2025, by = 2))+
+  scale_y_continuous("Estimated live oysters per m2", limits = c(0, 100), expand = c(0,0))+
+  basetheme
+#
+#
+#
+#
+```
+
+### Sections (linear)
+
+```{r Apalachicola model comps, echo = FALSE, fig.align='center', results ="asis"}
+#
+cat("**Background information:**<br>")
+# Annual means
+AB_annual_data <- Fixed_counts %>%
+  # Group by all columns needed in data output
+  filter(Estuary == "AB") %>%
+  group_by(Year) %>%
+  summarise(Samples = n(),
+            # Live
+            meanLive = mean(Live, na.rm = TRUE),
+            sdLive = sd(Live, na.rm = TRUE),
+            seLive   = sdLive / sqrt(n()),
+            minLive = min(Live, na.rm = TRUE),
+            maxLive = max(Live, na.rm = TRUE),
+            .groups = "drop")
+#
+# Annual means table
+AB_annual_data %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density")
+#
+# Model data:
+AB_model_data <- Fixed_counts %>% 
+    filter(Estuary == "AB") %>%
+  dplyr::select(Year, Quarter, Estuary, SectionName, StationNumber, QuadratNumber, Live) %>%
+  drop_na() %>%
+     mutate(SectionID = interaction(Estuary, SectionName, drop = TRUE),
+            StationID = interaction(Estuary, SectionName, StationNumber, drop = TRUE),
+            Year_n = as.integer(Year),
+            Year_c = Year_n - mean(Year_n, na.rm = TRUE))
+#
+cat("<br>")
+AB_model_data %>%
+  count(SectionID, Year) %>%
+  pivot_wider(
+    names_from = Year,
+    values_from = n,
+    values_fill = 0
+  ) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  tab_header(
+    title = "Annual observations per Section")
+cat("<br>")
+AB_model_data %>%
+  distinct(SectionID, StationID) %>%
+  count(SectionID, name = "Stations") %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  tab_header(
+    title = "Stations per Section")
+cat("<br>")
+AB_model_data %>%
+  count(SectionID, name = "Observations") %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  tab_header(
+    title = "Observations per Section")
+cat("<br>")
+ggplot(AB_model_data, aes(x = Year_n, y = Live)) +
+  geom_jitter(width = 0.15, height = 0, alpha = 0.25) +
+  geom_smooth(aes(group = SectionID), method = "lm", se = FALSE) +
+  XYscales_cc+
+  lemon::facet_rep_grid(.~SectionID) +
+  labs(x = "Year",
+       y = "Live oysters",
+       title = "Raw means - linear") +
+  basetheme +facettheme
+cat("<br>")
+cat("<br>")
+AB_year <- AB_model_data %>%
+  group_by(SectionID, Year_n) %>%
+  summarise(
+    n = n(),
+    meanLive = mean(Live, na.rm = TRUE),
+    sdLive = sd(Live, na.rm = TRUE),
+    .groups = "drop"
+  )
+ggplot(AB_year, 
+       aes(Year_n, meanLive, group = SectionID)) +
+  geom_point(aes(size = n)) +
+  geom_line() +
+  lemon::facet_rep_grid(SectionID~.) +
+  labs(x = "Year_n",
+       y = "Mean live oysters",
+       title = "Annual means trends") +
+  basetheme+facettheme
+cat("<br>")
+AB_model_data %>%
+  group_by(SectionID) %>%
+  summarise(n = n(),
+            zeros = sum(Live == 0, na.rm = TRUE),
+            zero_pct = mean(Live == 0, na.rm = TRUE) * 100,
+            mean = mean(Live, na.rm = TRUE),
+            .groups = "drop") %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Amount of 0s")
+#
+cat("<br><br><br>
+  **Analyses:** <br>
+    Fixed effects - Section <br>
+    Random effects - Station (sampling unit)<br>
+    Year = continuous to identify trend. Centered to interpret trend at middle timepoint of surveys. <br>")
+#
+#
+cat("<br>*Do estuary Sections differ?*<br>")
+set.seed(54321)
+# Starting model
+ABm1 <- suppressWarnings(
+  glmmTMB::glmmTMB(Live ~ SectionID + Year_c + Quarter + (1|StationID), 
+                   family = nbinom2, data = AB_model_data)
+)
+# Test zero-inflated
+ABm2 <- suppressWarnings(
+  glmmTMB::glmmTMB(Live ~ SectionID + Year_c + Quarter + (1|StationID), 
+                   ziformula = ~ SectionID + Quarter,
+                   family = nbinom2, data = AB_model_data)
+)
+AIC(ABm1, ABm2) %>% 
+  rownames_to_column() %>% 
+  gt() %>% 
+  tab_header(
+    title = "Standard vs 0-inflated")
+cat("<br>")
+# Does the trend differ among Sections? (linear)
+ABm3 <- suppressWarnings(
+   glmmTMB::glmmTMB(Live ~ SectionID * Year_c + Quarter + (1 | StationID),
+                    ziformula = ~ SectionID + Quarter,
+                    family = nbinom2, data = AB_model_data)
+)
+anova(ABm2, ABm3) %>%   
+  rownames_to_column() %>% 
+  gt() %>%  
+  tab_header(
+    title = "Do Sections have different trends?")
+cat("<br>")
+# Splines for different trends? 
+ABm4 <- suppressWarnings(
+  glmmTMB::glmmTMB(Live ~ SectionID * splines::ns(Year_c, df = 3) + Quarter + (1 | StationID),
+                   ziformula = ~ SectionID + Quarter,
+                   family = nbinom2, data = AB_model_data)
+)
+AIC(ABm3, ABm4) %>% 
+  rownames_to_column() %>% 
+  gt() %>% 
+  tab_header(
+    title = "Linear vs Spline (df=3) trend?")
+#
+cat("<br>")
+anova(ABm3, ABm4) %>%   
+  rownames_to_column() %>% 
+  gt() %>%  
+  tab_header(
+    title = "Are splines better?")
+cat("<br>")
+#
+#
+#
+#
+```
+
+```{r Apalachicola linear model assessment, echo = FALSE, fig.align='center', results ="asis"}
+# Model assessment
+cat("<br> **Linear model assessment:**<br>
+    Residuals:<br>")
+sim <- DHARMa::simulateResiduals(ABm3)
+plot(sim)
+cat("<br>")
+cat("Overdispersion:<br>
+    Dispersion ratio > 1 → overdispersion <br>
+    Dispersion ratio < 1 → underdispersion <br><br>")
+DHARMa::testDispersion(sim)
+cat("<br>")
+DHARMa::testZeroInflation(sim)
+cat("<br>")
+temp <- DHARMa::testOutliers(sim)
+cat("<br>")
+DHARMa::plotResiduals(ABm3, AB_model_data$Year_n)
+cat("<br>")
+DHARMa::plotResiduals(ABm3, AB_model_data$SectionID)
+cat("<br>")
+temp$statistic
+cat("<br>Parameter: ")
+temp$parameter
+cat("<br>p_value: ")
+temp$p.value
+cat("<br>Conf int: ")
+temp$conf.int
+cat("<br><br><br>")
+#model summ
+AB_model_tab_L <- car::Anova(ABm3, type = 2) %>%
+  broom::tidy() %>% 
+  as.data.frame() %>%
+  mutate(statistic = round(statistic, 3),
+         p.value = round(p.value, 3))
+#
+# 
+#
+AB_model_tab_L %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Apalachicola model results")
+#
+#
+cat("<br><br>")
+#
+#
+```
+
+```{r Apalachicola linear model posthoc, echo = FALSE, fig.align='center', results ="asis"}
+#
+cat("<br> **Linear Model post-hoc:**
+    <br><u>Q: Does oyster abundance differ among Sections after accounting for Year and Quarter?</u>
+    <br>")
+#
+cat("<br><br>*Estimated marginal means*: Adjusted means accounting for year, quarter, random effects, and zero-inflation.
+    <br>")
+summary(emtrends(ABm3, ~ SectionID, var = "Year_c"), type = "response") %>%
+  as.data.frame() %>%
+  mutate(annual_pct_change =
+      (exp(Year_c.trend) - 1) * 100) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing() %>%
+  tab_header(
+    title = "Emmeans on response scale:")
+#
+cat("<br>")
+pairs(emtrends(ABm3, ~ SectionID, var = "Year_c"), adjust = "tukey") %>% 
+  as.data.frame() %>% 
+   mutate(
+    Significance = case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01  ~ "**",
+      p.value < 0.05  ~ "*",
+      TRUE            ~ ""
+    )
+  ) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing() %>%
+  tab_header(
+    title = "Which sections have different trends?")
+#
+#
+#
+cat("<br><br><u>Q: Is oyster density increasing or decreasing over time within Sections?</u>:<br>")
+test(emtrends(ABm3, ~ SectionID, var = "Year_c"), null = 0) %>%
+  as.data.frame() %>%
+     mutate(annual_percent_change =
+                (exp(Year_c.trend) - 1) * 100) %>%
+  dplyr::select(SectionID, annual_percent_change, p.value) %>%
+     gt() %>%
+     cols_align(align = c("center"), columns = everything()) %>%
+     fmt_number(
+         decimals = 3) %>%
+     sub_missing() 
+#
+cat("<br><br>")
+#
+AB_model_data %>%
+  group_by(SectionID) %>%
+  summarise(
+    min_year = min(Year_n, na.rm = TRUE),
+    max_year = max(Year_n, na.rm = TRUE),
+    n_years = n_distinct(Year_n)) %>% 
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing() %>%
+  tab_header(
+    title = "Years surveyed per Section")
+
+#
+AB_year <- AB_model_data %>%
+  group_by(SectionID, Year_c) %>%
+  summarise(
+    n = n(),
+    meanLive = mean(Live, na.rm = TRUE),
+    sdLive = sd(Live, na.rm = TRUE),
+    .groups = "drop"
+  )
+#
+ggplot(AB_model_data, aes(Year_c, Live)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(aes(group = SectionID), method = "loess", se = TRUE) +
+  facet_wrap(~ SectionID) +
+  basetheme
+#
+AB_pred <- ggeffects::ggpredict(ABm3, terms = c("Year_c [minmax]", "SectionID")) %>% 
+  as.data.frame() %>%
+  #Year range covered by each section 
+  left_join(AB_model_data %>%
+              group_by(SectionID) %>%
+              summarise(
+                min_year = min(Year_n, na.rm = TRUE),
+                max_year = max(Year_n, na.rm = TRUE),
+                .groups = "drop"
+              ), by = c("group" = "SectionID")) %>%
+  mutate(Year_n = round(x + mean(AB_model_data$Year_n, na.rm = TRUE))) %>%
+  # Filter to data covered ranges
+  filter(
+    Year_n >= min_year,
+    Year_n <= max_year
+  ) %>%
+  mutate(Year_n = round(x + mean(AB_model_data$Year_n, na.rm = TRUE))) %>%
+  left_join(AB_model_data %>%
+              distinct(Year_n, Year = as.numeric(paste(Year))) %>%
+              arrange(Year_n), 
+            by = "Year_n")
+#
+AB_pred %>%
+  mutate(Section = case_when(group == "AB.C" ~ "Central",
+                           group == "AB.E" ~ "East",
+                           group == "AB.W" ~ "West",
+                           TRUE ~ "Unk")) %>%
+  ggplot(aes(Year, predicted, color = Section, fill = Section))+
+  geom_line(linewidth = 1.5)+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.25, color = NA)+
+  scale_x_continuous("Year", expand = c(0.01,0), limits = c(2005, 2025), breaks = seq(2005, 2025, by = 2))+
+  scale_y_continuous("Estimated live oysters per m2", limits = c(0, 150), expand = c(0,0))+
+  scale_fill_viridis_d(begin = 0.1, end = 0.8)+  scale_color_viridis_d(begin = 0.1, end = 0.8)+
+  basetheme
+cat("<br><br>")
+p1 <- ggarrange(
+  AB_Epred %>%
+  ggplot(aes(Year, predicted))+
+  geom_line(linewidth = 1.5)+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.25, color = NA)+
+  scale_x_continuous("Year", expand = c(0.01,0), limits = c(2005, 2025), breaks = seq(2005, 2025, by = 2))+
+  scale_y_continuous("Estimated live oysters per m2", limits = c(0, 150), expand = c(0,0))+
+  scale_fill_viridis_d(begin = 0.1, end = 0.8)+  scale_color_viridis_d(begin = 0.1, end = 0.8)+
+  basetheme+ rremove("x.title") + rremove("y.title"),
+  AB_pred %>%
+  mutate(Section = case_when(group == "AB.C" ~ "Central",
+                           group == "AB.E" ~ "East",
+                           group == "AB.W" ~ "West",
+                           TRUE ~ "Unk")) %>%
+  ggplot(aes(Year, predicted, color = Section, fill = Section))+
+  geom_line(linewidth = 1.5)+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.25, color = NA)+
+  scale_x_continuous("Year", expand = c(0.01,0), limits = c(2005, 2025), breaks = seq(2005, 2025, by = 2))+
+  scale_y_continuous("Estimated live oysters per m2", limits = c(0, 150), expand = c(0,0))+
+  scale_fill_viridis_d(begin = 0.1, end = 0.8)+  scale_color_viridis_d(begin = 0.1, end = 0.8)+
+  basetheme+
+    theme(legend.position = "top", legend.direction = "horizontal") + rremove("y.title"),
+  nrow = 2, ncol = 1, heights = c(1, 1.2)
+)
+annotate_figure(p1, left = text_grob("Estimated live oysters per m2", rot = 90, face = "bold", family = "serif", color = "black", size = 14))
+AB_pred %>%
+  mutate(Section = case_when(group == "AB.C" ~ "Central",
+                           group == "AB.E" ~ "East",
+                           group == "AB.W" ~ "West",
+                           TRUE ~ "Unk")) %>%
+  ggplot(aes(Year, predicted, color = Section, fill = Section))+
+  geom_line(linewidth = 1.5)+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.25, color = NA)+
+  #Estuary-wide
+  geom_line(data = AB_Epred, aes(Year, predicted), color = "black", linewidth = 1.5, inherit.aes = FALSE)+
+  geom_ribbon(data = AB_Epred, aes(Year, ymin = conf.low, ymax = conf.high), fill = "black", alpha = 0.25, color = NA, inherit.aes = FALSE)+
+  scale_x_continuous("Year", expand = c(0.01,0), limits = c(2005, 2025), breaks = seq(2005, 2025, by = 2))+
+  scale_y_continuous("Estimated live oysters per m2", limits = c(0, 150), expand = c(0,0))+
+  scale_fill_viridis_d(begin = 0.1, end = 0.8)+  scale_color_viridis_d(begin = 0.1, end = 0.8)+
+  basetheme
+#
+cat("<br><br><br><br>") 
+#
+#
+```
+
+### Sections (spline)
+
+```{r Apalachicola spline model assessment, echo = FALSE, fig.align='center', results ="asis"}
+# Model assessment
+cat("<br><br>")
+cat("<br> **Spline model assessment:**<br>
+    Residuals:<br>")
+sim <- DHARMa::simulateResiduals(ABm4)
+plot(sim)
+cat("<br>")
+cat("Overdispersion:<br>
+    Dispersion ratio > 1 → overdispersion <br>
+    Dispersion ratio < 1 → underdispersion <br><br>")
+DHARMa::testDispersion(sim)
+cat("<br>")
+DHARMa::testZeroInflation(sim)
+cat("<br>")
+temp <- DHARMa::testOutliers(sim)
+cat("<br>")
+DHARMa::plotResiduals(ABm4, AB_model_data$Year_n)
+cat("<br>")
+DHARMa::plotResiduals(ABm4, AB_model_data$SectionID)
+cat("<br>")
+temp$statistic
+cat("<br>Parameter: ")
+temp$parameter
+cat("<br>p_value: ")
+temp$p.value
+cat("<br>Conf int: ")
+temp$conf.int
+cat("<br><br><br>")
+#model summ
+AB_model_tab_S <- car::Anova(ABm4, type = 2) %>%
+  broom::tidy() %>% 
+  as.data.frame() %>%
+  mutate(statistic = round(statistic, 3),
+         p.value = round(p.value, 3))
+#
+# 
+#
+AB_model_tab_S %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Apalachicola model results")
+#
+#
+```
+
+```{r Apalachicola spline model posthoc, echo = FALSE, fig.align='center', results ="asis"}
+#
+cat("<br> **Spline Model post-hoc:**
+    <br><u>Q: Does oyster abundance differ among Sections after accounting for Year and Quarter?</u>
+    <br>")
+#
+cat("<br><br>*Estimated marginal means*: Adjusted means accounting for year, quarter, random effects, and zero-inflation. At each year, which Sections differed in estimated live oyster density?
+    <br>")
+AB_years <- c(min(AB_model_data$Year_n, na.rm = TRUE),
+              median(AB_model_data$Year_n, na.rm = TRUE),
+              max(AB_model_data$Year_n, na.rm = TRUE)) 
+AB_years <- AB_years -  mean(AB_model_data$Year_n, na.rm = TRUE)
+#
+emmeans::emmeans(ABm4, ~ SectionID | Year_c, at = list(Year_c = AB_years), type = "response") %>%
+  as.data.frame() %>%
+  mutate(Year_n = Year_c + mean(AB_model_data$Year_n, na.rm = TRUE)) %>%
+  left_join(AB_model_data %>%
+              distinct(Year_n, "Year"= as.numeric(paste(Year))) %>%
+              arrange(Year_n), 
+            by = c("Year_n" = "Year_n")) %>%
+  left_join(multcomp::cld(emmeans(ABm3, ~ SectionID | Year_c, at = list(Year_c = AB_years), type = "response"), 
+                          Letters = letters, adjust = "tukey") %>%
+              as.data.frame() %>%
+              rename(Group = .group) %>%
+                mutate(Group = stringr::str_trim(Group)) %>%
+                dplyr::select(SectionID, Year_c, Group)) %>%
+  dplyr::select(-Group, everything(), Group) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing() %>%
+  tab_header(
+    title = "Emmeans on response scale:")
+#
+cat("<br>")
+pairs(
+  emmeans(ABm4, ~ SectionID | Year_c, at = list(Year_c = AB_years), type = "response"),
+  adjust = "tukey") %>%
+  as.data.frame() %>%
+  mutate(
+    Significance = case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01  ~ "**",
+      p.value < 0.05  ~ "*",
+      TRUE            ~ ""
+    )
+  ) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing()
+#
+pairs(emmeans::emmeans(ABm4, ~ Year_c | SectionID, 
+                  at = list(Year_c = c(min(AB_model_data$Year_c),     
+                                       max(AB_model_data$Year_c))),
+                  type = "response"), adjust = "none") %>%
+  as.data.frame() %>%
+  mutate(
+    Significance = case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01  ~ "**",
+      p.value < 0.05  ~ "*",
+      TRUE            ~ ""
+    )
+  ) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing() %>%
+  tab_header(
+    title = "Start vs End estimated means comps:")
+#
+cat("<br>")
+AB_pred_s <- ggeffects::ggpredict(ABm4, terms = c("Year_c [all]", "SectionID")) %>%
+  as.data.frame() %>%
+  mutate(Year_n = round(x + mean(AB_model_data$Year_n, na.rm = TRUE),0),
+         Section = case_when(
+           group == "AB.C" ~ "Central",
+           group == "AB.E" ~ "East",
+           group == "AB.W" ~ "West",
+           TRUE ~ "Unknown"))
+#
+AB_pred_s %>%
+  left_join(AB_model_data %>%
+              distinct(Year_n, "Year"= as.numeric(paste(Year))) %>%
+              arrange(Year_n), 
+            by = c("Year_n" = "Year_n")) %>%
+  ggplot(aes(Year, predicted, color = Section, fill = Section)) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.20, color = NA) +
+  geom_line(linewidth = 1.5) +
+  scale_x_continuous("Year", breaks = scales::pretty_breaks(n = 8), expand = c(0.01, 0)) +
+  scale_y_continuous("Estimated live oyster density (oysters m⁻²)", limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
+  lemon::facet_rep_grid(Section~., scales = "free_y")+
+  labs(color = "Section",
+       fill = "Section") +
+  scale_fill_viridis_d(begin = 0.1, end = 0.8) +
+  scale_color_viridis_d(begin = 0.1, end = 0.8) +
+  basetheme +facettheme
+cat("<br><br>")
+#
+```
+
+## {-}
+
+
+# Gulf Coast estuaries 
+
+## Tampa Bay {.tabset}
+
+### Estuary-wide
+
+```{r Tampa estuary comps, echo = FALSE, fig.align='center', results ="asis"}
+#
+cat("**Background information:**<br>")
+# Annual means
+TB_annual_data <- Fixed_counts %>%
+  # Group by all columns needed in data output
+  filter(Estuary == "TB") %>%
+  group_by(Year) %>%
+  summarise(Samples = n(),
+            # Live
+            meanLive = mean(Live, na.rm = TRUE),
+            sdLive = sd(Live, na.rm = TRUE),
+            seLive   = sdLive / sqrt(n()),
+            minLive = min(Live, na.rm = TRUE),
+            maxLive = max(Live, na.rm = TRUE),
+            .groups = "drop")
+#
+# Annual means table
+TB_annual_data %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density")
+#
+# Model data:
+TB_model_data <- Fixed_counts %>% 
+    filter(Estuary == "TB") %>%
+  dplyr::select(Year, Quarter, Estuary, SectionName, StationNumber, QuadratNumber, Live) %>%
+  drop_na() %>%
+     mutate(SectionID = interaction(Estuary, SectionName, drop = TRUE),
+            StationID = interaction(Estuary, SectionName, StationNumber, drop = TRUE),
+            Year_n = as.integer(Year),
+            Year_c = Year_n - mean(Year_n, na.rm = TRUE))
+#
+cat("<br>")
+ggplot(TB_model_data, aes(x = Year_n, y = Live)) +
+  geom_jitter(width = 0.15, height = 0, alpha = 0.25) +
+  geom_smooth(method = "lm", se = FALSE) +
+  XYscales_cc+
+  labs(x = "Year",
+       y = "Live oysters",
+       title = "Raw means - linear") +
+  basetheme
+cat("<br>")
+TB_years <- TB_model_data %>%
+  group_by(Year_n) %>%
+  summarise(
+    n = n(),
+    meanLive = mean(Live, na.rm = TRUE),
+    sdLive = sd(Live, na.rm = TRUE),
+    .groups = "drop"
+  )
+ggplot(TB_years, 
+       aes(Year_n, meanLive)) +
+  geom_point(aes(size = n)) +
+  geom_line() +
+  labs(x = "Year_n",
+       y = "Mean live oysters",
+       title = "Annual means trends") +
+  basetheme
+cat("<br>")
+TB_model_data %>%
+  group_by(Year) %>%
+  summarise(n = n(),
+            zeros = sum(Live == 0, na.rm = TRUE),
+            zero_pct = mean(Live == 0, na.rm = TRUE) * 100,
+            mean = mean(Live, na.rm = TRUE),
+            .groups = "drop") %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Amount of 0s")
+#
+cat("<br><br><br>
+  **Analyses:** <br>
+    GLMM model with negative binomial distribution, log link
+    Fixed effects - Year, Quarter <br>
+    Random effects - Station (sampling unit)<br>
+    Year = continuous to identify trend. Centered to interpret trend at middle timepoint of surveys. <br>")
+#
+#
+cat("<br>*Has density changed over time?*<br>")
+set.seed(54321)
+# Starting model
+TBm0 <- suppressWarnings(
+  glmmTMB::glmmTMB(Live ~ Year_c + Quarter +  (1 | SectionID) + (1|StationID), 
+                   family = nbinom2, data = TB_model_data)
+)
+# zero-inflation
+TBm01 <- suppressWarnings(
+  glmmTMB::glmmTMB(Live ~ Year_c + Quarter +  (1 | SectionID) + (1|StationID), 
+                   ziformula = ~ Quarter,
+                   family = nbinom2, data = TB_model_data)
+)
+AIC(TBm0, TBm01) %>% 
+  rownames_to_column() %>% 
+  gt() %>% 
+  tab_header(
+    title = "Standard vs 0-inflated")
+cat("<br>")
+# Model assessment
+cat("<br> **Estuary model assessment:** TBm0<br>
+    Residuals:<br>")
+sim <- DHARMa::simulateResiduals(TBm0)
+plot(sim)
+cat("<br>")
+cat("Overdispersion:<br>
+    Dispersion ratio > 1 → overdispersion <br>
+    Dispersion ratio < 1 → underdispersion <br><br>")
+DHARMa::testDispersion(sim)
+cat("<br>")
+DHARMa::testZeroInflation(sim)
+cat("<br>")
+temp <- DHARMa::testOutliers(sim)
+cat("<br>")
+DHARMa::plotResiduals(TBm0, TB_model_data$Year_n)
+cat("<br>")
+DHARMa::plotResiduals(TBm0, TB_model_data$Quarter)
+cat("<br>")
+temp$statistic
+cat("<br>Parameter: ")
+temp$parameter
+cat("<br>p_value: ")
+temp$p.value
+cat("<br>Conf int: ")
+temp$conf.int
+cat("<br><br><br>")
+#model summ
+TB_model_tab_E <- car::Anova(TBm0, type = 2) %>%
+  broom::tidy() %>% 
+  as.data.frame() %>%
+  mutate(statistic = round(statistic, 3),
+         p.value = round(p.value, 3))
+#
+# 
+#
+TB_model_tab_E %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Tampa Bay estuary-wide model results")
+#
+#
+cat("<br><br>")
+cat("<br> **Model post-hoc:**
+    <br><u>Q: Has oyster abundance changed over time after accounting for Quarter?</u>
+    <br>")
+#
+cat("<br><br>*Estimated marginal means*: Adjusted means accounting for quarter, random effects, and zero-inflation.
+    <br>")
+summary(emtrends(TBm0, ~ 1, var = "Year_c"), type = "response") %>%
+  as.data.frame() %>%
+  mutate(annual_pct_change =
+      (exp(Year_c.trend) - 1) * 100) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing() %>%
+  tab_header(
+    title = "Emmeans on response scale:")
+#
+test(emtrends(TBm0, ~ 1, var = "Year_c"), null = 0)
+cat("<br>There is evidence of an overall increasing temporal trend.<br>")
+#
+pairs(emmeans(TBm0, ~ Year_c, at = list(
+  Year_c = c(  min(TB_model_data$Year_c),
+               max(TB_model_data$Year_c))),
+  type = "response"), 
+  adjust = "none") %>% 
+  as.data.frame() %>% 
+   mutate(
+    Significance = case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01  ~ "**",
+      p.value < 0.05  ~ "*",
+      TRUE            ~ ""
+    )
+  ) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing() %>%
+  tab_header(
+    title = "Trend significance")
+#
+cat("<br><br>")
+TB_model_data %>% 
+  dplyr::select(Year, Year_n, Year_c) %>% 
+  distinct() %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything())
+#
+cat("<br><br>")
+#
+TB_Epred <- ggeffects::ggpredict(TBm0, terms = c("Year_c [all]")) %>% 
+  as.data.frame() %>%
+  mutate(Year_n = round(x + mean(TB_model_data$Year_n, na.rm = TRUE))) %>%
+  left_join(TB_model_data %>%
+              distinct(Year_n, Year = as.numeric(paste(Year))) %>%
+              arrange(Year_n), 
+            by = "Year_n")
+#
+TB_Epred %>%
+  ggplot(aes(Year, predicted))+
+  geom_line(linewidth = 1.5)+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.25, color = NA)+
+  scale_x_continuous("Year", expand = c(0.01,0), limits = c(2005, 2025), breaks = seq(2005, 2025, by = 2))+
+  scale_y_continuous("Estimated live oysters per m2", limits = c(0, 1500), expand = c(0,0))+
+  basetheme
+#
+#
+#
+#
+```
+
+### Sections (linear)
+
+```{r Tampa model comps, echo = FALSE, fig.align='center', results ="asis"}
+#
+cat("**Background information:**<br>")
+# Annual means
+TB_annual_data <- Fixed_counts %>%
+  # Group by all columns needed in data output
+  filter(Estuary == "TB") %>%
+  group_by(Year) %>%
+  summarise(Samples = n(),
+            # Live
+            meanLive = mean(Live, na.rm = TRUE),
+            sdLive = sd(Live, na.rm = TRUE),
+            seLive   = sdLive / sqrt(n()),
+            minLive = min(Live, na.rm = TRUE),
+            maxLive = max(Live, na.rm = TRUE),
+            .groups = "drop")
+#
+# Annual means table
+TB_annual_data %>%
+  ungroup() %>%
+  dplyr::select(Year,
+                `Mean` = meanLive,
+                `SE` = seLive) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Average live oyster density")
+#
+# Model data:
+TB_model_data <- Fixed_counts %>% 
+    filter(Estuary == "TB") %>%
+  dplyr::select(Year, Quarter, Estuary, SectionName, StationNumber, QuadratNumber, Live) %>%
+  drop_na() %>%
+     mutate(SectionID = interaction(Estuary, SectionName, drop = TRUE),
+            StationID = interaction(Estuary, SectionName, StationNumber, drop = TRUE),
+            Year_n = as.integer(Year),
+            Year_c = Year_n - mean(Year_n, na.rm = TRUE))
+#
+cat("<br>")
+TB_model_data %>%
+  count(SectionID, Year) %>%
+  pivot_wider(
+    names_from = Year,
+    values_from = n,
+    values_fill = 0
+  ) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  tab_header(
+    title = "Annual observations per Section")
+cat("<br>")
+TB_model_data %>%
+  distinct(SectionID, StationID) %>%
+  count(SectionID, name = "Stations") %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  tab_header(
+    title = "Stations per Section")
+cat("<br>")
+TB_model_data %>%
+  count(SectionID, name = "Observations") %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  tab_header(
+    title = "Observations per Section")
+cat("<br>")
+ggplot(TB_model_data, aes(x = Year_n, y = Live)) +
+  geom_jitter(width = 0.15, height = 0, alpha = 0.25) +
+  geom_smooth(aes(group = SectionID), method = "lm", se = FALSE) +
+  XYscales_cc+
+  lemon::facet_rep_grid(.~SectionID) +
+  labs(x = "Year",
+       y = "Live oysters",
+       title = "Raw means - linear") +
+  basetheme +facettheme
+cat("<br>")
+cat("<br>")
+TB_year <- TB_model_data %>%
+  group_by(SectionID, Year_n) %>%
+  summarise(
+    n = n(),
+    meanLive = mean(Live, na.rm = TRUE),
+    sdLive = sd(Live, na.rm = TRUE),
+    .groups = "drop"
+  )
+ggplot(TB_year, 
+       aes(Year_n, meanLive, group = SectionID)) +
+  geom_point(aes(size = n)) +
+  geom_line() +
+  lemon::facet_rep_grid(SectionID~.) +
+  labs(x = "Year_n",
+       y = "Mean live oysters",
+       title = "Annual means trends") +
+  basetheme+facettheme
+cat("<br>")
+TB_model_data %>%
+  group_by(SectionID) %>%
+  summarise(n = n(),
+            zeros = sum(Live == 0, na.rm = TRUE),
+            zero_pct = mean(Live == 0, na.rm = TRUE) * 100,
+            mean = mean(Live, na.rm = TRUE),
+            .groups = "drop") %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 2) %>% 
+  tab_header(
+    title = "Amount of 0s")
+#
+cat("<br><br><br>
+  **Analyses:** <br>
+    Fixed effects - Section <br>
+    Random effects - Station (sampling unit)<br>
+    Year = continuous to identify trend. Centered to interpret trend at middle timepoint of surveys. <br>")
+#
+#
+cat("<br>*Do estuary Sections differ?*<br>")
+set.seed(54321)
+# Starting model
+TBm1 <- suppressWarnings(
+  glmmTMB::glmmTMB(Live ~ SectionID + Year_c + Quarter + (1|StationID), 
+                   family = nbinom2, data = TB_model_data)
+)
+# Test zero-inflated
+TBm2 <- suppressWarnings(
+  glmmTMB::glmmTMB(Live ~ SectionID + Year_c + Quarter + (1|StationID), 
+                   ziformula = ~ SectionID + Quarter,
+                   family = nbinom2, data = TB_model_data)
+)
+AIC(TBm1, TBm2) %>% 
+  rownames_to_column() %>% 
+  gt() %>% 
+  tab_header(
+    title = "Standard vs 0-inflated")
+cat("<br>Few zeros so not using zero-inlfated model.")
+# Does the trend differ among Sections? (linear)
+TBm3 <- suppressWarnings(
+   glmmTMB::glmmTMB(Live ~ SectionID * Year_c + Quarter + (1 | StationID),
+                    family = nbinom2, data = TB_model_data)
+)
+anova(TBm1, TBm3) %>%   
+  rownames_to_column() %>% 
+  gt() %>%  
+  tab_header(
+    title = "Do Sections have different trends?")
+cat("<br>")
+# Splines for different trends? 
+TBm4 <- suppressWarnings(
+  glmmTMB::glmmTMB(Live ~ SectionID * splines::ns(Year_c, df = 3) + Quarter + (1 | StationID),
+                   family = nbinom2, data = TB_model_data)
+)
+AIC(TBm3, TBm4) %>% 
+  rownames_to_column() %>% 
+  gt() %>% 
+  tab_header(
+    title = "Linear vs Spline (df=3) trend?")
+#
+cat("<br>")
+anova(TBm3, TBm4) %>%   
+  rownames_to_column() %>% 
+  gt() %>%  
+  tab_header(
+    title = "Are splines better?")
+cat("<br>")
+#
+#
+#
+#
+```
+
+```{r Tampa linear model assessment, echo = FALSE, fig.align='center', results ="asis"}
+# Model assessment
+cat("<br> **Linear model assessment:**<br>
+    Residuals:<br>")
+sim <- DHARMa::simulateResiduals(TBm3)
+plot(sim)
+cat("<br>")
+cat("Overdispersion:<br>
+    Dispersion ratio > 1 → overdispersion <br>
+    Dispersion ratio < 1 → underdispersion <br><br>")
+DHARMa::testDispersion(sim)
+cat("<br>")
+DHARMa::testZeroInflation(sim)
+cat("<br>")
+temp <- DHARMa::testOutliers(sim)
+cat("<br>")
+DHARMa::plotResiduals(TBm3, TB_model_data$Year_n)
+cat("<br>")
+DHARMa::plotResiduals(TBm3, TB_model_data$SectionID)
+cat("<br>")
+temp$statistic
+cat("<br>Parameter: ")
+temp$parameter
+cat("<br>p_value: ")
+temp$p.value
+cat("<br>Conf int: ")
+temp$conf.int
+cat("<br><br><br>")
+#model summ
+TB_model_tab_L <- car::Anova(TBm3, type = 2) %>%
+  broom::tidy() %>% 
+  as.data.frame() %>%
+  mutate(statistic = round(statistic, 3),
+         p.value = round(p.value, 3))
+#
+# 
+#
+TB_model_tab_L %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Tampa model results")
+#
+#
+cat("<br><br>")
+#
+#
+```
+
+```{r Tampa linear model posthoc, echo = FALSE, fig.align='center', results ="asis"}
+#
+cat("<br> **Linear Model post-hoc:**
+    <br><u>Q: Does oyster abundance differ among Sections after accounting for Year and Quarter?</u>
+    <br>")
+#
+cat("<br><br>*Estimated marginal means*: Adjusted means accounting for year, quarter, random effects, and zero-inflation.
+    <br>")
+summary(emtrends(TBm3, ~ SectionID, var = "Year_c"), type = "response") %>%
+  as.data.frame() %>%
+  mutate(annual_pct_change =
+      (exp(Year_c.trend) - 1) * 100) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing() %>%
+  tab_header(
+    title = "Emmeans on response scale:")
+#
+cat("<br>")
+pairs(emtrends(TBm3, ~ SectionID, var = "Year_c"), adjust = "tukey") %>% 
+  as.data.frame() %>% 
+   mutate(
+    Significance = case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01  ~ "**",
+      p.value < 0.05  ~ "*",
+      TRUE            ~ ""
+    )
+  ) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing() %>%
+  tab_header(
+    title = "Which sections have different trends?")
+#
+#
+#
+cat("<br><br><u>Q: Is oyster density increasing or decreasing over time within Sections?</u>:<br>")
+test(emtrends(TBm3, ~ SectionID, var = "Year_c"), null = 0) %>%
+  as.data.frame() %>%
+     mutate(annual_percent_change =
+                (exp(Year_c.trend) - 1) * 100) %>%
+  dplyr::select(SectionID, annual_percent_change, p.value) %>%
+     gt() %>%
+     cols_align(align = c("center"), columns = everything()) %>%
+     fmt_number(
+         decimals = 3) %>%
+     sub_missing() 
+#
+cat("<br><br>")
+#
+TB_model_data %>%
+  group_by(SectionID) %>%
+  summarise(
+    min_year = min(Year_n, na.rm = TRUE),
+    max_year = max(Year_n, na.rm = TRUE),
+    n_years = n_distinct(Year_n)) %>% 
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing() %>%
+  tab_header(
+    title = "Years surveyed per Section")
+
+#
+TB_year <- TB_model_data %>%
+  group_by(SectionID, Year_c) %>%
+  summarise(
+    n = n(),
+    meanLive = mean(Live, na.rm = TRUE),
+    sdLive = sd(Live, na.rm = TRUE),
+    .groups = "drop"
+  )
+#
+ggplot(TB_model_data, aes(Year_c, Live)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(aes(group = SectionID), method = "loess", se = TRUE) +
+  facet_wrap(~ SectionID) +
+  basetheme
+#
+TB_pred <- ggeffects::ggpredict(TBm3, terms = c("Year_c [all]", "SectionID")) %>% 
+  as.data.frame() %>%
+  #Year range covered by each section 
+  left_join(TB_model_data %>%
+              group_by(SectionID) %>%
+              summarise(
+                min_year = min(Year_n, na.rm = TRUE),
+                max_year = max(Year_n, na.rm = TRUE),
+                .groups = "drop"
+              ), by = c("group" = "SectionID")) %>%
+  mutate(Year_n = round(x + mean(TB_model_data$Year_n, na.rm = TRUE))) %>%
+  # Filter to data covered ranges
+  filter(
+    Year_n >= min_year,
+    Year_n <= max_year
+  ) %>%
+  left_join(TB_model_data %>%
+              distinct(Year_n, Year = as.numeric(paste(Year))) %>%
+              arrange(Year_n), 
+            by = "Year_n")
+#
+TB_pred %>%
+  mutate(Section = case_when(group == "TB.B" ~ "Boca",
+                           group == "TB.L" ~ "Lower",
+                           group == "TB.M" ~ "Middle",
+                           group == "TB.R" ~ "River",
+                           TRUE ~ "Unk")) %>%
+  ggplot(aes(Year, predicted, color = Section, fill = Section))+
+  geom_line(linewidth = 1.5)+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.25, color = NA)+
+  scale_x_continuous("Year", expand = c(0.01,0), limits = c(2005, 2025), breaks = seq(2005, 2025, by = 2))+
+  scale_y_continuous("Estimated live oysters per m2", limits = c(0, 3000), expand = c(0,0))+
+  scale_fill_viridis_d(begin = 0.1, end = 0.8)+  scale_color_viridis_d(begin = 0.1, end = 0.8)+
+  basetheme
+cat("<br><br>")
+p1 <- ggarrange(
+  TB_Epred %>%
+  ggplot(aes(Year, predicted))+
+  geom_line(linewidth = 1.5)+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.25, color = NA)+
+  scale_x_continuous("Year", expand = c(0.01,0), limits = c(2005, 2025), breaks = seq(2005, 2025, by = 2))+
+  scale_y_continuous("Estimated live oysters per m2", limits = c(0, 1500), expand = c(0,0))+
+  scale_fill_viridis_d(begin = 0.1, end = 0.8)+  scale_color_viridis_d(begin = 0.1, end = 0.8)+
+  basetheme+ rremove("x.title") + rremove("y.title"),
+  TB_pred %>%
+  mutate(Section = case_when(group == "TB.B" ~ "Boca",
+                           group == "TB.L" ~ "Lower",
+                           group == "TB.M" ~ "Middle",
+                           group == "TB.R" ~ "River",
+                           TRUE ~ "Unk")) %>%
+  ggplot(aes(Year, predicted, color = Section, fill = Section))+
+  geom_line(linewidth = 1.5)+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.25, color = NA)+
+  scale_x_continuous("Year", expand = c(0.01,0), limits = c(2005, 2025), breaks = seq(2005, 2025, by = 2))+
+  scale_y_continuous("Estimated live oysters per m2", limits = c(0, 3000), expand = c(0,0))+
+  scale_fill_viridis_d(begin = 0.1, end = 0.8)+  scale_color_viridis_d(begin = 0.1, end = 0.8)+
+  basetheme+
+    theme(legend.position = "top", legend.direction = "horizontal")+ rremove("y.title"),
+  nrow = 2, ncol = 1, heights = c(1, 1.2)
+)
+annotate_figure(p1, left = text_grob("Estimated live oysters per m2", rot = 90, face = "bold", family = "serif", color = "black", size = 14))
+#
+TB_pred %>%
+  mutate(Section = case_when(group == "TB.B" ~ "Boca",
+                           group == "TB.L" ~ "Lower",
+                           group == "TB.M" ~ "Middle",
+                           group == "TB.R" ~ "River",
+                           TRUE ~ "Unk")) %>%
+  ggplot(aes(Year, predicted, color = Section, fill = Section))+
+  geom_line(linewidth = 1.5)+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.25, color = NA)+
+  #Estuary-wide
+  geom_line(data = TB_Epred, aes(Year, predicted), color = "black", linewidth = 1.5, inherit.aes = FALSE)+
+  geom_ribbon(data = TB_Epred, aes(Year, ymin = conf.low, ymax = conf.high), fill = "black", alpha = 0.25, color = NA, inherit.aes = FALSE)+
+  scale_x_continuous("Year", expand = c(0.01,0), limits = c(2005, 2025), breaks = seq(2005, 2025, by = 2))+
+  scale_y_continuous("Estimated live oysters per m2", limits = c(0, 3000), expand = c(0,0))+
+  scale_fill_viridis_d(begin = 0.1, end = 0.8)+  scale_color_viridis_d(begin = 0.1, end = 0.8)+
+  basetheme
+#
+cat("<br><br><br><br>") 
+#
+#
+```
+
+### Sections (spline)
+
+```{r Tampa spline model assessment, echo = FALSE, fig.align='center', results ="asis"}
+# Model assessment
+cat("<br><br>")
+cat("<br> **Spline model assessment:**<br>
+    Residuals:<br>")
+sim <- DHARMa::simulateResiduals(TBm4)
+plot(sim)
+cat("<br>")
+cat("Overdispersion:<br>
+    Dispersion ratio > 1 → overdispersion <br>
+    Dispersion ratio < 1 → underdispersion <br><br>")
+DHARMa::testDispersion(sim)
+cat("<br>")
+DHARMa::testZeroInflation(sim)
+cat("<br>")
+temp <- DHARMa::testOutliers(sim)
+cat("<br>")
+DHARMa::plotResiduals(TBm4, TB_model_data$Year_n)
+cat("<br>")
+DHARMa::plotResiduals(TBm4, TB_model_data$SectionID)
+cat("<br>")
+temp$statistic
+cat("<br>Parameter: ")
+temp$parameter
+cat("<br>p_value: ")
+temp$p.value
+cat("<br>Conf int: ")
+temp$conf.int
+cat("<br><br><br>")
+#model summ
+TB_model_tab_S <- car::Anova(TBm4, type = 2) %>%
+  broom::tidy() %>% 
+  as.data.frame() %>%
+  mutate(statistic = round(statistic, 3),
+         p.value = round(p.value, 3))
+#
+# 
+#
+TB_model_tab_S %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>% 
+  tab_header(
+    title = "Tampa model results")
+#
+#
+```
+
+```{r Tampa spline model posthoc, echo = FALSE, fig.align='center', results ="asis"}
+#
+cat("<br> **Spline Model post-hoc:**
+    <br><u>Q: Does oyster abundance differ among Sections after accounting for Year and Quarter?</u>
+    <br>")
+#
+cat("<br><br>*Estimated marginal means*: Adjusted means accounting for year, quarter, random effects, and zero-inflation. At each year, which Sections differed in estimated live oyster density?
+    <br>")
+TB_years <- c(min(TB_model_data$Year_n, na.rm = TRUE),
+              median(TB_model_data$Year_n, na.rm = TRUE),
+              max(TB_model_data$Year_n, na.rm = TRUE)) 
+TB_years <- TB_years -  mean(TB_model_data$Year_n, na.rm = TRUE)
+#
+emmeans::emmeans(TBm4, ~ SectionID | Year_c, at = list(Year_c = TB_years), type = "response") %>%
+  as.data.frame() %>%
+  mutate(Year_n = Year_c + mean(TB_model_data$Year_n, na.rm = TRUE)) %>%
+  left_join(TB_model_data %>%
+              distinct(Year_n, "Year"= as.numeric(paste(Year))) %>%
+              arrange(Year_n), 
+            by = c("Year_n" = "Year_n")) %>%
+  left_join(multcomp::cld(emmeans(TBm3, ~ SectionID | Year_c, at = list(Year_c = TB_years), type = "response"), 
+                          Letters = letters, adjust = "tukey") %>%
+              as.data.frame() %>%
+              rename(Group = .group) %>%
+                mutate(Group = stringr::str_trim(Group)) %>%
+                dplyr::select(SectionID, Year_c, Group)) %>%
+  dplyr::select(-Group, everything(), Group) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing() %>%
+  tab_header(
+    title = "Emmeans on response scale:")
+#
+cat("<br>")
+pairs(
+  emmeans(TBm4, ~ SectionID | Year_c, at = list(Year_c = TB_years), type = "response"),
+  adjust = "tukey") %>%
+  as.data.frame() %>%
+  mutate(
+    Significance = case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01  ~ "**",
+      p.value < 0.05  ~ "*",
+      TRUE            ~ ""
+    )
+  ) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing()
+#
+pairs(emmeans::emmeans(TBm4, ~ Year_c | SectionID, 
+                  at = list(Year_c = c(min(TB_model_data$Year_c),     
+                                       max(TB_model_data$Year_c))),
+                  type = "response"), adjust = "none") %>%
+  as.data.frame() %>%
+  mutate(
+    Significance = case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01  ~ "**",
+      p.value < 0.05  ~ "*",
+      TRUE            ~ ""
+    )
+  ) %>%
+  gt() %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  fmt_number(
+    decimals = 3) %>%
+  sub_missing() %>%
+  tab_header(
+    title = "Start vs End estimated means comps:")
+#
+cat("<br>")
+TB_pred_s <- ggeffects::ggpredict(TBm4, terms = c("Year_c [all]", "SectionID")) %>%
+  as.data.frame() %>%
+  #Year range covered by each section 
+  left_join(TB_model_data %>%
+              group_by(SectionID) %>%
+              summarise(
+                min_year = min(Year_n, na.rm = TRUE),
+                max_year = max(Year_n, na.rm = TRUE),
+                .groups = "drop"
+              ), by = c("group" = "SectionID")) %>%
+  mutate(Year_n = round(x + mean(TB_model_data$Year_n, na.rm = TRUE))) %>%
+  # Filter to data covered ranges
+  filter(
+    Year_n >= min_year,
+    Year_n <= max_year
+  ) %>%
+  mutate(Year_n = round(x + mean(TB_model_data$Year_n, na.rm = TRUE),0),
+         Section = case_when(group == "TB.B" ~ "Boca",
+                           group == "TB.L" ~ "Lower",
+                           group == "TB.M" ~ "Middle",
+                           group == "TB.R" ~ "River",
+                           TRUE ~ "Unk"))
+#
+TB_pred_s %>%
+  left_join(TB_model_data %>%
+              distinct(Year_n, "Year"= as.numeric(paste(Year))) %>%
+              arrange(Year_n), 
+            by = c("Year_n" = "Year_n")) %>%
+  ggplot(aes(Year, predicted, color = Section, fill = Section)) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.20, color = NA) +
+  geom_line(linewidth = 1.5) +
+  scale_x_continuous("Year", breaks = scales::pretty_breaks(n = 8), expand = c(0.01, 0)) +
+  scale_y_continuous("Estimated live oyster density (oysters m⁻²)", limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
+  lemon::facet_rep_grid(Section~., scales = "free_y")+
+  labs(color = "Section",
+       fill = "Section") +
+  scale_fill_viridis_d(begin = 0.1, end = 0.8) +
+  scale_color_viridis_d(begin = 0.1, end = 0.8) +
+  basetheme +facettheme
+cat("<br><br>")
+#
+```
+
+## {-}
